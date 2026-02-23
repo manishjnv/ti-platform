@@ -19,6 +19,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY ui/ ./
 # Ensure public dir exists for standalone output
 RUN mkdir -p public
+# Set BACKEND_URL at build time so Next.js rewrites resolve to the API container
+ENV BACKEND_URL=http://api:8000
 RUN npm run build
 
 # ---------- runtime ----------
