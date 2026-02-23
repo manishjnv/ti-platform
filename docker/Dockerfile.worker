@@ -1,0 +1,24 @@
+# Re-uses the same base as the API
+FROM python:3.12-slim AS builder
+
+WORKDIR /build
+
+COPY api/pyproject.toml ./
+RUN python -c "import tomllib,pathlib;d=tomllib.loads(pathlib.Path('pyproject.toml').read_text());[print(dep) for dep in d['project']['dependencies']]" > /tmp/requirements.txt \
+    && pip install --no-cache-dir --prefix=/install -r /tmp/requirements.txt
+
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app:/app/api
+
+WORKDIR /app
+
+COPY --from=builder /install /usr/local
+
+COPY api/ ./api/
+COPY worker/ ./worker/
+
+# Default: run the RQ worker (override in compose for scheduler)
+CMD ["python", "-m", "worker.worker"]

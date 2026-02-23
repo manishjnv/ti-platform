@@ -1,0 +1,68 @@
+# Cloudflare Zero Trust + Tunnel Configuration
+# =============================================
+# This file documents the setup steps — it is NOT auto-applied.
+
+# ── 1. Create Tunnel ─────────────────────────────────────────
+# Install cloudflared: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+# cloudflared tunnel login
+# cloudflared tunnel create ti-platform
+# Note the Tunnel ID and credentials-file path.
+
+# ── 2. Tunnel config ─────────────────────────────────────────
+# Place this file at ~/.cloudflared/config.yml on the host,
+# OR mount it in the cloudflared container.
+
+tunnel: <TUNNEL_ID>
+credentials-file: /etc/cloudflared/<TUNNEL_ID>.json
+
+ingress:
+  # UI (Next.js)
+  - hostname: ti.trendsmap.in
+    service: http://ui:3000
+    originRequest:
+      noTLSVerify: true
+
+  # API (FastAPI) — direct access for debugging / webhooks
+  - hostname: ti-api.trendsmap.in
+    service: http://api:8000
+    originRequest:
+      noTLSVerify: true
+
+  # Catch-all
+  - service: http_status:404
+
+# ── 3. DNS Records ───────────────────────────────────────────
+# cloudflared tunnel route dns ti-platform ti.trendsmap.in
+# cloudflared tunnel route dns ti-platform ti-api.trendsmap.in
+
+# ── 4. Cloudflare Zero Trust Application ─────────────────────
+# In the Cloudflare Zero Trust Dashboard:
+#   1. Access → Applications → Add an application → Self-hosted
+#   2. Application name: TI Platform
+#   3. Application domain: ti.trendsmap.in
+#   4. Identity providers: Google (configure OAuth client in Google Cloud Console)
+#   5. Policy → Allow:
+#      - Selector: Emails ending in  →  @<your-domain.com>
+#      - OR: Specific emails  →  admin@example.com
+#   6. Copy the "Application Audience (AUD)" tag → set as CF_ACCESS_AUD in .env
+#   7. Your team domain (e.g. myteam.cloudflareaccess.com) → set as CF_ACCESS_TEAM_DOMAIN
+
+# ── 5. Google OAuth Setup ────────────────────────────────────
+# In Google Cloud Console → APIs & Services → Credentials:
+#   1. Create OAuth 2.0 Client ID (Web application)
+#   2. Authorized redirect URI:
+#      https://<your-team-domain>.cloudflareaccess.com/cdn-cgi/access/callback
+#   3. Copy Client ID and Secret into Cloudflare Zero Trust:
+#      Settings → Authentication → Add Google
+
+# ── 6. Environment Variables (set in .env) ───────────────────
+# CF_ACCESS_TEAM_DOMAIN=myteam.cloudflareaccess.com
+# CF_ACCESS_AUD=<audience-tag-from-step-4.6>
+# CF_TUNNEL_TOKEN=<token-from-cloudflared-tunnel-create>
+
+# ── 7. Run Tunnel ────────────────────────────────────────────
+# Option A: Standalone
+#   cloudflared tunnel run ti-platform
+#
+# Option B: Docker (uncomment cloudflared service in docker-compose.yml)
+#   Set CF_TUNNEL_TOKEN in .env and uncomment the cloudflared service.

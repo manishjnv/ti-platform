@@ -1,0 +1,15 @@
+node_modules
+.next
+__pycache__
+*.pyc
+.env
+.env.local
+*.egg-info
+dist
+build
+.ruff_cache
+.mypy_cache
+pg_data
+redis_data
+os_data
+.git

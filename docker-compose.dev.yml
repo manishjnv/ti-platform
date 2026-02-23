@@ -1,0 +1,38 @@
+# ── Docker Compose override for local development ──
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    environment:
+      ENVIRONMENT: development
+      DEV_BYPASS_AUTH: "true"
+      LOG_LEVEL: DEBUG
+    volumes:
+      - ./api:/app/api
+      - ./worker:/app/worker
+
+  ui:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ui
+    # In dev, run next dev directly instead of the standalone build
+    command: ["npm", "run", "dev"]
+    environment:
+      BACKEND_URL: http://api:8000
+    volumes:
+      - ./ui/src:/app/src
+      - ./ui/public:/app/public
+    ports:
+      - "3000:3000"
+
+  worker:
+    volumes:
+      - ./api:/app/api
+      - ./worker:/app/worker
+    environment:
+      LOG_LEVEL: DEBUG

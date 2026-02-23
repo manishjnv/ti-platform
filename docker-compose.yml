@@ -1,0 +1,154 @@
+x-common-env: &common-env
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: ti_platform
+  POSTGRES_USER: ti
+  POSTGRES_PASSWORD: ti_secret
+  REDIS_URL: redis://redis:6379/0
+  OPENSEARCH_URL: http://opensearch:9200
+  LOG_LEVEL: INFO
+  ENVIRONMENT: production
+
+services:
+  # ── Data stores ──────────────────────────────────────────────
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ti
+      POSTGRES_PASSWORD: ti_secret
+      POSTGRES_DB: ti_platform
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ti -d ti_platform"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  opensearch:
+    image: opensearchproject/opensearch:2.13.0
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=T1_Pl@tf0rm_2024!
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "9200:9200"
+    volumes:
+      - os_data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  # ── Application ──────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      CF_ACCESS_TEAM_NAME: ${CF_ACCESS_TEAM_NAME:-}
+      CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
+      NVD_API_KEY: ${NVD_API_KEY:-}
+      ABUSEIPDB_API_KEY: ${ABUSEIPDB_API_KEY:-}
+      OTX_API_KEY: ${OTX_API_KEY:-}
+      AI_API_URL: ${AI_API_URL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+
+  ui:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ui
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://api:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      NVD_API_KEY: ${NVD_API_KEY:-}
+      ABUSEIPDB_API_KEY: ${ABUSEIPDB_API_KEY:-}
+      OTX_API_KEY: ${OTX_API_KEY:-}
+      AI_API_URL: ${AI_API_URL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    restart: unless-stopped
+    command: ["python", "-m", "worker.scheduler"]
+    environment:
+      <<: *common-env
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ── Cloudflare Tunnel (optional — only if no external reverse proxy) ──
+  # Uncomment and set TUNNEL_TOKEN in .env to use
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   restart: unless-stopped
+  #   command: tunnel run
+  #   environment:
+  #     TUNNEL_TOKEN: ${CF_TUNNEL_TOKEN}
+  #   depends_on:
+  #     - ui
+  #     - api
+
+volumes:
+  pg_data:
+  redis_data:
+  os_data:

@@ -1,0 +1,71 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "refresh_interval": "5s"
+    },
+    "analysis": {
+      "analyzer": {
+        "ioc_analyzer": {
+          "type": "custom",
+          "tokenizer": "uax_url_email",
+          "filter": ["lowercase"]
+        },
+        "text_analyzer": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": ["lowercase", "stop", "snowball"]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "id": { "type": "keyword" },
+      "title": {
+        "type": "text",
+        "analyzer": "text_analyzer",
+        "fields": {
+          "keyword": { "type": "keyword", "ignore_above": 512 }
+        }
+      },
+      "summary": { "type": "text", "analyzer": "text_analyzer" },
+      "description": { "type": "text", "analyzer": "text_analyzer" },
+      "ai_summary": { "type": "text", "analyzer": "text_analyzer" },
+
+      "published_at": { "type": "date" },
+      "ingested_at": { "type": "date" },
+      "updated_at": { "type": "date" },
+
+      "severity": { "type": "keyword" },
+      "risk_score": { "type": "integer" },
+      "confidence": { "type": "integer" },
+
+      "source_name": { "type": "keyword" },
+      "source_url": { "type": "keyword", "index": false },
+      "source_reliability": { "type": "integer" },
+      "source_ref": { "type": "keyword" },
+
+      "feed_type": { "type": "keyword" },
+      "asset_type": { "type": "keyword" },
+      "tlp": { "type": "keyword" },
+
+      "tags": { "type": "keyword" },
+      "geo": { "type": "keyword" },
+      "industries": { "type": "keyword" },
+      "cve_ids": { "type": "keyword" },
+      "affected_products": { "type": "keyword" },
+
+      "related_ioc_count": { "type": "integer" },
+      "is_kev": { "type": "boolean" },
+      "exploit_available": { "type": "boolean" },
+      "exploitability_score": { "type": "float" },
+
+      "ioc_value": { "type": "text", "analyzer": "ioc_analyzer", "fields": { "keyword": { "type": "keyword" } } },
+      "ioc_type": { "type": "keyword" },
+
+      "source_hash": { "type": "keyword" }
+    }
+  }
+}

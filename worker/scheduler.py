@@ -1,0 +1,108 @@
+"""RQ Scheduler configuration — schedules periodic feed ingestion jobs."""
+
+import sys
+import os
+
+api_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "api")
+if api_dir not in sys.path:
+    sys.path.insert(0, api_dir)
+app_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+if app_dir not in sys.path:
+    sys.path.insert(0, app_dir)
+
+from datetime import timedelta, datetime, timezone
+
+from redis import Redis
+from rq import Queue
+from rq_scheduler import Scheduler
+
+from app.core.config import get_settings
+from app.core.logging import setup_logging
+
+setup_logging()
+settings = get_settings()
+
+redis_conn = Redis.from_url(settings.redis_url)
+scheduler = Scheduler(queue_name="default", connection=redis_conn)
+
+
+def setup_schedules():
+    """Register all periodic jobs. Idempotent — cancels existing first."""
+    # Cancel existing scheduled jobs to avoid duplicates
+    for job in scheduler.get_jobs():
+        scheduler.cancel(job)
+
+    # ─── Feed Ingestion Schedules ─────────────────────────
+    # CISA KEV — every 5 minutes
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc),
+        func="worker.tasks.ingest_feed",
+        args=["cisa_kev"],
+        interval=timedelta(minutes=5).total_seconds(),
+        queue_name="high",
+        meta={"feed": "cisa_kev"},
+    )
+
+    # NVD — every 15 minutes
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc),
+        func="worker.tasks.ingest_feed",
+        args=["nvd"],
+        interval=timedelta(minutes=15).total_seconds(),
+        queue_name="default",
+        meta={"feed": "nvd"},
+    )
+
+    # URLhaus — every 5 minutes
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc),
+        func="worker.tasks.ingest_feed",
+        args=["urlhaus"],
+        interval=timedelta(minutes=5).total_seconds(),
+        queue_name="high",
+        meta={"feed": "urlhaus"},
+    )
+
+    # AbuseIPDB — every 15 minutes
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc),
+        func="worker.tasks.ingest_feed",
+        args=["abuseipdb"],
+        interval=timedelta(minutes=15).total_seconds(),
+        queue_name="default",
+        meta={"feed": "abuseipdb"},
+    )
+
+    # OTX — every 30 minutes (to respect API limits)
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc),
+        func="worker.tasks.ingest_feed",
+        args=["otx"],
+        interval=timedelta(minutes=30).total_seconds(),
+        queue_name="low",
+        meta={"feed": "otx"},
+    )
+
+    # ─── Dashboard refresh — every 2 minutes ─────────────
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc),
+        func="worker.tasks.refresh_materialized_views",
+        interval=timedelta(minutes=2).total_seconds(),
+        queue_name="low",
+    )
+
+    # ─── AI Summaries — every 5 minutes ──────────────────
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc),
+        func="worker.tasks.generate_ai_summaries",
+        kwargs={"batch_size": 5},
+        interval=timedelta(minutes=5).total_seconds(),
+        queue_name="low",
+    )
+
+    print(f"Scheduled {len(list(scheduler.get_jobs()))} jobs")
+
+
+if __name__ == "__main__":
+    setup_schedules()
+    scheduler.run()
