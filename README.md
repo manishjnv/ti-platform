@@ -1,4 +1,4 @@
-# Threat Intelligence Platform
+# IntelWatch — TI Platform
 
 > **Phase-1** — Live threat feeds, IOC search, risk scoring, analytics dashboards.
 
@@ -27,6 +27,7 @@ A production-grade, self-hosted threat intelligence aggregation and analysis pla
 - [Data Flow](#data-flow)
 - [Deployment](#deployment)
 - [Troubleshooting](#troubleshooting)
+- [Login & Authentication](#-login--authentication)
 - [Documentation Index](#-documentation-index)
 
 ---
@@ -144,7 +145,7 @@ Always: think before coding, keep files small and focused, prefer extensibility.
 ```
 ┌──────────────┐   Cloudflare Tunnel    ┌──────────────────────────────────────────────┐
 │   Browser    │ ─────────────────────► │  Docker Host                                 │
-│  (SSO via    │   ti.yourdomain.com    │                                              │
+│  (SSO via    │   intelwatch.trendsmap.in    │                                              │
 │  Zero Trust) │                        │  ┌──────┐  ┌──────┐  ┌────────────────┐     │
 └──────────────┘                        │  │  UI  │  │  API │  │  Worker +      │     │
                                         │  │ :3000│→ │ :8000│  │  Scheduler     │     │
@@ -174,6 +175,7 @@ Always: think before coding, keep files small and focused, prefer extensibility.
 
 | Page | Route | Description |
 |------|-------|-------------|
+| **Login** | `/login` | IntelWatch branded login — SSO redirect or dev bypass |
 | **Dashboard** | `/dashboard` | KPI stat cards, threat level bar, severity/category donut charts, top risks table, feed status |
 | **Threat Feed** | `/threats` | Severity filter pills, risk-sorted threat list, asset type breakdown |
 | **Intel Items** | `/intel` | Paginated intel browser with filters, detail drill-down |
@@ -182,9 +184,9 @@ Always: think before coding, keep files small and focused, prefer extensibility.
 | **Analytics** | `/analytics` | Severity bar chart, category donut, geo/industry rankings, source reliability |
 | **Geo View** | `/geo` | Geographic threat distribution, region drill-down, region-specific threat list |
 | **Feed Status** | `/feeds` | Feed health monitor with status badges, error display, item counts |
-| **Settings** | `/settings` | General, Security, Notifications, Appearance, Data & Storage, API Keys panels |
+| **Settings** | `/settings` | General, Security, Notifications, Appearance, Data & Storage, API Keys, Platform Setup |
 
-**Shared components:** StatCard, ThreatLevelBar, DonutChart, TrendLineChart, HorizontalBarChart, RankedDataList, FeedStatusPanel, Sidebar (4-section nav), Header bar (search, notifications, user menu).
+**Shared components:** AuthGuard, StatCard, ThreatLevelBar, DonutChart, TrendLineChart, HorizontalBarChart, RankedDataList, FeedStatusPanel, Sidebar (4-section nav), Header bar (search, notifications, user menu).
 
 ---
 
@@ -208,6 +210,7 @@ ti-platform/
 │   │   │   └── models.py
 │   │   ├── routes/               # API route handlers (thin — logic in services)
 │   │   │   ├── admin.py
+│   │   │   ├── auth.py           # Login, logout, session management
 │   │   │   ├── dashboard.py
 │   │   │   ├── health.py
 │   │   │   ├── intel.py
@@ -215,7 +218,9 @@ ti-platform/
 │   │   ├── schemas/              # Pydantic request/response schemas
 │   │   ├── services/             # Business logic layer
 │   │   │   ├── ai.py
+│   │   │   ├── auth.py           # JWT sessions, CF Access verification
 │   │   │   ├── database.py
+│   │   │   ├── domain.py         # Domain & deployment configuration
 │   │   │   ├── export.py
 │   │   │   ├── scoring.py
 │   │   │   ├── search.py
@@ -253,7 +258,8 @@ ti-platform/
 │   │   │   │   └── settings/page.tsx
 │   │   │   ├── globals.css
 │   │   │   ├── layout.tsx        # Root HTML layout
-│   │   │   └── page.tsx          # Redirect → /dashboard
+│   │   │   ├── login/page.tsx    # Login page (SSO / dev bypass)
+│   │   │   └── page.tsx          # Redirect → /login
 │   │   ├── components/
 │   │   │   ├── charts/           # Reusable chart components
 │   │   │   │   ├── DonutChart.tsx
@@ -266,6 +272,7 @@ ti-platform/
 │   │   │   │   ├── card.tsx
 │   │   │   │   ├── input.tsx
 │   │   │   │   └── tabs.tsx
+│   │   │   ├── AuthGuard.tsx     # Session-gated route wrapper
 │   │   │   ├── FeedStatusPanel.tsx
 │   │   │   ├── IntelCard.tsx
 │   │   │   ├── Loading.tsx
@@ -316,14 +323,20 @@ ti-platform/
 git clone https://github.com/manishjnv/ti-platform.git
 cd ti-platform
 cp .env.example .env
-# Edit .env — at minimum set POSTGRES_PASSWORD
+# Edit .env — set DEV_BYPASS_AUTH=true for local development
 ```
 
 ### 2. Start All Services
 
 ```bash
+# Production mode
 docker compose up -d --build
+
+# Development mode (hot reload — recommended for local dev)
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```
+
+This mounts source code for live reload on API, worker, and UI.
 
 ### 3. Verify
 
@@ -332,17 +345,13 @@ docker compose up -d --build
 curl -s http://localhost:8000/api/v1/health | jq .
 # Expected: {"status":"ok","postgres":true,"redis":true,"opensearch":true}
 
-# Open UI
+# Open UI — you'll be redirected to the login page
 open http://localhost:3000
 ```
 
-### Development Mode (Hot Reload)
+### 4. Test Login
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-```
-
-This mounts source code for live reload on API, worker, and UI.
+See the [Login Testing Guide](#-login-testing-guide) below for detailed steps.
 
 ---
 
@@ -353,24 +362,29 @@ This mounts source code for live reload on API, worker, and UI.
 | `ENVIRONMENT` | No | `development` or `production` (default: `development`) |
 | `SECRET_KEY` | **Yes** | App secret — use `openssl rand -hex 32` |
 | `LOG_LEVEL` | No | `DEBUG`, `INFO`, `WARNING`, `ERROR` (default: `INFO`) |
+| `DOMAIN` | Prod | Base domain (default: `localhost`) |
+| `DOMAIN_UI` | Prod | UI URL (default: `http://localhost:3000`) |
+| `DOMAIN_API` | Prod | API URL (default: `http://localhost:8000`) |
 | `POSTGRES_HOST` | Yes | Database host (default: `postgres`) |
 | `POSTGRES_PORT` | Yes | Database port (default: `5432`) |
-| `POSTGRES_DB` | Yes | Database name (default: `threat_intel`) |
+| `POSTGRES_DB` | Yes | Database name (default: `ti_platform`) |
 | `POSTGRES_USER` | Yes | Database user |
 | `POSTGRES_PASSWORD` | **Yes** | Database password — **change in production** |
-| `DATABASE_URL` | Yes | Full async connection string |
 | `REDIS_URL` | Yes | Redis connection (default: `redis://redis:6379/0`) |
 | `OPENSEARCH_URL` | Yes | OpenSearch endpoint |
-| `OPENSEARCH_USER` | No | OpenSearch user (default: `admin`) |
-| `OPENSEARCH_PASSWORD` | No | OpenSearch password |
+| `DEV_BYPASS_AUTH` | No | Skip authentication in dev (default: `false`) |
+| `JWT_EXPIRE_MINUTES` | No | Session duration in minutes (default: `480`) |
+| `CF_ACCESS_TEAM_NAME` | Prod | Cloudflare Zero Trust team name |
+| `CF_ACCESS_AUD` | Prod | Cloudflare Access audience tag |
+| `CF_TUNNEL_TOKEN` | Prod | Cloudflare Tunnel token |
 | `NVD_API_KEY` | No | NVD API key (higher rate limits) |
 | `ABUSEIPDB_API_KEY` | No | AbuseIPDB API key (required for that feed) |
 | `OTX_API_KEY` | No | AlienVault OTX API key |
+| `VIRUSTOTAL_API_KEY` | No | VirusTotal API key (free tier) |
+| `SHODAN_API_KEY` | No | Shodan API key (free developer tier) |
 | `AI_API_URL` | No | AI summarization endpoint |
 | `AI_API_KEY` | No | AI API key |
 | `AI_MODEL` | No | AI model name (default: `llama3`) |
-| `CF_ACCESS_TEAM_NAME` | Prod | Cloudflare Zero Trust team name |
-| `CF_ACCESS_AUD` | Prod | Cloudflare Access audience tag |
 | `NEXT_PUBLIC_API_URL` | Yes | API URL for frontend (default: `http://localhost:8000`) |
 
 ---
@@ -384,6 +398,8 @@ This mounts source code for live reload on API, worker, and UI.
 | **URLhaus** | abuse.ch malicious URL feed | 5 min | No |
 | **AbuseIPDB** | AbuseIPDB blacklist API | 15 min | **Yes** |
 | **OTX** | AlienVault OTX pulses | 30 min | **Yes** |
+| **VirusTotal** | VirusTotal file/URL enrichment | On-demand | **Yes** (free tier) |
+| **Shodan** | Shodan asset exposure | On-demand | **Yes** (free tier) |
 
 All connectors inherit from `api/app/services/feeds/base.py` — adding a new feed requires implementing `fetch()` and `normalize()`.
 
@@ -396,12 +412,20 @@ Base URL: `http://localhost:8000/api/v1`
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | `GET` | `/health` | No | Service health check |
+| `GET` | `/auth/config` | No | Auth method configuration (SSO vs local) |
+| `POST` | `/auth/login` | No | Login — creates JWT session cookie |
+| `POST` | `/auth/logout` | No | Logout — revokes session |
+| `GET` | `/auth/session` | Cookie | Check session validity, return user info |
+| `GET` | `/me` | Session | Current user info |
 | `GET` | `/dashboard` | Viewer | Dashboard stats, severity distribution, top risks |
 | `GET` | `/intel` | Viewer | Paginated intel items with filters |
 | `GET` | `/intel/{id}` | Viewer | Single intel item detail |
 | `GET` | `/search` | Viewer | Full-text IOC search |
-| `POST` | `/admin/ingest` | Admin | Trigger manual feed ingestion |
-| `GET` | `/admin/feeds` | Admin | Feed connector status |
+| `GET` | `/feeds/status` | Viewer | Feed connector status |
+| `POST` | `/feeds/{name}/trigger` | Admin | Trigger manual feed ingestion |
+| `POST` | `/feeds/trigger-all` | Admin | Trigger all feed ingestions |
+| `GET` | `/setup/config` | Admin | Platform domain & deployment config |
+| `GET` | `/setup/status` | Admin | Platform setup checklist |
 
 All list endpoints support `page`, `page_size`, `severity`, `feed_type`, `date_from`, `date_to` query params.
 
@@ -425,18 +449,46 @@ All list endpoints support `page`, `page_size`, `severity`, `feed_type`, `date_f
 
 ## Deployment
 
-See [WORKFLOW.md](WORKFLOW.md) for full production deployment, Cloudflare Tunnel setup, and CI/CD pipeline details.
+See [WORKFLOW.md](WORKFLOW.md) for full deployment walkthrough.
 
-**Quick production deploy:**
+### CI/CD — Auto-Deploy on Push
 
+Every `git push` to `main` triggers: **Lint → SSH Deploy to Hostinger VPS**.
+
+**One-time setup:**
+
+1. **Prepare the VPS** (SSH into Hostinger KVM):
+   ```bash
+   ssh root@<YOUR_VPS_IP>
+   bash -s < <(curl -fsSL https://raw.githubusercontent.com/manishjnv/ti-platform/main/scripts/server-setup.sh)
+   # Or: clone repo first, then run: bash scripts/server-setup.sh
+   ```
+
+2. **Generate an SSH key for GitHub Actions** (on the VPS):
+   ```bash
+   ssh-keygen -t ed25519 -f ~/.ssh/github_deploy -N ""
+   cat ~/.ssh/github_deploy.pub >> /home/deploy/.ssh/authorized_keys
+   cat ~/.ssh/github_deploy   # Copy this private key
+   ```
+
+3. **Add GitHub Secrets** at `github.com/manishjnv/ti-platform/settings/secrets/actions`:
+
+   | Secret | Value |
+   |--------|-------|
+   | `DEPLOY_HOST` | Your Hostinger VPS IP address |
+   | `DEPLOY_USER` | `deploy` |
+   | `DEPLOY_SSH_KEY` | The private key from step 2 |
+
+4. **Push to main** — deployment runs automatically:
+   ```bash
+   git add -A && git commit -m "deploy" && git push origin main
+   ```
+
+**Manual deploy** (SSH into VPS directly):
 ```bash
-ssh deploy@your-host
-cd /opt/ti-platform
-git pull origin main
-docker compose up -d --build
+ssh deploy@<YOUR_VPS_IP>
+/opt/ti-platform/scripts/deploy.sh
 ```
-
-**CI/CD:** `.github/workflows/ci.yml` — lint, build, push images to GHCR, SSH deploy on main push.
 
 ---
 
@@ -445,11 +497,50 @@ docker compose up -d --build
 | Problem | Solution |
 |---------|----------|
 | Feeds not syncing | Check `docker compose logs worker`. Verify API keys in `.env`. |
-| Auth issues in dev | Set `DEV_BYPASS_AUTH=true` in `.env` |
+| Login not working | In dev: set `DEV_BYPASS_AUTH=true` in `.env`. In prod: verify CF Access config. |
+| Session expired | Sessions last 8 hours by default. Adjust `JWT_EXPIRE_MINUTES` in `.env`. |
 | OpenSearch index missing | API auto-creates on startup — check `:9200/_cluster/health` |
 | TimescaleDB hypertable errors | Run `psql -f db/schema.sql` manually |
 | AI summaries not appearing | Verify `AI_API_URL` is reachable from worker container |
 | UI not loading | Check `docker compose logs ui` — rebuild with `docker compose build ui` |
+
+---
+
+## 🔐 Login & Authentication
+
+### Configuration
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `DEV_BYPASS_AUTH` | Skip SSO, auto-login as dev admin | `true` in dev compose |
+| `JWT_EXPIRE_MINUTES` | Session duration | `480` (8 hours) |
+| `CF_ACCESS_TEAM_NAME` | Cloudflare Zero Trust team name | — (production only) |
+| `CF_ACCESS_AUD` | Cloudflare Access audience tag | — (production only) |
+
+### Auth Modes
+
+| Mode | When | How |
+|------|------|-----|
+| **Dev Bypass** | `DEV_BYPASS_AUTH=true` or `ENVIRONMENT=development` | Click "Sign in (Dev Mode)" → auto-creates `dev@intelwatch.local` (admin) |
+| **Cloudflare SSO** | `CF_ACCESS_TEAM_NAME` + `CF_ACCESS_AUD` set | Cloudflare Zero Trust intercepts → Google SSO → auto-provisions user |
+
+### Auth Flow
+
+```
+Browser → /login → GET /api/v1/auth/config → determine auth method
+  ├── Dev Mode:  POST /auth/login → auto-create dev user → set iw_session cookie → /dashboard
+  └── SSO Mode:  Cloudflare redirect → SSO → POST /auth/login (with CF headers) → set iw_session cookie → /dashboard
+
+Protected routes: AuthGuard → GET /auth/session → valid? → render : redirect to /login
+Logout: POST /auth/logout → revoke Redis session → clear cookie → /login
+```
+
+### Key Details
+
+- **Cookie:** `iw_session` — HttpOnly, SameSite=Lax, 8-hour TTL
+- **Session store:** Redis (server-side revocable)
+- **Protected routes:** All `(app)/*` pages wrapped in `AuthGuard` component
+- **Root `/`** redirects to `/login`
 
 ---
 

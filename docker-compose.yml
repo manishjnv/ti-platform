@@ -73,11 +73,19 @@ services:
     restart: unless-stopped
     environment:
       <<: *common-env
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       CF_ACCESS_TEAM_NAME: ${CF_ACCESS_TEAM_NAME:-}
       CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
+      DOMAIN: ${DOMAIN:-localhost}
+      DOMAIN_UI: ${DOMAIN_UI:-http://localhost:3000}
+      DOMAIN_API: ${DOMAIN_API:-http://localhost:8000}
+      DEV_BYPASS_AUTH: ${DEV_BYPASS_AUTH:-false}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-480}
       NVD_API_KEY: ${NVD_API_KEY:-}
       ABUSEIPDB_API_KEY: ${ABUSEIPDB_API_KEY:-}
       OTX_API_KEY: ${OTX_API_KEY:-}
+      VIRUSTOTAL_API_KEY: ${VIRUSTOTAL_API_KEY:-}
+      SHODAN_API_KEY: ${SHODAN_API_KEY:-}
       AI_API_URL: ${AI_API_URL:-}
       AI_API_KEY: ${AI_API_KEY:-}
       AI_MODEL: ${AI_MODEL:-}
@@ -113,6 +121,8 @@ services:
       NVD_API_KEY: ${NVD_API_KEY:-}
       ABUSEIPDB_API_KEY: ${ABUSEIPDB_API_KEY:-}
       OTX_API_KEY: ${OTX_API_KEY:-}
+      VIRUSTOTAL_API_KEY: ${VIRUSTOTAL_API_KEY:-}
+      SHODAN_API_KEY: ${SHODAN_API_KEY:-}
       AI_API_URL: ${AI_API_URL:-}
       AI_API_KEY: ${AI_API_KEY:-}
       AI_MODEL: ${AI_MODEL:-}

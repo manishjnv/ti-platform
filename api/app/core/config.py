@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     secret_key: str = "change-me"
     api_prefix: str = "/api/v1"
-    cors_origins: list[str] = ["http://localhost:3000"]
+    cors_origins: list[str] = ["http://localhost:3000", "https://intelwatch.trendsmap.in"]
 
     # PostgreSQL
     postgres_host: str = "localhost"
@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     nvd_api_key: str = ""
     abuseipdb_api_key: str = ""
     otx_api_key: str = ""
+    virustotal_api_key: str = ""
+    shodan_api_key: str = ""
 
     # AI / Open-WebUI
     ai_api_url: str = "http://localhost:3000/api/chat/completions"
@@ -69,6 +71,16 @@ class Settings(BaseSettings):
     # Cloudflare Zero Trust
     cf_access_team_name: str = ""
     cf_access_aud: str = ""
+
+    # Domain configuration
+    domain: str = "localhost"
+    domain_ui: str = "http://localhost:3000"
+    domain_api: str = "http://localhost:8000"
+
+    # Auth / Session
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 480  # 8 hours
+    dev_bypass_auth: bool = False
 
     # Cache TTLs (seconds)
     cache_ttl_search: int = 300

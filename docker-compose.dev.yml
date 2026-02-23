@@ -12,6 +12,7 @@ services:
       ENVIRONMENT: development
       DEV_BYPASS_AUTH: "true"
       LOG_LEVEL: DEBUG
+      SECRET_KEY: dev-secret-key-not-for-production
     volumes:
       - ./api:/app/api
       - ./worker:/app/worker
@@ -20,6 +21,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.ui
+      target: dev
     # In dev, run next dev directly instead of the standalone build
     command: ["npm", "run", "dev"]
     environment:

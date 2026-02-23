@@ -20,7 +20,7 @@
 
 ## System Overview
 
-The Threat Intelligence Platform is a **self-hosted, containerized** system that aggregates, normalizes, scores, and visualizes threat intelligence from multiple open-source feeds. It is designed as a modular monolith — each concern is cleanly separated into its own layer and can be independently scaled.
+The IntelWatch TI Platform is a **self-hosted, containerized** system that aggregates, normalizes, scores, and visualizes threat intelligence from multiple open-source feeds. It is designed as a modular monolith — each concern is cleanly separated into its own layer and can be independently scaled.
 
 **Core principles:**
 - Async-first backend (no blocking I/O)
@@ -185,11 +185,11 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 | Layer | Path | Responsibility |
 |-------|------|----------------|
 | **Core** | `api/app/core/` | Config, database pool, Redis client, OpenSearch client, structured logging |
-| **Middleware** | `api/app/middleware/` | Auth (Cloudflare JWT verify), audit logging |
+| **Middleware** | `api/app/middleware/` | Auth (JWT session + Cloudflare JWT verify), audit logging |
 | **Models** | `api/app/models/` | SQLAlchemy ORM model definitions |
 | **Schemas** | `api/app/schemas/` | Pydantic v2 request/response schemas |
 | **Routes** | `api/app/routes/` | Thin route handlers — validate, delegate to service, return response |
-| **Services** | `api/app/services/` | All business logic: scoring, search, AI, export, feed connectors |
+| **Services** | `api/app/services/` | All business logic: auth, scoring, search, AI, export, domain config, feed connectors |
 | **Feeds** | `api/app/services/feeds/` | Plugin-based feed connectors (inherit from `BaseFeedConnector`) |
 
 ### Endpoint Map
@@ -197,12 +197,18 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 | Method | Endpoint | Auth | Handler | Service |
 |--------|----------|------|---------|---------|
 | `GET` | `/api/v1/health` | None | `routes/health.py` | — |
+| `GET` | `/api/v1/auth/config` | None | `routes/auth.py` | `services/auth.py` |
+| `POST` | `/api/v1/auth/login` | None | `routes/auth.py` | `services/auth.py` |
+| `POST` | `/api/v1/auth/logout` | Cookie | `routes/auth.py` | `services/auth.py` |
+| `GET` | `/api/v1/auth/session` | Cookie | `routes/auth.py` | `services/auth.py` |
 | `GET` | `/api/v1/dashboard` | Viewer | `routes/dashboard.py` | `services/database.py` |
 | `GET` | `/api/v1/intel` | Viewer | `routes/intel.py` | `services/database.py` |
 | `GET` | `/api/v1/intel/{id}` | Viewer | `routes/intel.py` | `services/database.py` |
 | `GET` | `/api/v1/search` | Viewer | `routes/search.py` | `services/search.py` |
 | `POST` | `/api/v1/admin/ingest` | Admin | `routes/admin.py` | `services/feeds/*` |
 | `GET` | `/api/v1/admin/feeds` | Admin | `routes/admin.py` | `services/database.py` |
+| `GET` | `/api/v1/setup/config` | Admin | `routes/admin.py` | `services/domain.py` |
+| `GET` | `/api/v1/setup/status` | Admin | `routes/admin.py` | `services/domain.py` |
 
 ---
 
@@ -249,7 +255,8 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 
 ```
 app/layout.tsx (root HTML, dark class)
-└── (app)/layout.tsx (Sidebar + Header + main area)
+├── login/page.tsx (IntelWatch branded login — SSO or dev bypass)
+└── (app)/layout.tsx (AuthGuard + Sidebar + Header + main area)
     ├── dashboard/page.tsx
     │   ├── StatCard ×4
     │   ├── ThreatLevelBar
@@ -337,16 +344,36 @@ class BaseFeedConnector(ABC):
 ### Authentication Flow
 
 ```
-Browser ──► Cloudflare Access (Zero Trust) ──► SSO Provider (Google)
-                    │
-                    ▼
-            JWT in Cf-Access-Jwt-Assertion header
-                    │
-                    ▼
-            API middleware verifies JWT + extracts user
-                    │
-                    ▼
-            RBAC check (admin / analyst / viewer)
+┌─ Production (Cloudflare Zero Trust SSO) ─────────────────────────┐
+│                                                                    │
+│  Browser ──► Cloudflare Access ──► SSO Provider (Google)          │
+│                    │                                               │
+│                    ▼                                               │
+│  CF headers (Cf-Access-Jwt-Assertion + email)                     │
+│                    │                                               │
+│                    ▼                                               │
+│  POST /api/v1/auth/login ──► verify CF JWT ──► create session     │
+│                    │                                               │
+│                    ▼                                               │
+│  Set HttpOnly cookie (iw_session) ──► JWT with user + role        │
+└────────────────────────────────────────────────────────────────────┘
+
+┌─ Development (Bypass Mode) ──────────────────────────────────────┐
+│                                                                    │
+│  Browser ──► /login page ──► "Sign in (Dev Mode)" button          │
+│                    │                                               │
+│                    ▼                                               │
+│  POST /api/v1/auth/login ──► auto-create dev admin user           │
+│                    │                                               │
+│                    ▼                                               │
+│  Set HttpOnly cookie (iw_session) ──► JWT with dev user           │
+└────────────────────────────────────────────────────────────────────┘
+
+Session Management:
+- JWT tokens stored as HttpOnly, Secure, SameSite cookies
+- Server-side session tracking in Redis (revocable)
+- Configurable TTL (default: 8 hours)
+- Logout revokes session in Redis + clears cookie
 ```
 
 ### RBAC Roles
@@ -362,12 +389,13 @@ Browser ──► Cloudflare Access (Zero Trust) ──► SSO Provider (Google)
 | Layer | Implementation |
 |-------|---------------|
 | Network | Cloudflare Tunnel (no exposed ports to internet) |
-| Auth | Cloudflare Zero Trust SSO + JWT verification |
+| Auth | JWT session cookies + Cloudflare Zero Trust SSO fallback |
+| Sessions | Redis-backed, revocable, HttpOnly cookies |
 | RBAC | Role-based decorators on route handlers |
 | Input | Pydantic v2 strict validation on all endpoints |
 | Queries | SQLAlchemy ORM — parameterized only |
 | Rate limiting | Configurable per-endpoint rate limits |
-| Audit | All mutations and auth events logged to `audit_log` hypertable |
+| Audit | All auth events + mutations logged to `audit_log` hypertable |
 | Secrets | Environment variables only — never in code |
 
 ---
@@ -380,7 +408,7 @@ Browser ──► Cloudflare Access (Zero Trust) ──► SSO Provider (Google)
 VPS (2 vCPU, 4 GB RAM minimum)
     │
     ├── Docker Compose (7 services)
-    ├── Cloudflare Tunnel (Argo) → ti.yourdomain.com
+    ├── Cloudflare Tunnel (Argo) → intelwatch.trendsmap.in
     ├── Let's Encrypt via Cloudflare (automatic HTTPS)
     └── GitHub Actions CI/CD (build → push → SSH deploy)
 ```
@@ -403,4 +431,7 @@ GitHub Actions
 
 | Date | Change |
 |------|--------|
+| 2026-02-24 | Production domain set to intelwatch.trendsmap.in; simplified login docs |
+| 2026-02-24 | Renamed to IntelWatch; added VirusTotal & Shodan API key support; login testing verified |
+| 2026-02-23 | Renamed to IntelWatch TI Platform; added auth architecture (JWT sessions, login flow, auth guard) |
 | 2026-02-23 | Initial architecture document extracted from README |

@@ -3,6 +3,15 @@ import type { IntelItem, DashboardData, User, SearchResponse, IntelListResponse,
 import * as api from "@/lib/api";
 
 interface AppState {
+  // Auth
+  isAuthenticated: boolean;
+  authChecked: boolean;
+  authLoading: boolean;
+  authError: string | null;
+  checkAuth: () => Promise<boolean>;
+  performLogin: () => Promise<boolean>;
+  performLogout: () => Promise<void>;
+
   // User
   user: User | null;
   userLoading: boolean;
@@ -45,6 +54,57 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
+  // Auth
+  isAuthenticated: false,
+  authChecked: false,
+  authLoading: false,
+  authError: null,
+  checkAuth: async () => {
+    set({ authLoading: true, authError: null });
+    try {
+      const data = await api.checkSession();
+      set({
+        isAuthenticated: true,
+        authChecked: true,
+        authLoading: false,
+        user: data.user,
+      });
+      return true;
+    } catch {
+      set({
+        isAuthenticated: false,
+        authChecked: true,
+        authLoading: false,
+        user: null,
+      });
+      return false;
+    }
+  },
+  performLogin: async () => {
+    set({ authLoading: true, authError: null });
+    try {
+      const data = await api.login();
+      set({
+        isAuthenticated: true,
+        authChecked: true,
+        authLoading: false,
+        user: data.user,
+      });
+      return true;
+    } catch (e: any) {
+      set({ authLoading: false, authError: e.message });
+      return false;
+    }
+  },
+  performLogout: async () => {
+    try {
+      await api.logout();
+    } catch {
+      // ignore
+    }
+    set({ isAuthenticated: false, user: null, authChecked: true });
+  },
+
   // User
   user: null,
   userLoading: false,

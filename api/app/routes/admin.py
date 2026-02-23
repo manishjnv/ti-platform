@@ -1,4 +1,4 @@
-"""Admin & user management endpoints."""
+"""Admin, user management, and platform setup endpoints."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from app.middleware.audit import log_audit
 from app.models.models import User
 from app.schemas import UserResponse, UserUpdate, FeedStatusResponse, AuditLogResponse
 from app.services import database as db_service
+from app.services.domain import get_domain_config
 
 router = APIRouter(tags=["admin"])
 settings = get_settings()
@@ -114,3 +115,100 @@ async def trigger_all_feeds(
         db, user_id=str(user.id), action="trigger_all_feeds", resource_type="feed"
     )
     return {"status": "queued", "job_id": job.id}
+
+
+@router.get("/setup/config")
+async def get_setup_config(
+    user: Annotated[User, Depends(require_admin)],
+):
+    """Get platform domain and deployment configuration (admin only).
+
+    Returns the current platform configuration including domain,
+    auth method, service connectivity, and feed API key status.
+    """
+    return get_domain_config()
+
+
+@router.get("/setup/status")
+async def get_setup_status(
+    user: Annotated[User, Depends(require_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Get platform setup status — checklist of what's configured.
+
+    Returns a structured checklist for the Settings > Setup page.
+    """
+    config = get_domain_config()
+
+    checklist = [
+        {
+            "id": "database",
+            "label": "PostgreSQL + TimescaleDB",
+            "status": "configured",
+            "description": f"Connected to {settings.postgres_host}:{settings.postgres_port}/{settings.postgres_db}",
+        },
+        {
+            "id": "redis",
+            "label": "Redis Cache & Queue",
+            "status": "configured",
+            "description": f"Connected to {settings.redis_url}",
+        },
+        {
+            "id": "opensearch",
+            "label": "OpenSearch",
+            "status": "configured",
+            "description": f"Connected to {settings.opensearch_url}",
+        },
+        {
+            "id": "auth",
+            "label": "Authentication",
+            "status": "configured" if config["auth"]["sso_configured"] else "development",
+            "description": (
+                f"Cloudflare Zero Trust SSO ({config['auth']['cf_team_name']})"
+                if config["auth"]["sso_configured"]
+                else "Development mode — no SSO configured"
+            ),
+        },
+        {
+            "id": "domain",
+            "label": "Domain Configuration",
+            "status": "configured" if settings.domain != "localhost" else "pending",
+            "description": (
+                f"UI: {settings.domain_ui} | API: {settings.domain_api}"
+                if settings.domain != "localhost"
+                else "Using localhost — set DOMAIN, DOMAIN_UI, DOMAIN_API in .env for production"
+            ),
+        },
+        {
+            "id": "feeds_free",
+            "label": "Free Feeds (CISA KEV, NVD, URLhaus)",
+            "status": "configured",
+            "description": "No API key required — ready to ingest",
+        },
+        {
+            "id": "feeds_api",
+            "label": "API Key Feeds (AbuseIPDB, OTX)",
+            "status": "configured" if (settings.abuseipdb_api_key and settings.otx_api_key) else "partial",
+            "description": (
+                "All API keys configured"
+                if (settings.abuseipdb_api_key and settings.otx_api_key)
+                else "Set ABUSEIPDB_API_KEY and OTX_API_KEY in .env"
+            ),
+        },
+        {
+            "id": "ai",
+            "label": "AI Summarization",
+            "status": "configured" if (settings.ai_enabled and settings.ai_api_url) else "optional",
+            "description": (
+                f"Model: {settings.ai_model} at {settings.ai_api_url}"
+                if settings.ai_enabled
+                else "Optional — set AI_API_URL and AI_API_KEY in .env"
+            ),
+        },
+    ]
+
+    return {
+        "platform": config,
+        "checklist": checklist,
+        "ready": all(c["status"] in ("configured", "optional") for c in checklist),
+    }

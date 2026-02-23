@@ -1,11 +1,11 @@
-# Cloudflare Zero Trust + Tunnel Configuration
+# IntelWatch TI Platform — Cloudflare Zero Trust + Tunnel Configuration
 # =============================================
 # This file documents the setup steps — it is NOT auto-applied.
 
 # ── 1. Create Tunnel ─────────────────────────────────────────
 # Install cloudflared: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
 # cloudflared tunnel login
-# cloudflared tunnel create ti-platform
+# cloudflared tunnel create intelwatch
 # Note the Tunnel ID and credentials-file path.
 
 # ── 2. Tunnel config ─────────────────────────────────────────
@@ -17,13 +17,13 @@ credentials-file: /etc/cloudflared/<TUNNEL_ID>.json
 
 ingress:
   # UI (Next.js)
-  - hostname: ti.trendsmap.in
+  - hostname: intelwatch.trendsmap.in
     service: http://ui:3000
     originRequest:
       noTLSVerify: true
 
   # API (FastAPI) — direct access for debugging / webhooks
-  - hostname: ti-api.trendsmap.in
+  - hostname: intelwatch-api.trendsmap.in
     service: http://api:8000
     originRequest:
       noTLSVerify: true
@@ -32,14 +32,14 @@ ingress:
   - service: http_status:404
 
 # ── 3. DNS Records ───────────────────────────────────────────
-# cloudflared tunnel route dns ti-platform ti.trendsmap.in
-# cloudflared tunnel route dns ti-platform ti-api.trendsmap.in
+# cloudflared tunnel route dns intelwatch intelwatch.trendsmap.in
+# cloudflared tunnel route dns intelwatch intelwatch-api.trendsmap.in
 
 # ── 4. Cloudflare Zero Trust Application ─────────────────────
 # In the Cloudflare Zero Trust Dashboard:
 #   1. Access → Applications → Add an application → Self-hosted
-#   2. Application name: TI Platform
-#   3. Application domain: ti.trendsmap.in
+#   2. Application name: IntelWatch TI Platform
+#   3. Application domain: intelwatch.trendsmap.in
 #   4. Identity providers: Google (configure OAuth client in Google Cloud Console)
 #   5. Policy → Allow:
 #      - Selector: Emails ending in  →  @<your-domain.com>
@@ -62,7 +62,7 @@ ingress:
 
 # ── 7. Run Tunnel ────────────────────────────────────────────
 # Option A: Standalone
-#   cloudflared tunnel run ti-platform
+#   cloudflared tunnel run intelwatch
 #
 # Option B: Docker (uncomment cloudflared service in docker-compose.yml)
 #   Set CF_TUNNEL_TOKEN in .env and uncomment the cloudflared service.

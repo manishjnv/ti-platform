@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM models for the Threat Intelligence Platform."""
+"""SQLAlchemy ORM models for the IntelWatch TI Platform."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from sqlalchemy import (
     ARRAY,
     Boolean,
     DateTime,
+    Enum as SAEnum,
     Float,
     Integer,
     SmallInteger,
@@ -21,6 +22,14 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
 
+import enum
+
+
+class UserRole(str, enum.Enum):
+    admin = "admin"
+    analyst = "analyst"
+    viewer = "viewer"
+
 
 class User(Base):
     __tablename__ = "users"
@@ -28,7 +37,11 @@ class User(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     name: Mapped[str | None] = mapped_column(String(255))
-    role: Mapped[str] = mapped_column(String(20), nullable=False, default="viewer")
+    role: Mapped[str] = mapped_column(
+        SAEnum("admin", "analyst", "viewer", name="user_role", create_type=False),
+        nullable=False,
+        default="viewer",
+    )
     avatar_url: Mapped[str | None] = mapped_column(Text)
     last_login: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

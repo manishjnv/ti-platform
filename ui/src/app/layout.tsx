@@ -5,8 +5,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Threat Intelligence Platform",
-  description: "Phase-1 TI Platform — Live threat feeds, IOC search, risk scoring",
+  title: "IntelWatch - TI Platform",
+  description: "IntelWatch — Threat Intelligence Platform with live feeds, IOC search, risk scoring",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

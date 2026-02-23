@@ -1,5 +1,5 @@
 -- =============================================
--- Threat Intelligence Platform - PostgreSQL Schema
+-- IntelWatch TI Platform - PostgreSQL Schema
 -- Requires: TimescaleDB extension
 -- =============================================
 

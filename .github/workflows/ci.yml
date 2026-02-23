@@ -1,4 +1,4 @@
-name: CI / CD
+name: CI / CD — IntelWatch TI Platform
 
 on:
   push:
@@ -6,13 +6,14 @@ on:
   pull_request:
     branches: [main]
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository }}
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   # ── Lint & Type-check ────────────────────────────────────────
   lint:
+    name: Lint & Type Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -32,7 +33,7 @@ jobs:
               print(dep)
           ")
 
-      - name: Ruff check
+      - name: Ruff lint
         run: ruff check api/ worker/
 
       - name: Set up Node
@@ -48,56 +49,13 @@ jobs:
       - name: TypeScript check
         run: cd ui && npx tsc --noEmit
 
-  # ── Build & Push Docker images ────────────────────────────────
-  build:
-    needs: lint
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    strategy:
-      matrix:
-        include:
-          - image: api
-            dockerfile: docker/Dockerfile.api
-          - image: ui
-            dockerfile: docker/Dockerfile.ui
-          - image: worker
-            dockerfile: docker/Dockerfile.worker
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.image }}
-          tags: |
-            type=sha,prefix=
-            type=raw,value=latest
-
-      - name: Build and push
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ${{ matrix.dockerfile }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-
-  # ── Deploy (SSH to prod host) ─────────────────────────────────
+  # ── Deploy to Hostinger VPS via SSH ──────────────────────────
   deploy:
-    needs: build
+    name: Deploy to Production
+    needs: lint
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
@@ -105,9 +63,5 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script: |
-            cd /opt/ti-platform
-            git pull origin main
-            docker compose pull
-            docker compose up -d --remove-orphans
-            docker image prune -f
+          command_timeout: 15m
+          script: /opt/ti-platform/scripts/deploy.sh

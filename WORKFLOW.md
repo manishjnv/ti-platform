@@ -1,11 +1,11 @@
-# Threat Intelligence Platform — Workflow Guide
+# IntelWatch TI Platform — Workflow Guide
 
 ## Architecture Overview
 
 ```
 ┌─────────────┐   Cloudflare Tunnel    ┌────────────────────────────────────────────┐
 │  Browser     │ ─────────────────────► │  Docker Host                               │
-│  (SSO via    │   ti.trendsmap.in      │                                            │
+│  (SSO via    │   intelwatch.trendsmap.in      │                                            │
 │  Zero Trust) │                        │  ┌──────┐  ┌──────┐  ┌───────────────┐    │
 └─────────────┘                        │  │  UI  │  │  API │  │  Worker +     │    │
                                         │  │ :3000│→ │ :8000│  │  Scheduler    │    │
@@ -27,7 +27,7 @@
 
 ```bash
 # 1. Clone and configure
-git clone <repo-url> && cd ti-platform
+git clone https://github.com/manishjnv/ti-platform.git && cd ti-platform
 cp .env.example .env
 # Edit .env — set DEV_BYPASS_AUTH=true for local dev
 
@@ -66,50 +66,88 @@ python -m worker.scheduler
 cd ui && npm install && npm run dev
 ```
 
-## Production Deployment
+## Production Deployment (Hostinger KVM 2)
 
-### 1. Provision Host
-Any VPS with Docker (2 vCPU, 4 GB RAM minimum for all containers).
+**Server:** Hostinger KVM 2 — 2 CPU, 8 GB RAM, 100 GB SSD, Ubuntu 22.04+
 
-### 2. Configure Environment
+### Step 1 — Initial Server Setup (one-time)
+
 ```bash
-ssh deploy@your-host
-git clone <repo> /opt/ti-platform && cd /opt/ti-platform
-cp .env.example .env
-# Fill in ALL values — especially:
-#   - Feed API keys (NVD_API_KEY, ABUSEIPDB_API_KEY, OTX_API_KEY)
-#   - CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD
-#   - AI endpoint if using summaries
-#   - Strong POSTGRES_PASSWORD
+# SSH into VPS as root
+ssh root@<YOUR_VPS_IP>
+
+# Run the automated setup script
+bash -s < <(curl -fsSL https://raw.githubusercontent.com/manishjnv/ti-platform/main/scripts/server-setup.sh)
+
+# Or clone manually and run:
+git clone https://github.com/manishjnv/ti-platform.git /opt/ti-platform
+bash /opt/ti-platform/scripts/server-setup.sh
 ```
 
-### 3. Deploy
+This installs Docker, creates a `deploy` user, clones the repo, generates a `SECRET_KEY`, and creates `.env`.
+
+### Step 2 — Configure Production `.env`
+
 ```bash
-docker compose up -d --build
+nano /opt/ti-platform/.env
+```
+
+| Variable | Action |
+|----------|--------|
+| `ENVIRONMENT` | Set to `production` (auto-set by setup script) |
+| `SECRET_KEY` | Auto-generated — leave as-is |
+| `POSTGRES_PASSWORD` | Change to a strong random password |
+| `DEV_BYPASS_AUTH` | `false` (auto-set by setup script) |
+| `DOMAIN` | `intelwatch.trendsmap.in` |
+| `DOMAIN_UI` | `https://intelwatch.trendsmap.in` |
+| `DOMAIN_API` | `https://intelwatch-api.trendsmap.in` |
+| `CF_ACCESS_TEAM_NAME` | Your Cloudflare Zero Trust team name |
+| `CF_ACCESS_AUD` | Your Cloudflare Access audience tag |
+| Feed API keys | Already set from `.env.example` if copied |
+
+### Step 3 — First Deploy
+
+```bash
+sudo -u deploy /opt/ti-platform/scripts/deploy.sh
+
 # Verify
-docker compose logs -f api
 curl -s http://localhost:8000/api/v1/health | jq .
+docker compose -f /opt/ti-platform/docker-compose.yml ps
 ```
 
-### 4. Set Up Cloudflare Tunnel
-Follow instructions in `cloudflare/tunnel-config.yml`:
-1. Create tunnel via `cloudflared tunnel create`
-2. Route DNS records
-3. Configure Zero Trust Application (Google SSO)
-4. Start tunnel (standalone or via Docker)
+### Step 4 — Set Up Cloudflare Tunnel
 
-### 5. CI/CD (GitHub Actions)
+Follow instructions in `cloudflare/tunnel-config.yml`:
+1. Install `cloudflared` on VPS
+2. `cloudflared tunnel login` → select `trendsmap.in` zone
+3. `cloudflared tunnel create intelwatch`
+4. Route DNS: `cloudflared tunnel route dns intelwatch intelwatch.trendsmap.in`
+5. Route DNS: `cloudflared tunnel route dns intelwatch intelwatch-api.trendsmap.in`
+6. Create `/etc/cloudflared/config.yml` (see `cloudflare/tunnel-config.yml`)
+7. `sudo cloudflared service install && sudo systemctl start cloudflared`
+
+### Step 5 — Set Up CI/CD (GitHub Actions)
+
 The pipeline in `.github/workflows/ci.yml`:
 1. **PR/push** → lint Python (ruff) + TypeScript (tsc)
-2. **Main push** → build & push 3 Docker images to GHCR
-3. **Deploy** → SSH to prod, `git pull`, `docker compose up -d`
+2. **Main push** → SSH deploy to VPS → `scripts/deploy.sh`
 
-Set these GitHub Secrets:
-| Secret | Description |
-|--------|-------------|
-| `DEPLOY_HOST` | Production host IP/hostname |
-| `DEPLOY_USER` | SSH username |
-| `DEPLOY_SSH_KEY` | SSH private key |
+**Generate SSH key for GitHub Actions:**
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/github_deploy -N ""
+cat ~/.ssh/github_deploy.pub >> /home/deploy/.ssh/authorized_keys
+cat ~/.ssh/github_deploy   # Copy this private key
+```
+
+**Add GitHub Secrets** at [repo settings](https://github.com/manishjnv/ti-platform/settings/secrets/actions):
+
+| Secret | Value |
+|--------|-------|
+| `DEPLOY_HOST` | Your Hostinger VPS IP address |
+| `DEPLOY_USER` | `deploy` |
+| `DEPLOY_SSH_KEY` | The private key content from above |
+
+**Test:** Push to main → Actions tab shows lint + deploy pipeline running.
 
 ## Data Flow
 

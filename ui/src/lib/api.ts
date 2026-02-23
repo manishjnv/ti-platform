@@ -13,10 +13,41 @@ async function fetcher<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(error.detail || `HTTP ${res.status}`);
+    const err = new Error(error.detail || `HTTP ${res.status}`) as Error & { status: number };
+    err.status = res.status;
+    throw err;
   }
 
   return res.json();
+}
+
+// ─── Auth ───────────────────────────────────────────────
+export async function getAuthConfig() {
+  return fetcher<{
+    auth_method: "cloudflare_sso" | "local";
+    cf_team_domain: string | null;
+    app_name: string;
+    environment: string;
+    dev_bypass: boolean;
+  }>("/auth/config");
+}
+
+export async function login() {
+  return fetcher<{
+    status: string;
+    user: import("@/types").User;
+  }>("/auth/login", { method: "POST" });
+}
+
+export async function logout() {
+  return fetcher<{ status: string }>("/auth/logout", { method: "POST" });
+}
+
+export async function checkSession() {
+  return fetcher<{
+    status: string;
+    user: import("@/types").User;
+  }>("/auth/session");
 }
 
 // ─── Intel ──────────────────────────────────────────────

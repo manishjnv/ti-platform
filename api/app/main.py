@@ -1,4 +1,4 @@
-"""FastAPI application — Threat Intelligence Platform API."""
+"""FastAPI application — IntelWatch TI Platform API."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.core.logging import setup_logging
-from app.routes import health, intel, search, dashboard, admin
+from app.routes import health, intel, search, dashboard, admin, auth
 
 settings = get_settings()
 
@@ -32,8 +32,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Threat Intelligence Platform",
-    description="Phase-1 TI Platform API — live threat intel feed, search, scoring",
+    title="IntelWatch - TI Platform",
+    description="IntelWatch Threat Intelligence Platform API — live threat intel feeds, IOC search, risk scoring, analytics",
     version="1.0.0",
     lifespan=lifespan,
     docs_url="/api/docs" if settings.environment != "production" else None,
@@ -52,6 +52,7 @@ app.add_middleware(
 # Mount routes
 PREFIX = settings.api_prefix
 app.include_router(health.router, prefix=PREFIX)
+app.include_router(auth.router, prefix=PREFIX)
 app.include_router(intel.router, prefix=PREFIX)
 app.include_router(search.router, prefix=PREFIX)
 app.include_router(dashboard.router, prefix=PREFIX)
@@ -60,4 +61,4 @@ app.include_router(admin.router, prefix=PREFIX)
 
 @app.get("/")
 async def root():
-    return {"message": "Threat Intelligence Platform API", "version": "1.0.0"}
+    return {"message": "IntelWatch - TI Platform API", "version": "1.0.0"}

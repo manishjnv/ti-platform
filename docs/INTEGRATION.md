@@ -491,5 +491,7 @@ NEW_FEED_API_KEY=
 
 | Date | Change |
 |------|--------|
+| 2026-02-24 | Production domain set to intelwatch.trendsmap.in |
+| 2026-02-24 | Added VirusTotal & Shodan API key configuration; GitHub repo URL updated |
 | 2026-02-23 | Initial integration requirements document created |
 | 2026-02-23 | 5 connectors live: CISA KEV, URLhaus, NVD, AbuseIPDB, OTX |

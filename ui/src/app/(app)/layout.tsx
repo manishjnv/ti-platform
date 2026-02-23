@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useAppStore } from "@/store";
+import { AuthGuard } from "@/components/AuthGuard";
 import { Sidebar } from "@/components/Sidebar";
 import {
   Search,
@@ -14,19 +15,25 @@ import {
 } from "lucide-react";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { fetchUser, user } = useAppStore();
+  const { fetchUser, user, performLogout } = useAppStore();
   const [showUserMenu, setShowUserMenu] = useState(false);
 
   useEffect(() => {
     fetchUser();
   }, [fetchUser]);
 
+  const handleLogout = async () => {
+    await performLogout();
+    window.location.href = "/login";
+  };
+
   return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top header bar */}
-        <header className="h-12 shrink-0 border-b border-border/40 bg-card/80 backdrop-blur-sm flex items-center justify-between px-4 lg:px-6">
+    <AuthGuard>
+      <div className="flex h-screen overflow-hidden">
+        <Sidebar />
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Top header bar */}
+          <header className="h-12 shrink-0 border-b border-border/40 bg-card/80 backdrop-blur-sm flex items-center justify-between px-4 lg:px-6">
           {/* Left: breadcrumb / search */}
           <div className="flex items-center gap-3 flex-1">
             <div className="relative max-w-sm w-full">
@@ -99,7 +106,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                       <Shield className="h-3.5 w-3.5" /> Security
                     </button>
                     <div className="border-t border-border/30 mt-1">
-                      <button className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 transition-colors">
+                      <button
+                        onClick={handleLogout}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 transition-colors"
+                      >
                         <LogOut className="h-3.5 w-3.5" /> Sign Out
                       </button>
                     </div>
@@ -114,5 +124,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <main className="flex-1 overflow-auto">{children}</main>
       </div>
     </div>
+    </AuthGuard>
   );
 }

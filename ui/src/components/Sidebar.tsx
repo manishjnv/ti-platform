@@ -71,8 +71,8 @@ export function Sidebar() {
         </div>
         {sidebarOpen && (
           <div className="flex flex-col">
-            <span className="text-sm font-bold tracking-tight leading-none">TI Platform</span>
-            <span className="text-[10px] text-muted-foreground leading-none mt-0.5">Threat Intelligence</span>
+            <span className="text-sm font-bold tracking-tight leading-none">IntelWatch</span>
+            <span className="text-[10px] text-muted-foreground leading-none mt-0.5">TI Platform</span>
           </div>
         )}
       </div>

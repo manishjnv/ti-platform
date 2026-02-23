@@ -241,6 +241,7 @@
 
 | Library | Layer | Why Chosen Over Alternatives |
 |---------|-------|------------------------------|
+| **python-jose** | Auth | JWT token creation/verification (HS256, RS256) |
 | **FastAPI** | Backend | Async-native, auto docs (vs. Flask/Django — sync, heavier) |
 | **asyncpg** | DB driver | Fastest Python PostgreSQL driver (vs. psycopg2 — sync) |
 | **Pydantic v2** | Validation | Rust core, 5-50x faster (vs. marshmallow, attrs) |
@@ -276,4 +277,7 @@
 
 | Date | Change |
 |------|--------|
+| 2026-02-24 | Production domain: intelwatch.trendsmap.in; CORS updated |
+| 2026-02-24 | Added VirusTotal & Shodan API key configuration |
+| 2026-02-23 | Added python-jose for JWT auth; updated for IntelWatch branding |
 | 2026-02-23 | Initial technology stack document created |
