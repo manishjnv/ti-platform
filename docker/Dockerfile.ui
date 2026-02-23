@@ -17,6 +17,8 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY ui/ ./
+# Ensure public dir exists for standalone output
+RUN mkdir -p public
 RUN npm run build
 
 # ---------- runtime ----------
