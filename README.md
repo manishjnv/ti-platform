@@ -27,6 +27,7 @@ A production-grade, self-hosted threat intelligence aggregation and analysis pla
 - [Data Flow](#data-flow)
 - [Deployment](#deployment)
 - [Troubleshooting](#troubleshooting)
+- [Documentation Index](#-documentation-index)
 
 ---
 
@@ -287,6 +288,10 @@ ti-platform/
 │   ├── tasks.py                  # RQ task definitions
 │   ├── worker.py                 # RQ worker entry point
 │   └── scheduler.py              # APScheduler cron jobs
+├── docs/                         # Project documentation
+│   ├── ARCHITECTURE.md           # System architecture deep-dive
+│   ├── TECHNOLOGY.md             # Technology stack & rationale
+│   └── INTEGRATION.md            # Feed & integration requirements
 ├── docker-compose.yml            # Production stack
 ├── docker-compose.dev.yml        # Dev overlay (hot reload)
 ├── .env.example                  # Environment template
@@ -445,6 +450,22 @@ docker compose up -d --build
 | TimescaleDB hypertable errors | Run `psql -f db/schema.sql` manually |
 | AI summaries not appearing | Verify `AI_API_URL` is reachable from worker container |
 | UI not loading | Check `docker compose logs ui` — rebuild with `docker compose build ui` |
+
+---
+
+## 📚 Documentation Index
+
+Detailed documentation is maintained in the `docs/` folder. Each document is a **living document** updated as the platform evolves.
+
+| Document | Description |
+|----------|-------------|
+| [README.md](README.md) | Project overview, standards, quick start (this file) |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture, service topology, data model, security layers |
+| [docs/TECHNOLOGY.md](docs/TECHNOLOGY.md) | Full technology stack, library rationale, version matrix |
+| [docs/INTEGRATION.md](docs/INTEGRATION.md) | Feed & integration requirements — all planned data sources with endpoints, status, and coverage matrix |
+| [WORKFLOW.md](WORKFLOW.md) | Operations guide — deployment, CI/CD, Cloudflare Tunnel setup |
+
+> **Rule:** When adding a new feature or integration, create or update the relevant doc in `docs/`.
 
 ---
 
