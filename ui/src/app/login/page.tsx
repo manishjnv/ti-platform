@@ -8,7 +8,6 @@ import * as api from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { isAuthenticated, authChecked, performLogin, checkAuth, authLoading, authError } = useAppStore();
   const [authConfig, setAuthConfig] = useState<{
     auth_method: string;
