@@ -155,6 +155,11 @@ async def logout(
             )
 
     _clear_session_cookie(response)
+
+    # Also attempt to clear the CF Access cookie so next login
+    # forces re-authentication via Google SSO.
+    response.delete_cookie(key="CF_Authorization", path="/")
+
     return {"status": "logged_out"}
 
 

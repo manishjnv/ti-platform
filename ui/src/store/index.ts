@@ -119,6 +119,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch {
       // ignore
     }
+    // Clear any SSO state so next login requires fresh Google auth
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("sso_pending");
+    }
     set({ isAuthenticated: false, user: null, authChecked: true });
   },
 
