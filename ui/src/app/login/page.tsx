@@ -67,10 +67,11 @@ export default function LoginPage() {
   }, [authChecked, isAuthenticated, configLoading, performLogin, router]);
 
   const handleGoogleSSO = () => {
-    if (!authConfig?.sso_login_url) return;
-    // Set flag so we auto-login on return
+    // Set flag so we auto-login on return from CF Access
     localStorage.setItem("sso_pending", "1");
-    window.location.href = authConfig.sso_login_url;
+    // Redirect to a CF-protected path — CF Access intercepts,
+    // shows Google IdP, then redirects back with CF_Authorization cookie
+    window.location.href = "/dashboard";
   };
 
   const handleLogin = async () => {
@@ -98,7 +99,7 @@ export default function LoginPage() {
   }
 
   const isDevMode = authConfig?.dev_bypass || authConfig?.environment === "development";
-  const isCFSSO = authConfig?.auth_method === "cloudflare_sso" && authConfig?.sso_login_url;
+  const isCFSSO = authConfig?.auth_method === "cloudflare_sso";
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
