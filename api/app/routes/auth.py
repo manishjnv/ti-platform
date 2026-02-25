@@ -155,6 +155,12 @@ async def logout(
             )
 
     _clear_session_cookie(response)
+
+    # Clear Cloudflare Access cookie so next login forces fresh Google SSO.
+    # This works because our API shares the same domain as CF's edge.
+    response.delete_cookie(key="CF_Authorization", path="/")
+    response.delete_cookie(key="CF_Authorization", path="/", domain=".trendsmap.in")
+
     return {"status": "logged_out"}
 
 
