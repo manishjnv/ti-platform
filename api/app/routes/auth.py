@@ -89,14 +89,28 @@ async def login(
             "user": UserResponse.model_validate(user).model_dump(),
         }
 
-    # ── Production: Cloudflare Zero Trust SSO (fallback) ──
+    # ── Production: Cloudflare Zero Trust SSO ──
+    # Check CF-injected headers first (set by CF Access on proxied requests)
     cf_jwt = request.headers.get("cf-access-jwt-assertion")
     cf_email = request.headers.get("cf-access-authenticated-user-email")
 
-    if cf_jwt and cf_email:
+    # Fallback: check CF_Authorization cookie directly
+    # (in case headers weren't forwarded through the Next.js proxy)
+    if not cf_jwt:
+        cf_jwt = request.cookies.get("CF_Authorization")
+
+    if cf_jwt:
         cf_payload = await verify_cf_access_token(cf_jwt)
         if cf_payload:
-            user = await get_or_create_user(db, cf_email)
+            # Extract email from header or JWT payload
+            email = cf_email or cf_payload.get("email", "")
+            if not email:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Could not determine user email from SSO token.",
+                )
+
+            user = await get_or_create_user(db, email)
             token = await create_session(user)
             _set_session_cookie(response, token)
 
@@ -104,7 +118,7 @@ async def login(
                 db,
                 user_id=str(user.id),
                 action="login",
-                details={"method": "cloudflare_sso", "cf_email": cf_email},
+                details={"method": "cloudflare_sso", "cf_email": email},
                 ip_address=request.client.host if request.client else None,
                 user_agent=request.headers.get("user-agent"),
             )
@@ -116,7 +130,7 @@ async def login(
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Authentication required. Use Google Sign-In or access via SSO.",
+        detail="Authentication required. Sign in with Google to continue.",
     )
 
 
@@ -240,20 +254,30 @@ async def auth_config():
     Tells the UI which authentication method is active
     so it can render the appropriate login flow.
     """
-    is_google_configured = bool(settings.google_client_id)
     is_cf_configured = bool(settings.cf_access_team_name and settings.cf_access_aud)
+    is_google_configured = bool(settings.google_client_id)
 
-    if is_google_configured:
-        auth_method = "google"
-    elif is_cf_configured:
+    # Prioritize: Cloudflare SSO (with Google IdP) > direct Google > local
+    if is_cf_configured:
         auth_method = "cloudflare_sso"
+    elif is_google_configured:
+        auth_method = "google"
     else:
         auth_method = "local"
 
+    # Build SSO login URL for Cloudflare Access
+    sso_login_url = None
+    if is_cf_configured:
+        sso_login_url = (
+            f"https://{settings.cf_access_team_name}.cloudflareaccess.com"
+            f"/cdn-cgi/access/login/{settings.domain}"
+        )
+
     return {
         "auth_method": auth_method,
-        "google_client_id": settings.google_client_id if is_google_configured else None,
+        "sso_login_url": sso_login_url,
         "cf_team_domain": f"https://{settings.cf_access_team_name}.cloudflareaccess.com" if is_cf_configured else None,
+        "google_client_id": settings.google_client_id if is_google_configured else None,
         "app_name": "IntelWatch - TI Platform",
         "environment": settings.environment,
         "dev_bypass": settings.dev_bypass_auth or settings.environment == "development",

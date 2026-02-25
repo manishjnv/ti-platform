@@ -25,8 +25,9 @@ async function fetcher<T>(path: string, options?: RequestInit): Promise<T> {
 export async function getAuthConfig() {
   return fetcher<{
     auth_method: "google" | "cloudflare_sso" | "local";
-    google_client_id: string | null;
+    sso_login_url: string | null;
     cf_team_domain: string | null;
+    google_client_id: string | null;
     app_name: string;
     environment: string;
     dev_bypass: boolean;
