@@ -26,6 +26,7 @@ export async function getAuthConfig() {
   return fetcher<{
     auth_method: "google" | "cloudflare_sso" | "local";
     sso_login_url: string | null;
+    cf_logout_url: string | null;
     cf_team_domain: string | null;
     google_client_id: string | null;
     app_name: string;

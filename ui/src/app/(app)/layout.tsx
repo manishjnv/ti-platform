@@ -24,13 +24,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const handleLogout = async () => {
     await performLogout();
-    // Clear Cloudflare Access session so next login requires Google re-auth
-    try {
-      await fetch("/cdn-cgi/access/logout", { credentials: "include" });
-    } catch {
-      // Ignore — CF endpoint may not be available in dev
-    }
-    window.location.href = "/login";
+    // Redirect through CF Access logout to fully clear the CF session cookie,
+    // so the next login forces a fresh Google SSO prompt.
+    // CF logout clears CF_Authorization, then we redirect to /login.
+    window.location.href = "/cdn-cgi/access/logout";
   };
 
   return (

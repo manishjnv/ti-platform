@@ -278,9 +278,15 @@ async def auth_config():
             f"/cdn-cgi/access/login/{settings.domain}"
         )
 
+    # Build CF logout URL so the frontend can revoke the CF Access session
+    cf_logout_url = None
+    if is_cf_configured:
+        cf_logout_url = "/cdn-cgi/access/logout"
+
     return {
         "auth_method": auth_method,
         "sso_login_url": sso_login_url,
+        "cf_logout_url": cf_logout_url,
         "cf_team_domain": f"https://{settings.cf_access_team_name}.cloudflareaccess.com" if is_cf_configured else None,
         "google_client_id": settings.google_client_id if is_google_configured else None,
         "app_name": "IntelWatch - TI Platform",
