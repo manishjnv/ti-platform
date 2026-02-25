@@ -76,6 +76,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       CF_ACCESS_TEAM_NAME: ${CF_ACCESS_TEAM_NAME:-}
       CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       DOMAIN: ${DOMAIN:-localhost}
       DOMAIN_UI: ${DOMAIN_UI:-http://localhost:3000}
       DOMAIN_API: ${DOMAIN_API:-http://localhost:8000}

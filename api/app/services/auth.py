@@ -1,10 +1,11 @@
-"""Authentication service — JWT session management and Cloudflare Zero Trust verification.
+"""Authentication service — JWT session management, Google OAuth, and Cloudflare Zero Trust.
 
-Supports two auth modes:
-1. Cloudflare Zero Trust SSO (production) — validates CF Access JWT headers
-2. Local JWT sessions (development / standalone) — email + password login
+Supports three auth modes:
+1. Google OAuth (production) — validates Google ID token from frontend
+2. Cloudflare Zero Trust SSO — validates CF Access JWT headers
+3. Local JWT sessions (development) — dev bypass login
 
-Both modes produce a platform JWT stored as an HttpOnly cookie.
+All modes produce a platform JWT stored as an HttpOnly cookie.
 """
 
 from __future__ import annotations
@@ -14,6 +15,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token as google_id_token
 from jose import JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -80,6 +83,32 @@ async def revoke_session(session_id: str) -> None:
 async def is_session_valid(session_id: str) -> bool:
     """Check if a session is still active in Redis."""
     return await redis_client.exists(f"session:{session_id}") > 0
+
+
+# ─── Google OAuth Token Verification ─────────────────────
+
+
+def verify_google_token(token: str, client_id: str) -> dict[str, Any] | None:
+    """Verify a Google ID token from the frontend Sign-In flow.
+
+    Returns user info dict with 'email', 'name', 'picture', etc. or None on failure.
+    """
+    try:
+        idinfo = google_id_token.verify_oauth2_token(
+            token,
+            google_requests.Request(),
+            client_id,
+        )
+        # Token is valid — return user info
+        return {
+            "email": idinfo["email"],
+            "name": idinfo.get("name"),
+            "picture": idinfo.get("picture"),
+            "email_verified": idinfo.get("email_verified", False),
+        }
+    except Exception as e:
+        logger.error("google_token_verify_failed", error=str(e))
+        return None
 
 
 # ─── Cloudflare Zero Trust JWT Verification ──────────────

@@ -24,7 +24,8 @@ async function fetcher<T>(path: string, options?: RequestInit): Promise<T> {
 // ─── Auth ───────────────────────────────────────────────
 export async function getAuthConfig() {
   return fetcher<{
-    auth_method: "cloudflare_sso" | "local";
+    auth_method: "google" | "cloudflare_sso" | "local";
+    google_client_id: string | null;
     cf_team_domain: string | null;
     app_name: string;
     environment: string;
@@ -37,6 +38,16 @@ export async function login() {
     status: string;
     user: import("@/types").User;
   }>("/auth/login", { method: "POST" });
+}
+
+export async function googleLogin(credential: string) {
+  return fetcher<{
+    status: string;
+    user: import("@/types").User;
+  }>("/auth/google", {
+    method: "POST",
+    body: JSON.stringify({ credential }),
+  });
 }
 
 export async function logout() {

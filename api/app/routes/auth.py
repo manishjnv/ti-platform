@@ -1,9 +1,10 @@
 """Authentication routes — login, logout, session management.
 
 Supports:
-1. Cloudflare Zero Trust callback (production) — validates CF Access headers
-2. Development login — auto-creates dev user session
-3. Session refresh and logout
+1. Google OAuth (production) — validates Google ID token
+2. Cloudflare Zero Trust callback — validates CF Access headers
+3. Development login — auto-creates dev user session
+4. Session refresh and logout
 """
 
 from __future__ import annotations
@@ -18,6 +19,8 @@ from app.core.database import get_db
 from app.core.logging import get_logger
 from app.middleware.audit import log_audit
 from app.schemas import UserResponse
+from pydantic import BaseModel
+
 from app.services.auth import (
     create_session,
     decode_access_token,
@@ -25,6 +28,7 @@ from app.services.auth import (
     is_session_valid,
     revoke_session,
     verify_cf_access_token,
+    verify_google_token,
 )
 
 logger = get_logger(__name__)
@@ -85,42 +89,35 @@ async def login(
             "user": UserResponse.model_validate(user).model_dump(),
         }
 
-    # ── Production: Cloudflare Zero Trust SSO ──
+    # ── Production: Cloudflare Zero Trust SSO (fallback) ──
     cf_jwt = request.headers.get("cf-access-jwt-assertion")
     cf_email = request.headers.get("cf-access-authenticated-user-email")
 
-    if not cf_jwt or not cf_email:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing Cloudflare Access authentication headers. Please access via your SSO portal.",
-        )
+    if cf_jwt and cf_email:
+        cf_payload = await verify_cf_access_token(cf_jwt)
+        if cf_payload:
+            user = await get_or_create_user(db, cf_email)
+            token = await create_session(user)
+            _set_session_cookie(response, token)
 
-    # Verify the CF Access JWT
-    cf_payload = await verify_cf_access_token(cf_jwt)
-    if not cf_payload:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Cloudflare Access token",
-        )
+            await log_audit(
+                db,
+                user_id=str(user.id),
+                action="login",
+                details={"method": "cloudflare_sso", "cf_email": cf_email},
+                ip_address=request.client.host if request.client else None,
+                user_agent=request.headers.get("user-agent"),
+            )
 
-    # Get or create user from CF identity
-    user = await get_or_create_user(db, cf_email)
-    token = await create_session(user)
-    _set_session_cookie(response, token)
+            return {
+                "status": "authenticated",
+                "user": UserResponse.model_validate(user).model_dump(),
+            }
 
-    await log_audit(
-        db,
-        user_id=str(user.id),
-        action="login",
-        details={"method": "cloudflare_sso", "cf_email": cf_email},
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication required. Use Google Sign-In or access via SSO.",
     )
-
-    return {
-        "status": "authenticated",
-        "user": UserResponse.model_validate(user).model_dump(),
-    }
 
 
 @router.post("/logout")
@@ -189,6 +186,53 @@ async def check_session(
     }
 
 
+class GoogleLoginRequest(BaseModel):
+    credential: str
+
+
+@router.post("/google")
+async def google_login(
+    body: GoogleLoginRequest,
+    request: Request,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Login via Google OAuth — verify Google ID token and create session."""
+    if not settings.google_client_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google OAuth is not configured",
+        )
+
+    google_info = verify_google_token(body.credential, settings.google_client_id)
+    if not google_info:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Google token",
+        )
+
+    email = google_info["email"]
+    name = google_info.get("name", email.split("@")[0])
+
+    user = await get_or_create_user(db, email, name)
+    token = await create_session(user)
+    _set_session_cookie(response, token)
+
+    await log_audit(
+        db,
+        user_id=str(user.id),
+        action="login",
+        details={"method": "google_oauth", "email": email},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+
+    return {
+        "status": "authenticated",
+        "user": UserResponse.model_validate(user).model_dump(),
+    }
+
+
 @router.get("/config")
 async def auth_config():
     """Return auth configuration for the frontend.
@@ -196,10 +240,19 @@ async def auth_config():
     Tells the UI which authentication method is active
     so it can render the appropriate login flow.
     """
+    is_google_configured = bool(settings.google_client_id)
     is_cf_configured = bool(settings.cf_access_team_name and settings.cf_access_aud)
 
+    if is_google_configured:
+        auth_method = "google"
+    elif is_cf_configured:
+        auth_method = "cloudflare_sso"
+    else:
+        auth_method = "local"
+
     return {
-        "auth_method": "cloudflare_sso" if is_cf_configured else "local",
+        "auth_method": auth_method,
+        "google_client_id": settings.google_client_id if is_google_configured else None,
         "cf_team_domain": f"https://{settings.cf_access_team_name}.cloudflareaccess.com" if is_cf_configured else None,
         "app_name": "IntelWatch - TI Platform",
         "environment": settings.environment,

@@ -72,6 +72,9 @@ class Settings(BaseSettings):
     cf_access_team_name: str = ""
     cf_access_aud: str = ""
 
+    # Google OAuth
+    google_client_id: str = ""
+
     # Domain configuration
     domain: str = "localhost"
     domain_ui: str = "http://localhost:3000"

@@ -1,22 +1,38 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Shield, LogIn, Loader2, ExternalLink } from "lucide-react";
+import { Shield, LogIn, Loader2 } from "lucide-react";
 import { useAppStore } from "@/store";
 import * as api from "@/lib/api";
 
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (config: any) => void;
+          renderButton: (element: HTMLElement, config: any) => void;
+          prompt: () => void;
+        };
+      };
+    };
+  }
+}
+
 export default function LoginPage() {
   const router = useRouter();
-  const { isAuthenticated, authChecked, performLogin, checkAuth, authLoading, authError } = useAppStore();
+  const { isAuthenticated, authChecked, performLogin, performGoogleLogin, checkAuth, authLoading, authError } = useAppStore();
   const [authConfig, setAuthConfig] = useState<{
     auth_method: string;
+    google_client_id: string | null;
     cf_team_domain: string | null;
     app_name: string;
     environment: string;
     dev_bypass: boolean;
   } | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   // Fetch auth config on mount
   useEffect(() => {
@@ -40,17 +56,55 @@ export default function LoginPage() {
     }
   }, [authChecked, isAuthenticated, router]);
 
+  // Google Sign-In callback
+  const handleGoogleCallback = useCallback(async (response: any) => {
+    setGoogleLoading(true);
+    const success = await performGoogleLogin(response.credential);
+    setGoogleLoading(false);
+    if (success) {
+      router.push("/dashboard");
+    }
+  }, [performGoogleLogin, router]);
+
+  // Load Google Identity Services script
+  useEffect(() => {
+    if (!authConfig?.google_client_id) return;
+
+    const existingScript = document.getElementById("google-gsi");
+    if (existingScript) return;
+
+    const script = document.createElement("script");
+    script.id = "google-gsi";
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      window.google?.accounts.id.initialize({
+        client_id: authConfig.google_client_id,
+        callback: handleGoogleCallback,
+        auto_select: false,
+        cancel_on_tap_outside: true,
+      });
+      // Render the button
+      const btnContainer = document.getElementById("google-signin-btn");
+      if (btnContainer) {
+        window.google?.accounts.id.renderButton(btnContainer, {
+          type: "standard",
+          theme: "filled_blue",
+          size: "large",
+          text: "signin_with",
+          shape: "rectangular",
+          width: 400,
+        });
+      }
+    };
+    document.head.appendChild(script);
+  }, [authConfig?.google_client_id, handleGoogleCallback]);
+
   const handleLogin = async () => {
     const success = await performLogin();
     if (success) {
       router.push("/dashboard");
-    }
-  };
-
-  const handleSSORedirect = () => {
-    if (authConfig?.cf_team_domain) {
-      // Redirect to Cloudflare Access login
-      window.location.href = authConfig.cf_team_domain;
     }
   };
 
@@ -67,7 +121,7 @@ export default function LoginPage() {
   }
 
   const isDevMode = authConfig?.dev_bypass || authConfig?.environment === "development";
-  const isCFSSO = authConfig?.auth_method === "cloudflare_sso";
+  const isGoogle = authConfig?.auth_method === "google";
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -105,29 +159,38 @@ export default function LoginPage() {
               </div>
             )}
 
-            {/* SSO Login (Production) */}
-            {isCFSSO && !isDevMode && (
+            {/* Google loading state */}
+            {googleLoading && (
+              <div className="mb-4 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Signing in with Google...
+              </div>
+            )}
+
+            {/* Google Sign-In Button (Production) */}
+            {isGoogle && (
               <div className="space-y-4">
-                <button
-                  onClick={handleSSORedirect}
-                  disabled={authLoading}
-                  className="w-full flex items-center justify-center gap-2 h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
-                >
-                  {authLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <ExternalLink className="h-4 w-4" />
-                  )}
-                  Sign in with SSO
-                </button>
+                <div id="google-signin-btn" className="flex justify-center" />
                 <p className="text-[11px] text-muted-foreground text-center">
-                  You will be redirected to your organization&apos;s identity provider
+                  Sign in with your Google account to continue
                 </p>
               </div>
             )}
 
+            {/* Divider between Google and Dev */}
+            {isGoogle && isDevMode && (
+              <div className="relative my-5">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-border/30" />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="bg-card px-3 text-muted-foreground/50">or</span>
+                </div>
+              </div>
+            )}
+
             {/* Dev / Local Login */}
-            {(isDevMode || !isCFSSO) && (
+            {(isDevMode || (!isGoogle)) && (
               <div className="space-y-4">
                 <button
                   onClick={handleLogin}
@@ -168,7 +231,7 @@ export default function LoginPage() {
           {/* Footer links */}
           <div className="text-center mt-6 space-y-2">
             <p className="text-[11px] text-muted-foreground/50">
-              Protected by {isCFSSO ? "Cloudflare Zero Trust" : "IntelWatch Auth"}
+              Protected by IntelWatch Auth
             </p>
           </div>
         </div>
