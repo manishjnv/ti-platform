@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Shield, LogIn, Loader2 } from "lucide-react";
 import { useAppStore } from "@/store";
 import * as api from "@/lib/api";
