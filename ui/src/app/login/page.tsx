@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Shield, LogIn, Loader2 } from "lucide-react";
 import { useAppStore } from "@/store";
@@ -18,8 +18,6 @@ export default function LoginPage() {
     dev_bypass: boolean;
   } | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
-  const [ssoLoading, setSsoLoading] = useState(false);
-  const ssoTriedRef = useRef(false);
 
   // Fetch auth config on mount
   useEffect(() => {
@@ -43,34 +41,12 @@ export default function LoginPage() {
     }
   }, [authChecked, isAuthenticated, router]);
 
-  // Auto-login after SSO callback:
-  // When user returns from Cloudflare Access, CF_Authorization cookie is set.
-  // CF injects headers on requests through the tunnel, so POST /auth/login
-  // will receive cf-access-jwt-assertion and cf-access-authenticated-user-email.
-  useEffect(() => {
-    if (ssoTriedRef.current) return;
-    if (!authChecked || isAuthenticated || configLoading) return;
-
-    const ssoPending = typeof window !== "undefined" && localStorage.getItem("sso_pending");
-    if (!ssoPending) return;
-
-    ssoTriedRef.current = true;
-    setSsoLoading(true);
-    localStorage.removeItem("sso_pending");
-
-    performLogin().then((success) => {
-      setSsoLoading(false);
-      if (success) {
-        router.push("/dashboard");
-      }
-    });
-  }, [authChecked, isAuthenticated, configLoading, performLogin, router]);
-
   const handleGoogleSSO = () => {
-    // Set flag so we auto-login on return from CF Access
+    // Set sso_pending flag — AuthGuard will detect it after CF auth
+    // and auto-call performLogin() to create session
     localStorage.setItem("sso_pending", "1");
     // Redirect to a CF-protected path — CF Access intercepts,
-    // shows Google IdP, then redirects back with CF_Authorization cookie
+    // presents Google IdP login, then redirects back with CF_Authorization cookie
     window.location.href = "/dashboard";
   };
 
@@ -81,14 +57,11 @@ export default function LoginPage() {
     }
   };
 
-  if (configLoading || (!authChecked && authLoading) || ssoLoading) {
+  if (configLoading || (!authChecked && authLoading)) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center space-y-3">
           <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
-          {ssoLoading && (
-            <p className="text-sm text-muted-foreground">Completing sign-in...</p>
-          )}
         </div>
       </div>
     );

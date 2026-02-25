@@ -1,31 +1,47 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAppStore } from "@/store";
 import { Loader2, Shield } from "lucide-react";
 
 /**
  * AuthGuard — wraps authenticated pages.
- * Checks session on mount; redirects to /login if not authenticated.
+ * Checks session on mount; if not authenticated, tries SSO login
+ * (when sso_pending flag is set), then redirects to /login.
  */
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { isAuthenticated, authChecked, authLoading, checkAuth } = useAppStore();
+  const { isAuthenticated, authChecked, authLoading, checkAuth, performLogin } = useAppStore();
+  const ssoAttempted = useRef(false);
 
   useEffect(() => {
     if (!authChecked) {
       checkAuth().then((ok) => {
-        if (!ok) {
-          router.push("/login");
+        if (!ok && !ssoAttempted.current) {
+          // Check if returning from CF SSO — try auto-login
+          const ssoPending = typeof window !== "undefined" && localStorage.getItem("sso_pending");
+          if (ssoPending) {
+            ssoAttempted.current = true;
+            localStorage.removeItem("sso_pending");
+            performLogin().then((loginOk) => {
+              if (!loginOk) {
+                router.push("/login");
+              }
+              // If loginOk, checkAuth state is updated by performLogin — component re-renders
+            });
+          } else {
+            router.push("/login");
+          }
         }
       });
     }
-  }, [authChecked, checkAuth, router]);
+  }, [authChecked, checkAuth, performLogin, router]);
 
   // Redirect if auth check completed and user is not authenticated
+  // (and SSO attempt already done or not applicable)
   useEffect(() => {
-    if (authChecked && !isAuthenticated) {
+    if (authChecked && !isAuthenticated && ssoAttempted.current) {
       router.push("/login");
     }
   }, [authChecked, isAuthenticated, router]);
