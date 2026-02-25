@@ -23,21 +23,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [fetchUser]);
 
   const handleLogout = async () => {
-    // 1. Hit CF Access logout endpoint to clear CF_Authorization cookie.
-    //    This is a same-origin fetch so the browser sends the cookie and
-    //    applies the Set-Cookie response that clears it.
-    try {
-      await fetch("/cdn-cgi/access/logout", {
-        credentials: "include",
-        redirect: "manual",
-      });
-    } catch {
-      // Ignore — endpoint may not exist in dev
-    }
-    // 2. Clear our app session (iw_session cookie + store state)
+    // 1. Clear our app session (iw_session cookie + store state)
     await performLogout();
-    // 3. Redirect to login page
-    window.location.href = "/login";
+    // 2. Full navigation to CF logout — this properly clears CF_Authorization
+    //    so next login forces a fresh Google SSO prompt.
+    //    CF will show a "logged out" page; user navigates back to /login.
+    window.location.href = "/cdn-cgi/access/logout";
   };
 
   return (
