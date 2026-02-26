@@ -281,7 +281,7 @@ def _bulk_store(session: Session, items: list[dict]) -> int:
             session.rollback()
             continue
 
-    return stored    return stored
+    return stored
 
 
 def _prepare_os_docs(items: list[dict]) -> list[dict]:
