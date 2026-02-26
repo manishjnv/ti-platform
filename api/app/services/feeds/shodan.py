@@ -1,7 +1,9 @@
-"""Shodan feed connector — fetches exposed services, honeypot data, and vulnerabilities.
+"""Shodan feed connector — fetches vulnerabilities and exploit data.
 
-Free tier: 1 request/second, limited search credits.
-Fetches recently discovered exposed services and known vulnerabilities.
+Uses Shodan's free APIs:
+- CVEDB (cvedb.shodan.io) — CVE database with EPSS, KEV, ransomware intel (no key needed)
+- InternetDB (internetdb.shodan.io) — host enrichment (no key needed)
+- Shodan API (api.shodan.io) — host lookups (free tier, key required)
 """
 
 from __future__ import annotations
@@ -16,8 +18,8 @@ from app.services.feeds.base import BaseFeedConnector
 logger = get_logger(__name__)
 settings = get_settings()
 
+CVEDB_URL = "https://cvedb.shodan.io"
 SHODAN_BASE_URL = "https://api.shodan.io"
-SHODAN_EXPLOITS_URL = "https://exploits.shodan.io/api"
 
 
 class ShodanConnector(BaseFeedConnector):
@@ -25,90 +27,60 @@ class ShodanConnector(BaseFeedConnector):
     SOURCE_RELIABILITY = 80
 
     async def fetch(self, last_cursor: str | None = None) -> list[dict]:
-        if not settings.shodan_api_key:
-            logger.warning("shodan_no_api_key")
-            return []
-
-        api_key = settings.shodan_api_key
         all_items: list[dict] = []
 
-        # 1. Fetch recently discovered exploits/vulns
+        # 1. CVEDB: High-EPSS CVEs (most likely to be exploited)
         try:
-            url = f"{SHODAN_EXPLOITS_URL}/search"
-            params = {
-                "query": "type:exploit",
-                "key": api_key,
-            }
-            response = await self.client.get(url, params=params)
-
-            if response.status_code == 401:
-                logger.warning("shodan_unauthorized — check API key")
-                return []
-
-            if response.status_code == 429:
-                logger.warning("shodan_rate_limited")
-            elif response.status_code == 200:
-                data = response.json()
-                matches = data.get("matches", [])
-                for match in matches[:100]:
-                    match["_shodan_type"] = "exploit"
-                all_items.extend(matches[:100])
-        except Exception as e:
-            logger.error("shodan_exploits_error", error=str(e))
-
-        # 2. Fetch honeypot/exposed services via search
-        try:
-            url = f"{SHODAN_BASE_URL}/shodan/host/search"
-            params = {
-                "query": "vuln:cve-2024",
-                "key": api_key,
-            }
-            response = await self.client.get(url, params=params)
-
+            response = await self.client.get(
+                f"{CVEDB_URL}/cves",
+                params={"limit": 100, "sort_by_epss": True},
+            )
             if response.status_code == 200:
                 data = response.json()
-                matches = data.get("matches", [])
-                for match in matches[:100]:
-                    match["_shodan_type"] = "host"
-                all_items.extend(matches[:100])
-            elif response.status_code == 402:
-                # Search requires paid plan — try alternative
-                logger.info("shodan_search_requires_upgrade, trying_alternatives")
+                cves = data.get("cves", [])
+                for cve in cves:
+                    cve["_shodan_type"] = "cvedb"
+                all_items.extend(cves)
+                logger.info("shodan_cvedb_epss", count=len(cves))
         except Exception as e:
-            logger.error("shodan_search_error", error=str(e))
+            logger.error("shodan_cvedb_epss_error", error=str(e))
 
-        # 3. Fallback: Fetch known exploits for recent CVEs
-        if not all_items:
-            recent_cve_years = ["2024", "2025"]
-            for year in recent_cve_years:
-                try:
-                    url = f"{SHODAN_EXPLOITS_URL}/search"
-                    params = {
-                        "query": f"cve-{year}",
-                        "key": api_key,
-                    }
-                    response = await self.client.get(url, params=params)
-                    if response.status_code == 200:
-                        data = response.json()
-                        matches = data.get("matches", [])
-                        for match in matches[:50]:
-                            match["_shodan_type"] = "exploit"
-                        all_items.extend(matches[:50])
-                except Exception as e:
-                    logger.debug("shodan_cve_fallback_error", error=str(e))
-                    continue
-
-        # 4. Fetch exposed ports / honeypots via /shodan/ports
+        # 2. CVEDB: KEV entries (known exploited vulns)
         try:
-            url = f"{SHODAN_BASE_URL}/shodan/ports"
-            params = {"key": api_key}
-            response = await self.client.get(url, params=params)
+            response = await self.client.get(
+                f"{CVEDB_URL}/cves",
+                params={"limit": 50, "is_kev": True},
+            )
             if response.status_code == 200:
-                # This returns a list of port numbers — useful metadata but not items
-                ports = response.json()
-                logger.info("shodan_active_ports", count=len(ports))
-        except Exception:
-            pass
+                data = response.json()
+                cves = data.get("cves", [])
+                # Avoid duplicates — only add CVEs not already fetched
+                existing_ids = {item.get("cve_id") for item in all_items}
+                new_cves = [c for c in cves if c.get("cve_id") not in existing_ids]
+                for cve in new_cves:
+                    cve["_shodan_type"] = "cvedb"
+                all_items.extend(new_cves)
+                logger.info("shodan_cvedb_kev", count=len(new_cves))
+        except Exception as e:
+            logger.error("shodan_cvedb_kev_error", error=str(e))
+
+        # 3. CVEDB: Recent CVEs with high CVSS
+        for year in ["2025", "2024"]:
+            try:
+                response = await self.client.get(
+                    f"{CVEDB_URL}/cves",
+                    params={"limit": 30, "sort_by_epss": True, "start_date": f"{year}-01-01"},
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    cves = data.get("cves", [])
+                    existing_ids = {item.get("cve_id") for item in all_items}
+                    new_cves = [c for c in cves if c.get("cve_id") not in existing_ids]
+                    for cve in new_cves:
+                        cve["_shodan_type"] = "cvedb"
+                    all_items.extend(new_cves)
+            except Exception as e:
+                logger.debug("shodan_cvedb_year_error", year=year, error=str(e))
 
         logger.info("shodan_fetch", total=len(all_items))
         return all_items
@@ -117,9 +89,9 @@ class ShodanConnector(BaseFeedConnector):
         items = []
         for raw in raw_items:
             try:
-                shodan_type = raw.get("_shodan_type", "exploit")
-                if shodan_type == "exploit":
-                    item = self._normalize_exploit(raw)
+                shodan_type = raw.get("_shodan_type", "cvedb")
+                if shodan_type == "cvedb":
+                    item = self._normalize_cvedb(raw)
                 else:
                     item = self._normalize_host(raw)
                 if item:
@@ -130,94 +102,127 @@ class ShodanConnector(BaseFeedConnector):
 
         return items
 
-    def _normalize_exploit(self, raw: dict) -> dict | None:
-        """Normalize a Shodan exploit entry."""
-        description = raw.get("description", "")
-        source = raw.get("source", "")
-        exploit_id = raw.get("_id", raw.get("id", ""))
-        code = raw.get("code", "")
-        platform = raw.get("platform", "")
-        exploit_type = raw.get("type", "")
-        port = raw.get("port", 0)
-        author = raw.get("author", "")
-
-        if not exploit_id:
+    def _normalize_cvedb(self, raw: dict) -> dict | None:
+        """Normalize a Shodan CVEDB entry."""
+        cve_id = raw.get("cve_id", "")
+        if not cve_id:
             return None
 
-        # Extract CVEs
-        cve_ids = []
-        cve_list = raw.get("cve", [])
-        if isinstance(cve_list, list):
-            cve_ids = [c for c in cve_list if isinstance(c, str) and c.startswith("CVE-")][:20]
+        summary_text = raw.get("summary", "")
+        cvss = raw.get("cvss", 0) or 0
+        cvss_v3 = raw.get("cvss_v3") or cvss
+        epss = raw.get("epss", 0) or 0
+        ranking_epss = raw.get("ranking_epss", 0) or 0
+        is_kev = raw.get("kev", False) or False
+        propose_action = raw.get("propose_action", "")
+        ransomware = raw.get("ransomware_campaign", "")
+        vendor = raw.get("vendor", "")
+        product = raw.get("product", "")
+        references = raw.get("references", []) or []
 
-        # Date
-        date_str = raw.get("date", "")
-        published_at = None
-        if date_str:
-            try:
-                published_at = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-            except (ValueError, TypeError):
-                try:
-                    published_at = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-                except (ValueError, TypeError):
-                    pass
-
-        # Severity — exploits are higher severity by nature
-        severity = "high"
-        if any("remote" in str(v).lower() for v in [exploit_type, description]):
+        # Severity from CVSS
+        if cvss_v3 >= 9.0:
             severity = "critical"
-        elif any("local" in str(v).lower() for v in [exploit_type, description]):
+        elif cvss_v3 >= 7.0:
+            severity = "high"
+        elif cvss_v3 >= 4.0:
             severity = "medium"
+        else:
+            severity = "low"
 
-        title_text = description[:150] if description else f"Exploit {exploit_id}"
-        title = f"[Shodan] {title_text}"
+        # Boost severity if KEV or high EPSS
+        if is_kev and severity in ("medium", "low"):
+            severity = "high"
+        if epss >= 0.9 and severity == "medium":
+            severity = "high"
 
-        tags = ["shodan", "exploit", severity]
-        if platform:
-            tags.append(platform.lower())
-        if exploit_type:
-            tags.append(exploit_type.lower())
+        # Confidence from EPSS ranking
+        confidence = min(int((epss * 70) + (30 if is_kev else 0)), 100)
+        if confidence < 20:
+            confidence = 20  # Minimum baseline
 
-        summary = f"Source: {source} | Platform: {platform or 'N/A'} | Type: {exploit_type or 'N/A'}"
-        if author:
-            summary += f" | Author: {author}"
+        # Published timestamp
+        published_at = None
+        pub_str = raw.get("published_time", "")
+        if pub_str:
+            try:
+                published_at = datetime.fromisoformat(pub_str.replace("Z", "+00:00"))
+            except (ValueError, TypeError):
+                pass
 
-        full_description = description
-        if code:
-            full_description += f"\n\nExploit code available ({len(code)} chars)"
+        # Title
+        title = f"[Shodan CVEDB] {cve_id}"
+        if vendor and product:
+            title += f" — {vendor}/{product}"
+
+        # Tags
+        tags = ["shodan", "cvedb", severity]
+        if is_kev:
+            tags.append("kev")
+        if ransomware and ransomware.lower() != "unknown":
+            tags.append("ransomware")
+        if vendor:
+            tags.append(vendor.lower())
+        if epss >= 0.5:
+            tags.append("high_epss")
+
+        # Summary
+        epss_pct = f"{epss * 100:.1f}%"
+        summary = f"CVSS: {cvss_v3} | EPSS: {epss_pct} (top {ranking_epss * 100:.0f}%)"
+        if is_kev:
+            summary += " | KEV: Yes"
+        if ransomware and ransomware.lower() != "unknown":
+            summary += f" | Ransomware: {ransomware}"
+        if vendor and product:
+            summary += f" | {vendor}/{product}"
+
+        # Description
+        description = summary_text
+        if propose_action:
+            description += f"\n\nRecommended Action: {propose_action}"
+        if references:
+            description += "\n\nReferences:\n" + "\n".join(f"- {r}" for r in references[:5])
+
+        # Source URL
+        source_url = f"https://www.shodan.io/cve/{cve_id}" if cve_id else ""
+
+        # Affected products
+        affected = []
+        if vendor and product:
+            affected.append(f"{vendor}/{product}")
 
         return {
             "id": uuid.uuid4(),
             "title": title[:500],
             "summary": summary[:500],
-            "description": full_description[:2000],
+            "description": description[:2000],
             "published_at": published_at,
             "ingested_at": self.now_utc(),
             "updated_at": self.now_utc(),
             "severity": severity,
             "risk_score": 0,
-            "confidence": 75,
-            "source_name": "Shodan",
-            "source_url": f"https://exploits.shodan.io/?q={exploit_id}",
+            "confidence": confidence,
+            "source_name": "Shodan CVEDB",
+            "source_url": source_url,
             "source_reliability": self.SOURCE_RELIABILITY,
-            "source_ref": str(exploit_id),
-            "feed_type": "exploit",
-            "asset_type": "other",
+            "source_ref": cve_id,
+            "feed_type": "vulnerability",
+            "asset_type": "cve",
             "tlp": "TLP:CLEAR",
             "tags": tags[:15],
             "geo": [],
             "industries": [],
-            "cve_ids": cve_ids,
-            "affected_products": [platform] if platform else [],
-            "related_ioc_count": len(cve_ids),
-            "is_kev": False,
-            "exploit_available": True,
-            "exploitability_score": None,
-            "source_hash": self.generate_hash("shodan_exploit", str(exploit_id)),
+            "cve_ids": [cve_id],
+            "affected_products": affected,
+            "related_ioc_count": len(references),
+            "is_kev": is_kev,
+            "exploit_available": epss >= 0.5 or is_kev,
+            "exploitability_score": round(epss * 10, 1) if epss else None,
+            "source_hash": self.generate_hash("shodan_cvedb", cve_id),
         }
 
     def _normalize_host(self, raw: dict) -> dict | None:
-        """Normalize a Shodan host/service entry."""
+        """Normalize a Shodan host/service entry (for future use with paid plans)."""
         ip = raw.get("ip_str", "")
         port = raw.get("port", 0)
         transport = raw.get("transport", "tcp")
@@ -232,11 +237,9 @@ class ShodanConnector(BaseFeedConnector):
         if not ip:
             return None
 
-        # CVEs from vulns
         cve_ids = [k for k in vulns.keys() if k.startswith("CVE-")][:20] if isinstance(vulns, dict) else []
+        vuln_count = len(cve_ids)
 
-        # Severity based on vulnerability count
-        vuln_count = len(cve_ids) if cve_ids else 0
         if vuln_count >= 10:
             severity = "critical"
         elif vuln_count >= 5:
@@ -252,8 +255,6 @@ class ShodanConnector(BaseFeedConnector):
         tags = ["shodan", "exposed_service", severity]
         if product:
             tags.append(product.lower())
-        if os_name:
-            tags.append(os_name.lower())
 
         geo = []
         if country_code:
@@ -267,15 +268,6 @@ class ShodanConnector(BaseFeedConnector):
         if vuln_count > 0:
             summary += f" | Vulns: {vuln_count}"
 
-        # Published timestamp
-        timestamp = raw.get("timestamp", "")
-        published_at = None
-        if timestamp:
-            try:
-                published_at = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-            except (ValueError, TypeError):
-                pass
-
         description = f"Exposed service on {ip}:{port}/{transport}"
         if product:
             description += f"\nProduct: {product}"
@@ -283,8 +275,6 @@ class ShodanConnector(BaseFeedConnector):
             description += f" v{version}"
         if org:
             description += f"\nOrganization: {org}"
-        if os_name:
-            description += f"\nOS: {os_name}"
         if cve_ids:
             description += f"\nVulnerabilities: {', '.join(cve_ids[:10])}"
 
@@ -293,7 +283,7 @@ class ShodanConnector(BaseFeedConnector):
             "title": title[:500],
             "summary": summary[:500],
             "description": description[:2000],
-            "published_at": published_at,
+            "published_at": self.now_utc(),
             "ingested_at": self.now_utc(),
             "updated_at": self.now_utc(),
             "severity": severity,
