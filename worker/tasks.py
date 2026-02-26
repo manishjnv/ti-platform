@@ -249,19 +249,39 @@ def _update_feed_state(
 
 
 def _bulk_store(session: Session, items: list[dict]) -> int:
-    """Store items in PostgreSQL with dedup."""
+    """Store items in PostgreSQL with dedup.
+
+    TimescaleDB hypertables require unique indexes to include the partition key,
+    so we pre-check for existing source_hash values to avoid duplicates.
+    """
     from app.models.models import IntelItem
-    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from sqlalchemy import select
+
+    if not items:
+        return 0
+
+    # Pre-fetch existing source hashes for fast dedup
+    hashes = [item["source_hash"] for item in items]
+    existing = set(
+        session.execute(
+            select(IntelItem.source_hash).where(IntelItem.source_hash.in_(hashes))
+        ).scalars().all()
+    )
 
     stored = 0
     for item in items:
-        stmt = pg_insert(IntelItem.__table__).values(**item)
-        stmt = stmt.on_conflict_do_nothing(index_elements=["source_hash"])
-        result = session.execute(stmt)
-        if result.rowcount > 0:
+        if item["source_hash"] in existing:
+            continue
+        try:
+            session.add(IntelItem(**item))
+            session.flush()
             stored += 1
+            existing.add(item["source_hash"])
+        except Exception:
+            session.rollback()
+            continue
 
-    return stored
+    return stored    return stored
 
 
 def _prepare_os_docs(items: list[dict]) -> list[dict]:
