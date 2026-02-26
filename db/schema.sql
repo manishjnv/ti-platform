@@ -163,7 +163,8 @@ CREATE TABLE feed_sync_state (
 
 -- Seed feed state rows
 INSERT INTO feed_sync_state (feed_name) VALUES
-    ('nvd'), ('cisa_kev'), ('urlhaus'), ('abuseipdb'), ('otx')
+    ('nvd'), ('cisa_kev'), ('urlhaus'), ('abuseipdb'), ('otx'),
+    ('virustotal'), ('shodan')
 ON CONFLICT DO NOTHING;
 
 -- =============================================

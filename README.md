@@ -398,8 +398,8 @@ See the [Login Testing Guide](#-login-testing-guide) below for detailed steps.
 | **URLhaus** | abuse.ch malicious URL feed | 5 min | No |
 | **AbuseIPDB** | AbuseIPDB blacklist API | 15 min | **Yes** |
 | **OTX** | AlienVault OTX pulses | 30 min | **Yes** |
-| **VirusTotal** | VirusTotal file/URL enrichment | On-demand | **Yes** (free tier) |
-| **Shodan** | Shodan asset exposure | On-demand | **Yes** (free tier) |
+| **VirusTotal** | VirusTotal malicious files, URLs, domains | 15 min | **Yes** (free tier) |
+| **Shodan** | Shodan exploits & exposed services | 30 min | **Yes** (free tier) |
 
 All connectors inherit from `api/app/services/feeds/base.py` — adding a new feed requires implementing `fetch()` and `normalize()`.
 

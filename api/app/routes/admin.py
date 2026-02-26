@@ -83,7 +83,7 @@ async def trigger_feed(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Manually trigger a feed ingestion (admin only)."""
-    valid_feeds = ["nvd", "cisa_kev", "urlhaus", "abuseipdb", "otx"]
+    valid_feeds = ["nvd", "cisa_kev", "urlhaus", "abuseipdb", "otx", "virustotal", "shodan"]
     if feed_name not in valid_feeds:
         raise HTTPException(status_code=400, detail=f"Invalid feed. Options: {valid_feeds}")
 

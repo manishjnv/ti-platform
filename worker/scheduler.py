@@ -83,6 +83,26 @@ def setup_schedules():
         meta={"feed": "otx"},
     )
 
+    # VirusTotal — every 15 minutes (free tier: 500 req/day)
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc),
+        func="worker.tasks.ingest_feed",
+        args=["virustotal"],
+        interval=timedelta(minutes=15).total_seconds(),
+        queue_name="default",
+        meta={"feed": "virustotal"},
+    )
+
+    # Shodan — every 30 minutes (free tier: 1 req/sec)
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc),
+        func="worker.tasks.ingest_feed",
+        args=["shodan"],
+        interval=timedelta(minutes=30).total_seconds(),
+        queue_name="low",
+        meta={"feed": "shodan"},
+    )
+
     # ─── Dashboard refresh — every 2 minutes ─────────────
     scheduler.schedule(
         scheduled_time=datetime.now(timezone.utc),
