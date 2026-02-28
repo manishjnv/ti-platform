@@ -179,9 +179,11 @@ async def delete_rule(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Delete a notification rule (system rules cannot be deleted)."""
-    ok = await notif_service.delete_rule(db, user.id, rule_id)
-    if not ok:
-        raise HTTPException(404, "Rule not found or is a system rule")
+    result = await notif_service.delete_rule(db, user.id, rule_id)
+    if result == "not_found":
+        raise HTTPException(404, "Rule not found")
+    if result == "system":
+        raise HTTPException(403, "System rules cannot be deleted")
     return {"deleted": True}
 
 

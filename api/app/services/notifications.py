@@ -217,6 +217,11 @@ async def update_rule(
     if not rule:
         return None
 
+    # System rules can only have limited fields updated
+    if rule.is_system:
+        allowed = ("is_active", "cooldown_minutes")
+        data = {k: v for k, v in data.items() if k in allowed}
+
     for field in ("name", "description", "rule_type", "conditions", "channels", "is_active", "cooldown_minutes"):
         if field in data:
             setattr(rule, field, data[field])
@@ -228,16 +233,27 @@ async def update_rule(
 
 async def delete_rule(
     db: AsyncSession, user_id: uuid.UUID, rule_id: uuid.UUID
-) -> bool:
-    """Delete a notification rule (cannot delete system rules)."""
-    q = delete(NotificationRule).where(
-        NotificationRule.id == rule_id,
-        NotificationRule.user_id == user_id,
-        NotificationRule.is_system == False,  # noqa: E712
+) -> str:
+    """Delete a notification rule (cannot delete system rules).
+
+    Returns: 'deleted' | 'system' | 'not_found'
+    """
+    # Check if rule exists first
+    rule = (await db.execute(
+        select(NotificationRule).where(
+            NotificationRule.id == rule_id,
+            NotificationRule.user_id == user_id,
+        )
+    )).scalar_one_or_none()
+    if not rule:
+        return "not_found"
+    if rule.is_system:
+        return "system"
+    await db.execute(
+        delete(NotificationRule).where(NotificationRule.id == rule_id)
     )
-    result = await db.execute(q)
     await db.commit()
-    return (result.rowcount or 0) > 0
+    return "deleted"
 
 
 async def toggle_rule(
@@ -324,13 +340,22 @@ def evaluate_notification_rules(session: Session, lookback_minutes: int = 10) ->
                 if now < cooldown_until:
                     continue
 
+            # Narrow lookback to avoid re-alerting on already-processed items
+            # Only evaluate items ingested AFTER the rule's last trigger time
+            rule_lookback = lookback
+            if rule.last_triggered_at and rule.last_triggered_at > lookback:
+                rule_lookback = rule.last_triggered_at
+
+            # Filter recent intel to this rule's effective lookback
+            rule_intel = [i for i in recent_intel if i.ingested_at >= rule_lookback]
+
             created = 0
             if rule.rule_type == "threshold":
-                created = _eval_threshold_rule(session, rule, recent_intel, now)
+                created = _eval_threshold_rule(session, rule, rule_intel, now)
             elif rule.rule_type == "feed_error":
                 created = _eval_feed_error_rule(session, rule, feed_states, now)
             elif rule.rule_type == "correlation":
-                created = _eval_correlation_rule(session, rule, recent_intel, now)
+                created = _eval_correlation_rule(session, rule, rule_intel, now)
 
             if created > 0:
                 rule.last_triggered_at = now

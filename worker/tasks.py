@@ -519,7 +519,6 @@ def evaluate_notification_rules(lookback_minutes: int = 10) -> dict:
 
         # Run rule evaluation
         stats = _evaluate(session, lookback_minutes=lookback_minutes)
-        logger.info("notification_eval_complete", **stats)
         return stats
     except Exception as e:
         logger.error("notification_eval_error", error=str(e))
