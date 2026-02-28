@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/ui/tooltip";
 
@@ -12,6 +13,7 @@ interface StatCardProps {
   trend?: { value: number; label: string };
   variant?: "default" | "danger" | "warning" | "success";
   tooltipContent?: React.ReactNode;
+  href?: string;
 }
 
 export function StatCard({
@@ -22,6 +24,7 @@ export function StatCard({
   trend,
   variant = "default",
   tooltipContent,
+  href,
 }: StatCardProps) {
   const accentColor = {
     default: "from-primary/5 to-transparent border-primary/20",
@@ -81,6 +84,9 @@ export function StatCard({
 
   if (tooltipContent) {
     return <Tooltip content={tooltipContent} side="bottom">{card}</Tooltip>;
+  }
+  if (href) {
+    return <Link href={href} className="block cursor-pointer">{card}</Link>;
   }
   return card;
 }

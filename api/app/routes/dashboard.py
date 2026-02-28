@@ -44,3 +44,19 @@ async def get_dashboard(
 
     await set_cached(ck, response.model_dump(), ttl=settings.cache_ttl_dashboard)
     return response
+
+
+@router.get("/insights")
+async def get_dashboard_insights(
+    user: Annotated[User, Depends(require_viewer)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Get threat landscape insights: trending products, threat actors, ransomware, malware."""
+    ck = cache_key("dashboard_insights")
+    cached = await get_cached(ck)
+    if cached:
+        return cached
+
+    data = await db_service.get_dashboard_insights(db)
+    await set_cached(ck, data, ttl=300)  # cache 5 min
+    return data

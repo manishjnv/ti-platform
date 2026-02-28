@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import cast, func, select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -249,6 +249,145 @@ async def get_active_scoring_config(db: AsyncSession) -> ScoringConfig | None:
         select(ScoringConfig).where(ScoringConfig.is_active.is_(True)).limit(1)
     )
     return result.scalar_one_or_none()
+
+
+# ─── Dashboard Insights ──────────────────────────────────
+async def get_dashboard_insights(db: AsyncSession) -> dict:
+    """Aggregate threat landscape insights: trending products, threat actors, ransomware, malware."""
+    now = datetime.now(timezone.utc)
+    periods = {
+        "7d": now - timedelta(days=7),
+        "30d": now - timedelta(days=30),
+        "90d": now - timedelta(days=90),
+        "1y": now - timedelta(days=365),
+    }
+
+    # ── Trending affected products per time period ────────
+    trending_products: dict[str, list[dict]] = {}
+    for label, since in periods.items():
+        q = text(
+            "SELECT p, count(*) AS cnt, "
+            "avg(risk_score) AS avg_risk, "
+            "bool_or(exploit_available) AS any_exploit "
+            "FROM intel_items, unnest(affected_products) AS p "
+            "WHERE ingested_at >= :since AND array_length(affected_products, 1) > 0 "
+            "GROUP BY p ORDER BY cnt DESC LIMIT 10"
+        )
+        rows = (await db.execute(q, {"since": since})).all()
+        trending_products[label] = [
+            {"name": r[0], "count": r[1], "avg_risk": round(float(r[2] or 0), 1), "exploit": bool(r[3])}
+            for r in rows
+        ]
+
+    # ── Threat actors (from tags containing known patterns) ─
+    threat_actor_tags = (
+        "apt|threat_actor|lazarus|charming_kitten|cozy_bear|fancy_bear|"
+        "turla|sandworm|winnti|hafnium|mustang_panda|kimsuky|"
+        "gamaredon|silent_librarian|ocean_lotus|fin7|fin8|cobalt|"
+        "ta505|ta551|sidewinder|bitter|donot|transparent_tribe|konni"
+    )
+    ta_q = text(
+        "SELECT t AS tag, count(*) AS cnt, "
+        "avg(risk_score) AS avg_risk, "
+        "array_agg(DISTINCT unnest_cve) FILTER (WHERE unnest_cve IS NOT NULL) AS cves, "
+        "array_agg(DISTINCT unnest_ind) FILTER (WHERE unnest_ind IS NOT NULL) AS industries, "
+        "array_agg(DISTINCT unnest_geo) FILTER (WHERE unnest_geo IS NOT NULL) AS regions "
+        "FROM intel_items, unnest(tags) AS t "
+        "LEFT JOIN LATERAL unnest(cve_ids) AS unnest_cve ON true "
+        "LEFT JOIN LATERAL unnest(industries) AS unnest_ind ON true "
+        "LEFT JOIN LATERAL unnest(geo) AS unnest_geo ON true "
+        "WHERE lower(t) ~ :pattern "
+        "GROUP BY t ORDER BY cnt DESC LIMIT 10"
+    )
+    ta_rows = (await db.execute(ta_q, {"pattern": threat_actor_tags})).all()
+    threat_actors = [
+        {
+            "name": r[0],
+            "count": r[1],
+            "avg_risk": round(float(r[2] or 0), 1),
+            "cves": (r[3] or [])[:8],
+            "industries": (r[4] or [])[:6],
+            "regions": (r[5] or [])[:6],
+        }
+        for r in ta_rows
+    ]
+
+    # ── Ransomware (tags containing ransomware-related terms) ─
+    ransomware_tags = (
+        "ransomware|lockbit|blackcat|alphv|clop|royal|"
+        "play|medusa|rhysida|akira|bianlian|blackbasta|"
+        "conti|ryuk|revil|hive|ragnar|cuba|babuk|"
+        "maze|darkside|blackmatter|avoslocker|vice_society"
+    )
+    rw_q = text(
+        "SELECT t AS tag, count(*) AS cnt, "
+        "avg(risk_score) AS avg_risk, "
+        "bool_or(exploit_available) AS any_exploit, "
+        "array_agg(DISTINCT unnest_ind) FILTER (WHERE unnest_ind IS NOT NULL) AS industries, "
+        "array_agg(DISTINCT unnest_geo) FILTER (WHERE unnest_geo IS NOT NULL) AS regions "
+        "FROM intel_items, unnest(tags) AS t "
+        "LEFT JOIN LATERAL unnest(industries) AS unnest_ind ON true "
+        "LEFT JOIN LATERAL unnest(geo) AS unnest_geo ON true "
+        "WHERE lower(t) ~ :pattern "
+        "GROUP BY t ORDER BY cnt DESC LIMIT 10"
+    )
+    rw_rows = (await db.execute(rw_q, {"pattern": ransomware_tags})).all()
+    ransomware = [
+        {
+            "name": r[0],
+            "count": r[1],
+            "avg_risk": round(float(r[2] or 0), 1),
+            "exploit": bool(r[3]),
+            "industries": (r[4] or [])[:6],
+            "regions": (r[5] or [])[:6],
+        }
+        for r in rw_rows
+    ]
+
+    # ── Malware families (various malware type tags) ─
+    malware_tags = (
+        "malware|infostealer|stealer|rootkit|backdoor|"
+        "trojan|keylogger|worm|botnet|rat|spyware|"
+        "mozi|mirai|smartloader|sshdkit|emotet|"
+        "trickbot|qakbot|formbook|agent_tesla|"
+        "remcos|asyncrat|redline|raccoon|vidar|"
+        "lumma|aurora|stealc|risepro|amadey|"
+        "malware_url|malicious_ip|elf|botnetdomain"
+    )
+    mw_q = text(
+        "SELECT t AS tag, count(*) AS cnt, "
+        "avg(risk_score) AS avg_risk, "
+        "array_agg(DISTINCT unnest_geo) FILTER (WHERE unnest_geo IS NOT NULL) AS regions "
+        "FROM intel_items, unnest(tags) AS t "
+        "LEFT JOIN LATERAL unnest(geo) AS unnest_geo ON true "
+        "WHERE lower(t) ~ :pattern "
+        "GROUP BY t ORDER BY cnt DESC LIMIT 15"
+    )
+    mw_rows = (await db.execute(mw_q, {"pattern": malware_tags})).all()
+    malware_families = [
+        {
+            "name": r[0],
+            "count": r[1],
+            "avg_risk": round(float(r[2] or 0), 1),
+            "regions": (r[3] or [])[:6],
+        }
+        for r in mw_rows
+    ]
+
+    # ── Exploit stats ─
+    exploit_count = (
+        await db.execute(
+            select(func.count(IntelItem.id)).where(IntelItem.exploit_available.is_(True))
+        )
+    ).scalar() or 0
+
+    return {
+        "trending_products": trending_products,
+        "threat_actors": threat_actors,
+        "ransomware": ransomware,
+        "malware_families": malware_families,
+        "exploit_count": exploit_count,
+    }
 
 
 # ─── Users ────────────────────────────────────────────────

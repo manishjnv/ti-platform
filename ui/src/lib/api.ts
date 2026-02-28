@@ -94,6 +94,10 @@ export async function getDashboard() {
   return fetcher<import("@/types").DashboardData>("/dashboard");
 }
 
+export async function getDashboardInsights() {
+  return fetcher<import("@/types").DashboardInsights>("/dashboard/insights");
+}
+
 // ─── User ───────────────────────────────────────────────
 export async function getCurrentUser() {
   return fetcher<import("@/types").User>("/me");

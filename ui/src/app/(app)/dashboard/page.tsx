@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useAppStore } from "@/store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +21,14 @@ import {
   Activity,
   Bell,
   FileText,
+  Package,
+  Skull,
+  Bug,
+  Lock,
+  Globe,
+  Building2,
+  ChevronRight,
+  ExternalLink,
 } from "lucide-react";
 import {
   BarChart,
@@ -32,6 +40,10 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
+import Link from "next/link";
+import * as api from "@/lib/api";
+import type { DashboardInsights } from "@/types";
+import { cn } from "@/lib/utils";
 
 const SEV_COLORS: Record<string, string> = {
   critical: "#ef4444",
@@ -52,17 +64,39 @@ const FEED_TYPE_COLORS: Record<string, string> = {
   campaign: "#8b5cf6",
 };
 
+const RISK_BG = (score: number) =>
+  score >= 80 ? "bg-red-500/15 text-red-400" :
+  score >= 60 ? "bg-orange-500/15 text-orange-400" :
+  score >= 40 ? "bg-yellow-500/15 text-yellow-400" :
+  "bg-green-500/15 text-green-400";
+
 export default function DashboardPage() {
   const { dashboard, dashboardLoading, fetchDashboard, unreadCount, fetchUnreadCount, reportStats, fetchReportStats } = useAppStore();
+  const [insights, setInsights] = useState<DashboardInsights | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [productPeriod, setProductPeriod] = useState<string>("30d");
+
+  const fetchInsights = useCallback(async () => {
+    setInsightsLoading(true);
+    try {
+      const data = await api.getDashboardInsights();
+      setInsights(data);
+    } catch (e) {
+      console.error("Failed to fetch insights", e);
+    } finally {
+      setInsightsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchDashboard();
     fetchUnreadCount();
     fetchReportStats();
+    fetchInsights();
     const interval = setInterval(fetchDashboard, 60000);
     const notifInterval = setInterval(fetchUnreadCount, 30000);
     return () => { clearInterval(interval); clearInterval(notifInterval); };
-  }, [fetchDashboard, fetchUnreadCount, fetchReportStats]);
+  }, [fetchDashboard, fetchUnreadCount, fetchReportStats, fetchInsights]);
 
   // Severity distribution for donut chart
   const sevDonut = useMemo(() => {
@@ -167,6 +201,7 @@ export default function DashboardPage() {
   if (dashboardLoading && !dashboard) return <Loading text="Loading dashboard..." />;
 
   const totalItems = dashboard?.total_items ?? 0;
+  const currentProducts = insights?.trending_products?.[productPeriod] ?? [];
 
   return (
     <div className="p-4 lg:p-6 space-y-5">
@@ -175,7 +210,7 @@ export default function DashboardPage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold tracking-tight">Threat Intelligence Dashboard</h1>
-            {dashboardLoading && (
+            {(dashboardLoading || insightsLoading) && (
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
             )}
           </div>
@@ -191,13 +226,14 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* KPI Stats Row */}
+      {/* KPI Stats Row — each stat is clickable */}
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
         <StatCard
           title="Total Intel"
           value={totalItems}
           subtitle="All ingested items"
           icon={<Shield className="h-5 w-5" />}
+          href="/threats"
         />
         <StatCard
           title="Last 24 Hours"
@@ -205,6 +241,7 @@ export default function DashboardPage() {
           subtitle="New items today"
           icon={<Clock className="h-5 w-5" />}
           variant="default"
+          href="/threats"
         />
         <StatCard
           title="Avg Risk Score"
@@ -212,6 +249,7 @@ export default function DashboardPage() {
           subtitle="Across all intel"
           icon={<TrendingUp className="h-5 w-5" />}
           variant={(dashboard?.avg_risk_score ?? 0) >= 60 ? "danger" : (dashboard?.avg_risk_score ?? 0) >= 40 ? "warning" : "success"}
+          href="/threats"
         />
         <StatCard
           title="KEV Listed"
@@ -219,12 +257,14 @@ export default function DashboardPage() {
           subtitle="Known Exploited Vulns"
           icon={<AlertTriangle className="h-5 w-5" />}
           variant="danger"
+          href="/threats?severity=critical"
         />
         <StatCard
           title="Reports"
           value={reportStats?.total_reports ?? 0}
           subtitle={`${reportStats?.by_status?.published ?? 0} published`}
           icon={<FileText className="h-5 w-5" />}
+          href="/intel"
         />
         <StatCard
           title="Alerts"
@@ -232,6 +272,7 @@ export default function DashboardPage() {
           subtitle="Unread notifications"
           icon={<Bell className="h-5 w-5" />}
           variant={unreadCount > 0 ? "warning" : "success"}
+          href="/notifications"
         />
       </div>
 
@@ -335,6 +376,188 @@ export default function DashboardPage() {
         </Card>
       </div>
 
+      {/* ═══════════════════════════════════════════════════════
+          THREAT LANDSCAPE INSIGHTS
+          ═══════════════════════════════════════════════════════ */}
+
+      {/* ── Most Impacted Products ──────────────────────── */}
+      <Card>
+        <CardHeader className="pb-2 pt-4 px-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Package className="h-4 w-4 text-blue-400" />
+              <CardTitle className="text-sm font-semibold">Most Impacted Products</CardTitle>
+            </div>
+            <div className="flex gap-1">
+              {(["7d", "30d", "90d", "1y"] as const).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setProductPeriod(p)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors",
+                    productPeriod === p
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted/50 text-muted-foreground hover:bg-muted"
+                  )}
+                >
+                  {p === "1y" ? "1 Year" : p === "90d" ? "3 Months" : p === "30d" ? "30 Days" : "7 Days"}
+                </button>
+              ))}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="px-5 pb-4">
+          {currentProducts.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-2">
+              {currentProducts.map((prod, i) => (
+                <Link
+                  key={prod.name}
+                  href={`/search?q=${encodeURIComponent(prod.name)}`}
+                  className="flex items-center gap-3 p-2.5 rounded-lg border bg-card hover:bg-accent/50 transition-colors group"
+                >
+                  <span className="flex items-center justify-center h-7 w-7 rounded-md bg-blue-500/10 text-blue-400 text-xs font-bold shrink-0">
+                    {i + 1}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate group-hover:text-primary transition-colors">{prod.name}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[10px] text-muted-foreground">{prod.count} hits</span>
+                      <span className={cn("text-[10px] font-mono px-1 rounded", RISK_BG(prod.avg_risk))}>
+                        {prod.avg_risk}
+                      </span>
+                      {prod.exploit && (
+                        <span className="text-[10px] text-red-400">
+                          <Bug className="h-2.5 w-2.5 inline" />
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <EmptyState text="No affected product data for this period" />
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Threat Actors ────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-2 pt-4 px-5">
+          <div className="flex items-center gap-2">
+            <Skull className="h-4 w-4 text-red-400" />
+            <CardTitle className="text-sm font-semibold">Active Threat Actors</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="px-5 pb-4">
+          {insights?.threat_actors && insights.threat_actors.length > 0 ? (
+            <div className="space-y-2">
+              {insights.threat_actors.map((ta) => (
+                <InsightRow
+                  key={ta.name}
+                  name={ta.name}
+                  count={ta.count}
+                  avgRisk={ta.avg_risk}
+                  icon={<Skull className="h-3.5 w-3.5" />}
+                  accentClass="text-red-400 bg-red-500/10"
+                  badges={[
+                    ...ta.cves.slice(0, 3).map((c) => ({ label: c, color: "text-primary bg-primary/10", href: `/search?q=${c}` })),
+                    ...ta.industries.slice(0, 2).map((ind) => ({ label: ind, color: "text-blue-400 bg-blue-500/10" })),
+                    ...ta.regions.slice(0, 3).map((r) => ({ label: r, color: "text-emerald-400 bg-emerald-500/10" })),
+                  ]}
+                  searchQuery={ta.name}
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptyState text="No threat actor intelligence detected" />
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Ransomware ───────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-2 pt-4 px-5">
+          <div className="flex items-center gap-2">
+            <Lock className="h-4 w-4 text-orange-400" />
+            <CardTitle className="text-sm font-semibold">Active Ransomware</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="px-5 pb-4">
+          {insights?.ransomware && insights.ransomware.length > 0 ? (
+            <div className="space-y-2">
+              {insights.ransomware.map((rw) => (
+                <InsightRow
+                  key={rw.name}
+                  name={rw.name}
+                  count={rw.count}
+                  avgRisk={rw.avg_risk}
+                  icon={<Lock className="h-3.5 w-3.5" />}
+                  accentClass="text-orange-400 bg-orange-500/10"
+                  badges={[
+                    ...(rw.exploit ? [{ label: "Exploit Available", color: "text-red-400 bg-red-500/10" }] : []),
+                    ...rw.industries.slice(0, 3).map((ind) => ({ label: ind, color: "text-blue-400 bg-blue-500/10" })),
+                    ...rw.regions.slice(0, 3).map((r) => ({ label: r, color: "text-emerald-400 bg-emerald-500/10" })),
+                  ]}
+                  searchQuery={rw.name}
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptyState text="No ransomware intelligence detected" />
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Malware / Infostealer / Rootkit ──────────────── */}
+      <Card>
+        <CardHeader className="pb-2 pt-4 px-5">
+          <div className="flex items-center gap-2">
+            <Bug className="h-4 w-4 text-purple-400" />
+            <CardTitle className="text-sm font-semibold">Malware, Infostealers &amp; Botnets</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="px-5 pb-4">
+          {insights?.malware_families && insights.malware_families.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+              {insights.malware_families.map((mw) => (
+                <Link
+                  key={mw.name}
+                  href={`/search?q=${encodeURIComponent(mw.name)}`}
+                  className="flex items-center gap-3 p-2.5 rounded-lg border bg-card hover:bg-accent/50 transition-colors group"
+                >
+                  <span className={cn(
+                    "flex items-center justify-center h-8 w-8 rounded-md text-xs font-bold shrink-0",
+                    RISK_BG(mw.avg_risk)
+                  )}>
+                    {Math.round(mw.avg_risk)}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-semibold capitalize group-hover:text-primary transition-colors">
+                        {mw.name.replace(/_/g, " ")}
+                      </p>
+                      <span className="text-[10px] text-muted-foreground">{mw.count} intel</span>
+                    </div>
+                    {mw.regions.length > 0 && (
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <Globe className="h-2.5 w-2.5 text-muted-foreground" />
+                        <span className="text-[10px] text-muted-foreground">
+                          {mw.regions.slice(0, 4).join(", ")}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/30 group-hover:text-primary shrink-0" />
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <EmptyState text="No malware intelligence detected" />
+          )}
+        </CardContent>
+      </Card>
+
       {/* Middle Row: Sources & CVEs & Feed Status */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Top Sources */}
@@ -385,9 +608,9 @@ export default function DashboardPage() {
         <CardHeader className="pb-2 pt-4 px-5">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold">Highest Risk Items</CardTitle>
-            <Badge variant="outline" className="text-xs">
-              Top {topRiskItems.length}
-            </Badge>
+            <Link href="/threats?severity=critical" className="text-xs text-primary hover:underline flex items-center gap-1">
+              View all <ExternalLink className="h-3 w-3" />
+            </Link>
           </div>
         </CardHeader>
         <CardContent className="px-5 pb-4">
@@ -410,6 +633,7 @@ export default function DashboardPage() {
                     <tr
                       key={item.id}
                       className="border-b border-border/30 hover:bg-accent/30 transition-colors cursor-pointer"
+                      onClick={() => window.location.href = `/intel/${item.id}`}
                     >
                       <td className="py-2.5 px-2">
                         <span
@@ -480,5 +704,59 @@ function EmptyState({ text = "No data yet" }: { text?: string }) {
     <div className="h-[180px] flex items-center justify-center text-xs text-muted-foreground/60">
       {text}
     </div>
+  );
+}
+
+/* ═══ Insight Row Component ═══ */
+function InsightRow({
+  name,
+  count,
+  avgRisk,
+  icon,
+  accentClass,
+  badges,
+  searchQuery,
+}: {
+  name: string;
+  count: number;
+  avgRisk: number;
+  icon: React.ReactNode;
+  accentClass: string;
+  badges: Array<{ label: string; color: string; href?: string }>;
+  searchQuery: string;
+}) {
+  return (
+    <Link
+      href={`/search?q=${encodeURIComponent(searchQuery)}`}
+      className="flex items-start gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors group"
+    >
+      <span className={cn("flex items-center justify-center h-9 w-9 rounded-md shrink-0", accentClass)}>
+        {icon}
+      </span>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-sm font-semibold capitalize group-hover:text-primary transition-colors">
+            {name.replace(/_/g, " ")}
+          </span>
+          <span className="text-[10px] text-muted-foreground">{count} intel items</span>
+          <span className={cn("text-[10px] font-mono px-1.5 py-0.5 rounded", RISK_BG(avgRisk))}>
+            Risk {avgRisk}
+          </span>
+        </div>
+        {badges.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {badges.map((b, i) => (
+              <span
+                key={`${b.label}-${i}`}
+                className={cn("inline-flex items-center text-[10px] px-1.5 py-0.5 rounded font-medium", b.color)}
+              >
+                {b.label}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+      <ChevronRight className="h-4 w-4 text-muted-foreground/30 group-hover:text-primary shrink-0 mt-2.5" />
+    </Link>
   );
 }

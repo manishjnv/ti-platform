@@ -80,6 +80,46 @@ export interface DashboardData {
   feed_status: FeedStatus[];
 }
 
+export interface TrendingProduct {
+  name: string;
+  count: number;
+  avg_risk: number;
+  exploit: boolean;
+}
+
+export interface ThreatActorInsight {
+  name: string;
+  count: number;
+  avg_risk: number;
+  cves: string[];
+  industries: string[];
+  regions: string[];
+}
+
+export interface RansomwareInsight {
+  name: string;
+  count: number;
+  avg_risk: number;
+  exploit: boolean;
+  industries: string[];
+  regions: string[];
+}
+
+export interface MalwareInsight {
+  name: string;
+  count: number;
+  avg_risk: number;
+  regions: string[];
+}
+
+export interface DashboardInsights {
+  trending_products: Record<string, TrendingProduct[]>;
+  threat_actors: ThreatActorInsight[];
+  ransomware: RansomwareInsight[];
+  malware_families: MalwareInsight[];
+  exploit_count: number;
+}
+
 export interface User {
   id: string;
   email: string;
