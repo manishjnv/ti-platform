@@ -199,20 +199,8 @@ export default function DashboardPage() {
       }));
   }, [dashboard]);
 
-  // Top CVEs
-  const topCVEs = useMemo(() => {
-    if (!dashboard?.top_risks) return [];
-    const cveMap: Record<string, number> = {};
-    dashboard.top_risks.forEach((item) => {
-      item.cve_ids?.forEach((cve) => {
-        cveMap[cve] = (cveMap[cve] || 0) + 1;
-      });
-    });
-    return Object.entries(cveMap)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .map(([label, value]) => ({ label, value, color: "#ef4444" }));
-  }, [dashboard]);
+  // Top CVEs (from insights endpoint with product + date)
+  const topCVEs = insights?.top_cves ?? [];
 
   // Top risk items for table
   const topRiskItems = useMemo(() => {
@@ -661,89 +649,92 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      {/* ── Threat Actors ────────────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-2 pt-4 px-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Skull className="h-4 w-4 text-red-400" />
-              <CardTitle className="text-sm font-semibold">Active Threat Actors</CardTitle>
+      {/* ── Threat Actors & Ransomware (side by side) ──── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Most Active Threat Actors */}
+        <Card>
+          <CardHeader className="pb-2 pt-4 px-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Skull className="h-4 w-4 text-red-400" />
+                <CardTitle className="text-sm font-semibold">Most Active Threat Actors</CardTitle>
+              </div>
+              <button
+                onClick={() => openViewAll("threat_actor", "All Threat Actors")}
+                className="text-xs text-primary hover:underline flex items-center gap-1"
+              >
+                View all <Eye className="h-3 w-3" />
+              </button>
             </div>
-            <button
-              onClick={() => openViewAll("threat_actor", "All Threat Actors")}
-              className="text-xs text-primary hover:underline flex items-center gap-1"
-            >
-              View all <Eye className="h-3 w-3" />
-            </button>
-          </div>
-        </CardHeader>
-        <CardContent className="px-5 pb-4">
-          {insights?.threat_actors && insights.threat_actors.length > 0 ? (
-            <div className="space-y-2">
-              {insights.threat_actors.map((ta) => (
-                <InsightRow
-                  key={ta.name}
-                  name={ta.name}
-                  count={ta.count}
-                  avgRisk={ta.avg_risk}
-                  icon={<Skull className="h-3.5 w-3.5" />}
-                  accentClass="text-red-400 bg-red-500/10"
-                  badges={[
-                    ...ta.cves.slice(0, 3).map((c) => ({ label: c, color: "text-primary bg-primary/10" })),
-                    ...ta.industries.slice(0, 2).map((ind) => ({ label: ind, color: "text-blue-400 bg-blue-500/10" })),
-                    ...ta.regions.slice(0, 3).map((r) => ({ label: r, color: "text-emerald-400 bg-emerald-500/10" })),
-                  ]}
-                  onClick={() => openDetail("threat_actor", ta.name)}
-                />
-              ))}
-            </div>
-          ) : (
-            <EmptyState text="No threat actor intelligence detected" />
-          )}
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent className="px-5 pb-4">
+            {insights?.threat_actors && insights.threat_actors.length > 0 ? (
+              <div className="space-y-2">
+                {insights.threat_actors.map((ta) => (
+                  <InsightRow
+                    key={ta.name}
+                    name={ta.name}
+                    count={ta.count}
+                    avgRisk={ta.avg_risk}
+                    icon={<Skull className="h-3.5 w-3.5" />}
+                    accentClass="text-red-400 bg-red-500/10"
+                    badges={[
+                      ...ta.cves.slice(0, 3).map((c) => ({ label: c, color: "text-primary bg-primary/10" })),
+                      ...ta.industries.slice(0, 2).map((ind) => ({ label: ind, color: "text-blue-400 bg-blue-500/10" })),
+                      ...ta.regions.slice(0, 3).map((r) => ({ label: r, color: "text-emerald-400 bg-emerald-500/10" })),
+                    ]}
+                    onClick={() => openDetail("threat_actor", ta.name)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <EmptyState text="No threat actor intelligence detected" />
+            )}
+          </CardContent>
+        </Card>
 
-      {/* ── Ransomware ───────────────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-2 pt-4 px-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Lock className="h-4 w-4 text-orange-400" />
-              <CardTitle className="text-sm font-semibold">Active Ransomware</CardTitle>
+        {/* Most Active Ransomware */}
+        <Card>
+          <CardHeader className="pb-2 pt-4 px-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Lock className="h-4 w-4 text-orange-400" />
+                <CardTitle className="text-sm font-semibold">Most Active Ransomware</CardTitle>
+              </div>
+              <button
+                onClick={() => openViewAll("ransomware", "All Ransomware")}
+                className="text-xs text-primary hover:underline flex items-center gap-1"
+              >
+                View all <Eye className="h-3 w-3" />
+              </button>
             </div>
-            <button
-              onClick={() => openViewAll("ransomware", "All Ransomware")}
-              className="text-xs text-primary hover:underline flex items-center gap-1"
-            >
-              View all <Eye className="h-3 w-3" />
-            </button>
-          </div>
-        </CardHeader>
-        <CardContent className="px-5 pb-4">
-          {insights?.ransomware && insights.ransomware.length > 0 ? (
-            <div className="space-y-2">
-              {insights.ransomware.map((rw) => (
-                <InsightRow
-                  key={rw.name}
-                  name={rw.name}
-                  count={rw.count}
-                  avgRisk={rw.avg_risk}
-                  icon={<Lock className="h-3.5 w-3.5" />}
-                  accentClass="text-orange-400 bg-orange-500/10"
-                  badges={[
-                    ...(rw.exploit ? [{ label: "Exploit Available", color: "text-red-400 bg-red-500/10" }] : []),
-                    ...rw.industries.slice(0, 3).map((ind) => ({ label: ind, color: "text-blue-400 bg-blue-500/10" })),
-                    ...rw.regions.slice(0, 3).map((r) => ({ label: r, color: "text-emerald-400 bg-emerald-500/10" })),
-                  ]}
-                  onClick={() => openDetail("ransomware", rw.name)}
-                />
-              ))}
-            </div>
-          ) : (
-            <EmptyState text="No ransomware intelligence detected" />
-          )}
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent className="px-5 pb-4">
+            {insights?.ransomware && insights.ransomware.length > 0 ? (
+              <div className="space-y-2">
+                {insights.ransomware.map((rw) => (
+                  <InsightRow
+                    key={rw.name}
+                    name={rw.name}
+                    count={rw.count}
+                    avgRisk={rw.avg_risk}
+                    icon={<Lock className="h-3.5 w-3.5" />}
+                    accentClass="text-orange-400 bg-orange-500/10"
+                    badges={[
+                      ...(rw.exploit ? [{ label: "Exploit Available", color: "text-red-400 bg-red-500/10" }] : []),
+                      ...rw.industries.slice(0, 3).map((ind) => ({ label: ind, color: "text-blue-400 bg-blue-500/10" })),
+                      ...rw.regions.slice(0, 3).map((r) => ({ label: r, color: "text-emerald-400 bg-emerald-500/10" })),
+                    ]}
+                    onClick={() => openDetail("ransomware", rw.name)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <EmptyState text="No ransomware intelligence detected" />
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* ── Malware / Infostealer / Rootkit ──────────────── */}
       <Card>
@@ -825,33 +816,57 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="px-5 pb-4">
             {topCVEs.length > 0 ? (
-              <div className="space-y-1.5">
-                {topCVEs.slice(0, 8).map((cve, idx) => (
-                  <button
-                    key={cve.label}
-                    onClick={() => openDetail("cve", cve.label)}
-                    className="w-full group text-left"
-                  >
-                    <div className="flex items-center justify-between text-xs mb-0.5">
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <span className="text-[10px] font-medium text-muted-foreground/50 w-4 text-right">
-                          {idx + 1}
-                        </span>
-                        <span className="h-2 w-2 rounded-full shrink-0 bg-red-500" />
-                        <span className="text-muted-foreground truncate group-hover:text-primary transition-colors font-mono">
-                          {cve.label}
-                        </span>
+              <div className="space-y-2">
+                {topCVEs.slice(0, 8).map((cve, idx) => {
+                  const maxCount = topCVEs[0]?.count ?? 1;
+                  return (
+                    <button
+                      key={cve.cve_id}
+                      onClick={() => openDetail("cve", cve.cve_id)}
+                      className="w-full group text-left"
+                    >
+                      <div className="flex items-center justify-between text-xs mb-0.5">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <span className="text-[10px] font-medium text-muted-foreground/50 w-4 text-right">
+                            {idx + 1}
+                          </span>
+                          <span className="h-2 w-2 rounded-full shrink-0 bg-red-500" />
+                          <span className="text-muted-foreground truncate group-hover:text-primary transition-colors font-mono">
+                            {cve.cve_id}
+                          </span>
+                          {cve.is_kev && (
+                            <span className="text-[9px] px-1 py-0.5 rounded bg-red-500/15 text-red-400 font-semibold leading-none">KEV</span>
+                          )}
+                          {cve.has_exploit && (
+                            <span className="text-[9px] px-1 py-0.5 rounded bg-orange-500/15 text-orange-400 font-semibold leading-none">Exploit</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 ml-2 shrink-0">
+                          <span className={cn("text-[10px] font-mono px-1 rounded", RISK_BG(cve.max_risk))}>{cve.max_risk}</span>
+                          <span className="font-semibold tabular-nums">{cve.count}</span>
+                        </div>
                       </div>
-                      <span className="font-semibold tabular-nums ml-2">{cve.value}</span>
-                    </div>
-                    <div className="h-1 rounded-full bg-muted/50 overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all duration-500 bg-red-500"
-                        style={{ width: `${(cve.value / Math.max(...topCVEs.map(c => c.value), 1)) * 100}%` }}
-                      />
-                    </div>
-                  </button>
-                ))}
+                      <div className="flex items-center gap-2 ml-8 mb-0.5">
+                        {cve.products.length > 0 && (
+                          <span className="text-[10px] text-blue-400 truncate">
+                            {cve.products.slice(0, 2).join(", ")}
+                          </span>
+                        )}
+                        {cve.first_seen && (
+                          <span className="text-[10px] text-muted-foreground shrink-0">
+                            {new Date(cve.first_seen).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                          </span>
+                        )}
+                      </div>
+                      <div className="h-1 rounded-full bg-muted/50 overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-500 bg-red-500"
+                          style={{ width: `${(cve.count / maxCount) * 100}%` }}
+                        />
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             ) : (
               <EmptyState text="No CVE data" />

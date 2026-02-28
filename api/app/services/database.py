@@ -489,6 +489,33 @@ async def get_dashboard_insights(db: AsyncSession) -> dict:
         "kev_pct": round(epss_row[1] / max(epss_row[4], 1) * 100, 1),
     }
 
+    # ── Top CVEs (with product + first published) ─
+    top_cves_q = text(
+        "SELECT c AS cve_id, count(DISTINCT intel_items.id) AS cnt, "
+        "array_agg(DISTINCT p) FILTER (WHERE p IS NOT NULL) AS products, "
+        "min(COALESCE(published_at, ingested_at)) AS first_seen, "
+        "max(risk_score) AS max_risk, "
+        "bool_or(is_kev) AS is_kev, "
+        "bool_or(exploit_available) AS has_exploit "
+        "FROM intel_items, unnest(cve_ids) AS c "
+        "LEFT JOIN LATERAL unnest(affected_products) AS p ON true "
+        "WHERE array_length(cve_ids, 1) > 0 "
+        "GROUP BY c ORDER BY cnt DESC, max_risk DESC LIMIT 12"
+    )
+    top_cve_rows = (await db.execute(top_cves_q)).all()
+    top_cves = [
+        {
+            "cve_id": r[0],
+            "count": r[1],
+            "products": [p for p in (r[2] or []) if not p.startswith("cpe:")][:3],
+            "first_seen": r[3].isoformat() if r[3] else None,
+            "max_risk": r[4],
+            "is_kev": bool(r[5]),
+            "has_exploit": bool(r[6]),
+        }
+        for r in top_cve_rows
+    ]
+
     return {
         "trending_products": trending_products,
         "threat_actors": threat_actors,
@@ -500,6 +527,7 @@ async def get_dashboard_insights(db: AsyncSession) -> dict:
         "attack_techniques": attack_techniques,
         "ingestion_trend": ingestion_trend,
         "exploit_summary": exploit_summary,
+        "top_cves": top_cves,
     }
 
 

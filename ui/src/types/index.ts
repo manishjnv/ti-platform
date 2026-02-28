@@ -123,6 +123,7 @@ export interface DashboardInsights {
   attack_techniques: NameCount[];
   ingestion_trend: TrendPoint[];
   exploit_summary: ExploitSummary;
+  top_cves: TopCVEInsight[];
 }
 
 export interface GeoInsight {
@@ -150,6 +151,16 @@ export interface ExploitSummary {
   total: number;
   exploit_pct: number;
   kev_pct: number;
+}
+
+export interface TopCVEInsight {
+  cve_id: string;
+  count: number;
+  products: string[];
+  first_seen: string | null;
+  max_risk: number;
+  is_kev: boolean;
+  has_exploit: boolean;
 }
 
 export interface InsightDetailItem {
