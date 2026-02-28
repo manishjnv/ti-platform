@@ -69,17 +69,6 @@ export function NotificationBell() {
     }
   }, [open, filter, fetchNotifications]);
 
-  // Close on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    if (open) document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
-
   const handleMarkRead = useCallback(
     (id: string) => {
       markRead([id]);
@@ -117,16 +106,24 @@ export function NotificationBell() {
         )}
       </button>
 
+      {/* Backdrop overlay */}
+      {open && (
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => setOpen(false)}
+        />
+      )}
+
       {/* Dropdown */}
       {open && (
         <div
           className={cn(
-            "absolute right-0 top-full mt-2 w-[380px] max-h-[520px] z-50 rounded-xl border border-border/50 bg-popover shadow-2xl flex flex-col overflow-hidden transition-all duration-200 origin-top-right",
+            "absolute right-0 top-full mt-2 w-[380px] max-h-[520px] z-50 rounded-xl border border-border bg-[hsl(222,47%,8%)] shadow-2xl flex flex-col overflow-hidden transition-all duration-200 origin-top-right",
             animating ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-95 -translate-y-1"
           )}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border/30">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border/30 bg-[hsl(222,47%,10%)]">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold">Notifications</h3>
               {unreadCount > 0 && (
@@ -156,7 +153,7 @@ export function NotificationBell() {
           </div>
 
           {/* Filters */}
-          <div className="flex gap-1 px-3 py-2 border-b border-border/20">
+          <div className="flex gap-1 px-3 py-2 border-b border-border/20 bg-[hsl(222,47%,9%)]">
             {(["all", "unread"] as const).map((f) => (
               <button
                 key={f}
@@ -200,7 +197,7 @@ export function NotificationBell() {
 
           {/* Footer */}
           {notifications.length > 0 && (
-            <div className="border-t border-border/20 px-4 py-2 flex items-center justify-center">
+            <div className="border-t border-border/20 px-4 py-2 flex items-center justify-center bg-[hsl(222,47%,9%)]">
               <a
                 href="/settings"
                 className="text-[10px] text-muted-foreground hover:text-primary transition-colors"
@@ -231,8 +228,8 @@ function NotificationItem({
   return (
     <div
       className={cn(
-        "group flex gap-3 px-4 py-3 border-b border-border/10 hover:bg-muted/20 transition-colors",
-        !n.is_read && "bg-primary/10"
+        "group flex gap-3 px-4 py-3 border-b border-border/10 transition-colors",
+        !n.is_read ? "bg-[hsl(222,47%,11%)] hover:bg-[hsl(222,47%,13%)]" : "bg-[hsl(222,47%,8%)] hover:bg-[hsl(222,47%,11%)]"
       )}
     >
       {/* Severity dot + category icon */}
