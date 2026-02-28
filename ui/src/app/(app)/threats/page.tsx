@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loading } from "@/components/Loading";
@@ -17,6 +18,7 @@ import {
   Tag,
   Link2,
   ShieldCheck,
+  ArrowUpDown,
 } from "lucide-react";
 import { formatDate, severityBorder, riskColor, riskBg } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -32,23 +34,38 @@ const SEV_COLORS: Record<string, string> = {
   info: "#3b82f6",
 };
 
+const SORT_OPTIONS = [
+  { value: "ingested_at:desc", label: "Most Recent" },
+  { value: "risk_score:desc", label: "Highest Risk" },
+  { value: "published_at:desc", label: "Published Date" },
+  { value: "risk_score:asc", label: "Lowest Risk" },
+  { value: "severity:desc", label: "Severity" },
+];
+
+const FEED_TYPES = ["vulnerability", "ioc", "malware", "threat_actor", "campaign", "exploit", "advisory"];
+
 export default function ThreatsPage() {
+  const searchParams = useSearchParams();
   const [data, setData] = useState<IntelListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [selectedSev, setSelectedSev] = useState<string | null>(null);
+  const [selectedSev, setSelectedSev] = useState<string | null>(searchParams.get("severity") || null);
+  const [selectedFeedType, setSelectedFeedType] = useState<string | null>(searchParams.get("feed_type") || null);
   const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState("ingested_at:desc");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
+      const [sortBy, sortOrder] = sortKey.split(":");
       const params: Record<string, string | number> = {
         page,
         page_size: 20,
-        sort_by: "risk_score",
-        sort_order: "desc",
+        sort_by: sortBy,
+        sort_order: sortOrder,
       };
       if (selectedSev) params.severity = selectedSev;
+      if (selectedFeedType) params.feed_type = selectedFeedType;
       if (selectedAsset) params.asset_type = selectedAsset;
       const result = await api.getIntelItems(params);
       setData(result);
@@ -56,7 +73,7 @@ export default function ThreatsPage() {
       /* silent */
     }
     setLoading(false);
-  }, [page, selectedSev, selectedAsset]);
+  }, [page, selectedSev, selectedFeedType, selectedAsset, sortKey]);
 
   useEffect(() => {
     fetchData();
@@ -81,6 +98,11 @@ export default function ThreatsPage() {
 
   const handleSevFilter = (sev: string | null) => {
     setSelectedSev(sev);
+    setPage(1);
+  };
+
+  const handleFeedTypeFilter = (ft: string | null) => {
+    setSelectedFeedType(ft);
     setPage(1);
   };
 
@@ -109,20 +131,35 @@ export default function ThreatsPage() {
             Active Threats
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Real-time threat intelligence feed sorted by risk
+            Real-time threat intelligence feed
             {data && (
               <span className="ml-2 text-muted-foreground/50">
                 — {data.total.toLocaleString()} items
                 {selectedSev && ` (${selectedSev})`}
+                {selectedFeedType && ` · ${selectedFeedType.replace(/_/g, " ")}`}
                 {selectedAsset && ` · ${selectedAsset.toUpperCase()}`}
               </span>
             )}
           </p>
         </div>
+        {/* Sort dropdown */}
+        <div className="flex items-center gap-2">
+          <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+          <select
+            value={sortKey}
+            onChange={(e) => { setSortKey(e.target.value); setPage(1); }}
+            className="text-xs bg-background border rounded-md px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            {SORT_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Severity Filter Pills */}
       <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider mr-1">Severity</span>
         <Badge
           variant={selectedSev === null ? "default" : "outline"}
           className="cursor-pointer"
@@ -138,6 +175,28 @@ export default function ThreatsPage() {
             onClick={() => handleSevFilter(selectedSev === s ? null : s)}
           >
             {s.charAt(0).toUpperCase() + s.slice(1)}
+          </Badge>
+        ))}
+      </div>
+
+      {/* Feed Type Filter Pills */}
+      <div className="flex items-center gap-2 flex-wrap -mt-2">
+        <span className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider mr-1">Type</span>
+        <Badge
+          variant={selectedFeedType === null ? "default" : "outline"}
+          className="cursor-pointer"
+          onClick={() => handleFeedTypeFilter(null)}
+        >
+          All
+        </Badge>
+        {FEED_TYPES.map((ft) => (
+          <Badge
+            key={ft}
+            variant={selectedFeedType === ft ? "default" : "outline"}
+            className="cursor-pointer"
+            onClick={() => handleFeedTypeFilter(selectedFeedType === ft ? null : ft)}
+          >
+            {ft.charAt(0).toUpperCase() + ft.slice(1).replace(/_/g, " ")}
           </Badge>
         ))}
       </div>
