@@ -293,7 +293,7 @@ async def get_entity_graph(
                     "confidence": rel.confidence,
                     "first_seen": rel.first_seen.isoformat() if rel.first_seen else None,
                     "last_seen": rel.last_seen.isoformat() if rel.last_seen else None,
-                    "metadata": rel.metadata or {},
+                    "metadata": rel.meta or {},
                 })
 
                 # Determine the other end
@@ -350,7 +350,7 @@ async def get_related_intel(
             Relationship.target_id,
             Relationship.relationship_type,
             Relationship.confidence,
-            Relationship.metadata,
+            Relationship.meta,
             Relationship.first_seen,
         )
         .where(
@@ -371,7 +371,7 @@ async def get_related_intel(
             Relationship.source_id.label("target_id"),
             Relationship.relationship_type,
             Relationship.confidence,
-            Relationship.metadata,
+            Relationship.meta,
             Relationship.first_seen,
         )
         .where(
@@ -410,7 +410,7 @@ async def get_related_intel(
                 "ingested_at": item.ingested_at.isoformat(),
                 "relationship_type": row.relationship_type,
                 "confidence": row.confidence,
-                "meta": row.metadata or {},
+                "meta": row.meta or {},
             })
 
     # Sort by confidence desc
