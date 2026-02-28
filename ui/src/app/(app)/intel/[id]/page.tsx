@@ -534,7 +534,6 @@ export default function IntelDetailPage() {
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <Row label="Published" value={formatDate(item.published_at)} icon={Clock} />
-                <Row label="First Seen" value={formatDate(item.published_at)} icon={Clock} />
                 <Row label="Ingested" value={formatDate(item.ingested_at)} icon={Clock} />
                 <Row label="Updated" value={formatDate(item.updated_at)} icon={Clock} />
               </CardContent>

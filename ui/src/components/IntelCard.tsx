@@ -26,6 +26,9 @@ import {
   Lock,
   Zap,
   Cpu,
+  Package,
+  Bug,
+  Link2,
 } from "lucide-react";
 
 interface IntelCardProps {
@@ -114,7 +117,7 @@ export function IntelCard({ item }: IntelCardProps) {
         <div className="flex items-center gap-3 mt-3 text-xs text-muted-foreground flex-wrap">
           <span className="flex items-center gap-1">
             <Clock className="h-3 w-3" />
-            {formatDate(item.published_at, { relative: true })}
+            {formatDate(item.published_at || item.ingested_at, { relative: true })}
           </span>
           <span className="flex items-center gap-1">
             <Shield className="h-3 w-3" />
@@ -126,7 +129,48 @@ export function IntelCard({ item }: IntelCardProps) {
           {item.cve_ids.length > 1 && (
             <span className="text-muted-foreground">+{item.cve_ids.length - 1}</span>
           )}
+          {item.confidence > 0 && (
+            <span className="flex items-center gap-1">
+              <Shield className="h-3 w-3" /> {item.confidence}%
+            </span>
+          )}
+          {item.related_ioc_count > 0 && (
+            <span className="flex items-center gap-1">
+              <Link2 className="h-3 w-3" /> {item.related_ioc_count} IOCs
+            </span>
+          )}
         </div>
+
+        {/* Compact data indicators */}
+        {(item.affected_products.length > 0 || (item.exploitability_score != null && item.exploitability_score > 0) || item.tags.length > 0 || item.industries?.length > 0) && (
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            {item.affected_products.length > 0 && (
+              <span className="inline-flex items-center gap-1 text-[10px] bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded">
+                <Package className="h-2.5 w-2.5" />
+                {item.affected_products.slice(0, 2).join(", ")}
+                {item.affected_products.length > 2 && ` +${item.affected_products.length - 2}`}
+              </span>
+            )}
+            {item.exploitability_score != null && item.exploitability_score > 0 && (
+              <span className={cn(
+                "inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-mono",
+                item.exploitability_score >= 7 ? "bg-red-500/15 text-red-400" :
+                item.exploitability_score >= 4 ? "bg-yellow-500/15 text-yellow-400" :
+                "bg-green-500/15 text-green-400"
+              )}>
+                <Bug className="h-2.5 w-2.5" /> CVSS: {item.exploitability_score.toFixed(1)}
+              </span>
+            )}
+            {item.tags.length > 0 && item.tags.slice(0, 3).map((tag) => (
+              <span key={tag} className="inline-flex items-center gap-0.5 text-[10px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded">
+                <Tag className="h-2 w-2" /> {tag}
+              </span>
+            ))}
+            {item.tags.length > 3 && (
+              <span className="text-[10px] text-muted-foreground">+{item.tags.length - 3}</span>
+            )}
+          </div>
+        )}
 
         {/* Expand toggle */}
         <button

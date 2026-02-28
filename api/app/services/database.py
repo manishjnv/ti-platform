@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,6 +34,9 @@ async def get_intel_items(
     feed_type: str | None = None,
     source_name: str | None = None,
     asset_type: str | None = None,
+    is_kev: bool | None = None,
+    exploit_available: bool | None = None,
+    search: str | None = None,
     sort_by: str = "ingested_at",
     sort_order: str = "desc",
 ) -> tuple[list[IntelItem], int]:
@@ -48,6 +51,17 @@ async def get_intel_items(
         query = query.where(IntelItem.source_name == source_name)
     if asset_type:
         query = query.where(IntelItem.asset_type == text(f"'{asset_type}'::asset_type"))
+    if is_kev is not None:
+        query = query.where(IntelItem.is_kev == is_kev)
+    if exploit_available is not None:
+        query = query.where(IntelItem.exploit_available == exploit_available)
+    if search:
+        query = query.where(
+            or_(
+                IntelItem.title.ilike(f"%{search}%"),
+                IntelItem.summary.ilike(f"%{search}%"),
+            )
+        )
 
     # Count
     count_q = select(func.count()).select_from(query.subquery())
