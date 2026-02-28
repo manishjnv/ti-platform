@@ -1,11 +1,17 @@
-"""VirusTotal feed connector — fetches popular/recent threat indicators via VT APIv3.
+"""VirusTotal feed connector — free-tier compatible.
 
-Free tier: 500 requests/day, 4 requests/minute.
-Fetches recently trending files, URLs, and domains seen by VT.
+Strategy: Fetches seed IOCs from lightweight public threat lists (Feodo Tracker
+C2 IPs, abuse.ch malware hashes), then enriches a small batch via VT's
+individual-lookup endpoints which are available on the free tier.
+
+Free tier limits: 4 requests/minute, 500 requests/day.
+We use ~12 lookups per 15-min cycle with 16 s spacing ≈ 3 min of wall time.
 """
 
 from __future__ import annotations
 
+import asyncio
+import random
 import uuid
 from datetime import datetime, timezone
 
@@ -16,108 +22,191 @@ from app.services.feeds.base import BaseFeedConnector
 logger = get_logger(__name__)
 settings = get_settings()
 
-VT_BASE_URL = "https://www.virustotal.com/api/v3"
+VT_BASE = "https://www.virustotal.com/api/v3"
+
+# Lightweight public threat-intel seed sources (plain-text, no auth)
+FEODO_C2_URL = "https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.txt"
+BAZAAR_RECENT_URL = "https://bazaar.abuse.ch/export/txt/sha256/recent/"
+
+# Delay between VT API calls (16 s keeps us under 4 req/min)
+VT_CALL_DELAY = 16
+# Max VT lookups per cycle (IP + hash combined)
+MAX_IP_LOOKUPS = 6
+MAX_HASH_LOOKUPS = 6
 
 
 class VirusTotalConnector(BaseFeedConnector):
     FEED_NAME = "virustotal"
     SOURCE_RELIABILITY = 85
 
+    # ------------------------------------------------------------------
+    # fetch
+    # ------------------------------------------------------------------
     async def fetch(self, last_cursor: str | None = None) -> list[dict]:
         if not settings.virustotal_api_key:
             logger.warning("virustotal_no_api_key")
             return []
 
         headers = {"x-apikey": settings.virustotal_api_key}
-
         all_items: list[dict] = []
 
-        # 1. Fetch popular threat actors / trending threats via "popular_threat_categories"
-        #    Use /intelligence/search to find recently submitted malicious files
-        search_queries = [
-            "engines:5+ type:file last_submission_date:1d+",
-            "engines:5+ type:url last_submission_date:1d+",
-        ]
-
-        for query in search_queries:
+        # Parse cursor for rotation offsets
+        ip_offset, hash_offset = 0, 0
+        if last_cursor:
             try:
-                url = f"{VT_BASE_URL}/intelligence/search"
-                params = {"query": query, "limit": 50}
-                response = await self.client.get(url, headers=headers, params=params)
+                parts = last_cursor.split("|")
+                ip_offset = int(parts[0])
+                hash_offset = int(parts[1]) if len(parts) > 1 else 0
+            except (ValueError, IndexError):
+                pass
 
-                if response.status_code == 401:
-                    logger.warning("virustotal_unauthorized — check API key")
-                    return []
+        # 1. Fetch seed IOCs from public threat lists (in parallel)
+        seed_ips, seed_hashes = await asyncio.gather(
+            self._fetch_feodo_ips(),
+            self._fetch_bazaar_hashes(),
+        )
 
-                if response.status_code == 429:
-                    logger.warning("virustotal_rate_limited")
-                    break
+        # Rotate through the lists using offsets so we don't re-lookup
+        # the same indicators every cycle
+        if seed_ips:
+            ip_offset = ip_offset % len(seed_ips)
+            batch_ips = seed_ips[ip_offset : ip_offset + MAX_IP_LOOKUPS]
+            if len(batch_ips) < MAX_IP_LOOKUPS:
+                batch_ips += seed_ips[: MAX_IP_LOOKUPS - len(batch_ips)]
+        else:
+            batch_ips = []
 
-                # 403 means the endpoint requires premium — fall back to public endpoints
-                if response.status_code == 403:
-                    logger.info("virustotal_intelligence_not_available, falling_back_to_public")
-                    break
+        if seed_hashes:
+            hash_offset = hash_offset % len(seed_hashes)
+            batch_hashes = seed_hashes[hash_offset : hash_offset + MAX_HASH_LOOKUPS]
+            if len(batch_hashes) < MAX_HASH_LOOKUPS:
+                batch_hashes += seed_hashes[: MAX_HASH_LOOKUPS - len(batch_hashes)]
+        else:
+            batch_hashes = []
 
-                if response.status_code == 200:
-                    data = response.json()
-                    items = data.get("data", [])
-                    all_items.extend(items)
-            except Exception as e:
-                logger.error("virustotal_search_error", error=str(e))
+        logger.info(
+            "virustotal_seeds",
+            total_ips=len(seed_ips),
+            total_hashes=len(seed_hashes),
+            batch_ips=len(batch_ips),
+            batch_hashes=len(batch_hashes),
+        )
 
-        # 2. Fallback: Fetch from the public "popular threat" feed endpoints
-        if not all_items:
-            fallback_endpoints = [
-                f"{VT_BASE_URL}/files",           # not available without hash — skip
-                f"{VT_BASE_URL}/popular_threat_categories",
-            ]
+        # 2. Lookup IPs on VT
+        call_count = 0
+        for ip in batch_ips:
+            if call_count > 0:
+                await asyncio.sleep(VT_CALL_DELAY)
+            item = await self._vt_ip_lookup(ip, headers)
+            if item:
+                all_items.append(item)
+            call_count += 1
 
-            # Use /ip_addresses and /urls with known-bad samples
-            # Instead, use the "livehunt" or "feeds" available on free tier
-            # Most practical free-tier approach: search for recent IOCs via comments
-            try:
-                url = f"{VT_BASE_URL}/comments"
-                params = {"limit": 40}
-                response = await self.client.get(
-                    f"{VT_BASE_URL}/popular_threat_categories",
-                    headers=headers,
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    categories = data.get("data", [])
-                    for cat in categories[:5]:
-                        cat_id = cat.get("id", "")
-                        try:
-                            cat_resp = await self.client.get(
-                                f"{VT_BASE_URL}/popular_threat_categories/{cat_id}/popular_threat_files",
-                                headers=headers,
-                                params={"limit": 20},
-                            )
-                            if cat_resp.status_code == 200:
-                                cat_data = cat_resp.json()
-                                all_items.extend(cat_data.get("data", []))
-                        except Exception:
-                            pass
-            except Exception as e:
-                logger.error("virustotal_fallback_error", error=str(e))
+        # 3. Lookup hashes on VT
+        for sha in batch_hashes:
+            if call_count > 0:
+                await asyncio.sleep(VT_CALL_DELAY)
+            item = await self._vt_file_lookup(sha, headers)
+            if item:
+                all_items.append(item)
+            call_count += 1
 
-        # 3. Final fallback: use /feeds/files endpoint (available on some plans)
-        if not all_items:
-            try:
-                # Get recently submitted files via a time-based cursor
-                cursor = last_cursor or ""
-                url = f"{VT_BASE_URL}/feeds/files/{cursor}" if cursor else None
-                if url:
-                    response = await self.client.get(url, headers=headers)
-                    if response.status_code == 200:
-                        data = response.json()
-                        all_items.extend(data.get("data", []))
-            except Exception as e:
-                logger.debug("virustotal_feeds_fallback", error=str(e))
+        # Store new cursor offsets for next cycle
+        new_ip_offset = ip_offset + MAX_IP_LOOKUPS
+        new_hash_offset = hash_offset + MAX_HASH_LOOKUPS
+        # We stash the cursor text in _vt_cursor so the task pipeline can read it
+        self._next_cursor = f"{new_ip_offset}|{new_hash_offset}"
 
-        logger.info("virustotal_fetch", total=len(all_items))
+        logger.info("virustotal_fetch", total=len(all_items), lookups=call_count)
         return all_items
 
+    # ------------------------------------------------------------------
+    # Seed fetchers
+    # ------------------------------------------------------------------
+    async def _fetch_feodo_ips(self) -> list[str]:
+        """Return active C2 server IPs from Feodo Tracker (free, no auth)."""
+        try:
+            resp = await self.client.get(FEODO_C2_URL, timeout=20)
+            if resp.status_code != 200:
+                logger.warning("feodo_fetch_failed", status=resp.status_code)
+                return []
+            ips = [
+                line.strip()
+                for line in resp.text.splitlines()
+                if line.strip() and not line.startswith("#")
+            ]
+            random.shuffle(ips)  # shuffle so rotation covers diverse C2 infra
+            return ips
+        except Exception as e:
+            logger.error("feodo_seed_error", error=str(e))
+            return []
+
+    async def _fetch_bazaar_hashes(self) -> list[str]:
+        """Return recent malware SHA-256 hashes from MalwareBazaar (free, no auth)."""
+        try:
+            resp = await self.client.get(BAZAAR_RECENT_URL, timeout=20)
+            if resp.status_code != 200:
+                logger.warning("bazaar_fetch_failed", status=resp.status_code)
+                return []
+            hashes = [
+                line.strip()
+                for line in resp.text.splitlines()
+                if line.strip() and not line.startswith("#") and len(line.strip()) == 64
+            ]
+            random.shuffle(hashes)
+            return hashes[:200]  # cap to avoid huge list
+        except Exception as e:
+            logger.error("bazaar_seed_error", error=str(e))
+            return []
+
+    # ------------------------------------------------------------------
+    # VT individual lookups
+    # ------------------------------------------------------------------
+    async def _vt_ip_lookup(self, ip: str, headers: dict) -> dict | None:
+        """Look up a single IP on VT.  Returns raw VT data dict or None."""
+        try:
+            resp = await self.client.get(f"{VT_BASE}/ip_addresses/{ip}", headers=headers)
+            if resp.status_code == 429:
+                logger.warning("virustotal_rate_limited")
+                return None
+            if resp.status_code == 401:
+                logger.warning("virustotal_unauthorized")
+                return None
+            if resp.status_code != 200:
+                return None
+            data = resp.json().get("data", {})
+            data["_lookup_type"] = "ip_address"
+            data["_lookup_value"] = ip
+            data["_seed_source"] = "feodo_c2"
+            return data
+        except Exception as e:
+            logger.debug("vt_ip_lookup_error", ip=ip, error=str(e))
+            return None
+
+    async def _vt_file_lookup(self, sha256: str, headers: dict) -> dict | None:
+        """Look up a single SHA-256 hash on VT.  Returns raw VT data dict or None."""
+        try:
+            resp = await self.client.get(f"{VT_BASE}/files/{sha256}", headers=headers)
+            if resp.status_code == 429:
+                logger.warning("virustotal_rate_limited")
+                return None
+            if resp.status_code == 401:
+                logger.warning("virustotal_unauthorized")
+                return None
+            if resp.status_code != 200:
+                return None
+            data = resp.json().get("data", {})
+            data["_lookup_type"] = "file"
+            data["_lookup_value"] = sha256
+            data["_seed_source"] = "malwarebazaar"
+            return data
+        except Exception as e:
+            logger.debug("vt_file_lookup_error", sha256=sha256[:16], error=str(e))
+            return None
+
+    # ------------------------------------------------------------------
+    # normalize
+    # ------------------------------------------------------------------
     def normalize(self, raw_items: list[dict]) -> list[dict]:
         items = []
         for raw in raw_items:
@@ -127,28 +216,33 @@ class VirusTotalConnector(BaseFeedConnector):
                     items.append(item)
             except Exception as e:
                 logger.debug("virustotal_normalize_skip", error=str(e))
-                continue
-
         return items
 
     def _normalize_item(self, raw: dict) -> dict | None:
-        """Normalize a single VT API object into unified intel format."""
-        item_type = raw.get("type", "file")
+        """Normalize a single VT API response into the unified intel format."""
+        item_type = raw.get("type", raw.get("_lookup_type", "file"))
         attrs = raw.get("attributes", {})
-        item_id = raw.get("id", "")
+        item_id = raw.get("id", raw.get("_lookup_value", ""))
+        seed_source = raw.get("_seed_source", "")
 
         if not item_id:
             return None
 
-        # Extract detection stats
+        # Detection stats
         last_analysis = attrs.get("last_analysis_stats", {})
         malicious = last_analysis.get("malicious", 0)
         suspicious = last_analysis.get("suspicious", 0)
         undetected = last_analysis.get("undetected", 0)
-        total_engines = malicious + suspicious + undetected + last_analysis.get("harmless", 0)
+        harmless = last_analysis.get("harmless", 0)
+        total_engines = malicious + suspicious + undetected + harmless
 
-        # Determine severity based on detection ratio
+        # Skip items with no meaningful detection data
+        if total_engines == 0:
+            return None
+
         detection_ratio = (malicious + suspicious) / max(total_engines, 1)
+
+        # Severity
         if detection_ratio >= 0.6:
             severity = "critical"
         elif detection_ratio >= 0.3:
@@ -160,35 +254,34 @@ class VirusTotalConnector(BaseFeedConnector):
 
         confidence = min(int(detection_ratio * 100), 100)
 
-        # Extract meaningful name
+        # Type-specific fields
         meaningful_name = attrs.get("meaningful_name", "")
         names = attrs.get("names", [])
-        type_description = attrs.get("type_description", "")
+        type_desc = attrs.get("type_description", "")
 
-        # Build title
         if item_type == "file":
             sha256 = attrs.get("sha256", item_id)
-            display_name = meaningful_name or (names[0] if names else sha256[:16])
-            title = f"[VirusTotal] Malicious File: {display_name}"
+            display = meaningful_name or (names[0] if names else sha256[:16])
+            title = f"[VirusTotal] Malicious File: {display}"
             asset_type = "hash_sha256"
             source_ref = sha256
             source_url = f"https://www.virustotal.com/gui/file/{sha256}"
-        elif item_type == "url":
-            url_value = attrs.get("url", item_id)
-            title = f"[VirusTotal] Malicious URL: {url_value[:100]}"
-            asset_type = "url"
-            source_ref = item_id
-            source_url = f"https://www.virustotal.com/gui/url/{item_id}"
-        elif item_type == "domain":
-            title = f"[VirusTotal] Malicious Domain: {item_id}"
-            asset_type = "domain"
-            source_ref = item_id
-            source_url = f"https://www.virustotal.com/gui/domain/{item_id}"
         elif item_type == "ip_address":
             title = f"[VirusTotal] Malicious IP: {item_id}"
             asset_type = "ip"
             source_ref = item_id
             source_url = f"https://www.virustotal.com/gui/ip-address/{item_id}"
+        elif item_type == "domain":
+            title = f"[VirusTotal] Malicious Domain: {item_id}"
+            asset_type = "domain"
+            source_ref = item_id
+            source_url = f"https://www.virustotal.com/gui/domain/{item_id}"
+        elif item_type == "url":
+            url_val = attrs.get("url", item_id)
+            title = f"[VirusTotal] Malicious URL: {url_val[:100]}"
+            asset_type = "url"
+            source_ref = item_id
+            source_url = f"https://www.virustotal.com/gui/url/{item_id}"
         else:
             title = f"[VirusTotal] Threat: {item_id[:80]}"
             asset_type = "other"
@@ -196,40 +289,47 @@ class VirusTotalConnector(BaseFeedConnector):
             source_url = f"https://www.virustotal.com/gui/search/{item_id}"
 
         # Timestamps
-        first_seen = attrs.get("first_submission_date") or attrs.get("creation_date")
         published_at = None
+        first_seen = attrs.get("first_submission_date") or attrs.get("creation_date")
         if first_seen:
             try:
                 published_at = datetime.fromtimestamp(first_seen, tz=timezone.utc)
             except (ValueError, TypeError, OSError):
                 pass
 
-        # Tags from VT
+        # Tags
         vt_tags = attrs.get("tags", [])
-        popular_threat = attrs.get("popular_threat_classification", {})
+        popular_threat = attrs.get("popular_threat_classification") or {}
         threat_label = popular_threat.get("suggested_threat_label", "")
-        threat_category = popular_threat.get("popular_threat_category", [])
+        threat_cats = popular_threat.get("popular_threat_category") or []
 
         tags = ["virustotal", severity]
+        if seed_source:
+            tags.append(seed_source)
         if threat_label:
             tags.append(threat_label)
-        for cat in threat_category[:3]:
-            cat_val = cat.get("value", "")
-            if cat_val:
-                tags.append(cat_val)
+        for cat in threat_cats[:3]:
+            if isinstance(cat, dict):
+                val = cat.get("value", "")
+            else:
+                val = str(cat)
+            if val:
+                tags.append(val)
         tags.extend(vt_tags[:5])
 
         # Summary
-        summary = (
-            f"Detection: {malicious}/{total_engines} engines | "
-            f"Type: {type_description or item_type}"
-        )
+        summary = f"Detection: {malicious}/{total_engines} engines | Type: {type_desc or item_type}"
         if threat_label:
             summary += f" | Threat: {threat_label}"
-
         description = summary
         if names:
             description += f"\nKnown names: {', '.join(names[:5])}"
+
+        # Country / AS info for IPs
+        geo = []
+        country = attrs.get("country")
+        if country:
+            geo.append(country)
 
         return {
             "id": uuid.uuid4(),
@@ -250,7 +350,7 @@ class VirusTotalConnector(BaseFeedConnector):
             "asset_type": asset_type,
             "tlp": "TLP:CLEAR",
             "tags": tags[:15],
-            "geo": [],
+            "geo": geo,
             "industries": [],
             "cve_ids": [],
             "affected_products": [],

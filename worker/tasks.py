@@ -83,7 +83,8 @@ def ingest_feed(feed_name: str) -> dict:
         logger.info("index_complete", feed=feed_name, indexed=index_result.get("indexed", 0))
 
         # 6. Update state
-        new_cursor = datetime.now(timezone.utc).isoformat()
+        # Some connectors (e.g. VT) track their own cursor for rotation
+        new_cursor = getattr(connector, "_next_cursor", None) or datetime.now(timezone.utc).isoformat()
         _update_feed_state(
             session, feed_name,
             status="success",

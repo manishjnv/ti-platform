@@ -26,17 +26,36 @@ class OTXConnector(BaseFeedConnector):
 
         headers = {"X-OTX-API-KEY": settings.otx_api_key}
 
-        # Fetch recent pulses (subscribed)
+        # Try subscribed pulses first (returns pulses from feeds you follow)
         url = f"{OTX_BASE_URL}/pulses/subscribed"
         params: dict = {"limit": 50, "page": 1}
         if last_cursor:
             params["modified_since"] = last_cursor
 
-        response = await self.client.get(url, headers=headers, params=params)
-        response.raise_for_status()
-        data = response.json()
+        try:
+            response = await self.client.get(url, headers=headers, params=params)
+            response.raise_for_status()
+            data = response.json()
+            pulses = data.get("results", [])
+        except Exception as e:
+            logger.debug("otx_subscribed_error", error=str(e))
+            pulses = []
 
-        pulses = data.get("results", [])
+        # Fallback: if no subscribed pulses, fetch recent public activity
+        if not pulses:
+            try:
+                activity_url = f"{OTX_BASE_URL}/pulses/activity"
+                act_params: dict = {"limit": 50, "page": 1}
+                if last_cursor:
+                    act_params["modified_since"] = last_cursor
+                response = await self.client.get(activity_url, headers=headers, params=act_params)
+                response.raise_for_status()
+                data = response.json()
+                pulses = data.get("results", [])
+            except Exception as e:
+                logger.error("otx_activity_error", error=str(e))
+                pulses = []
+
         logger.info("otx_fetch", total=len(pulses))
         return pulses
 
