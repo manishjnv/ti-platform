@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select, text
+from sqlalchemy import cast, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,7 +40,7 @@ async def get_intel_items(
     query = select(IntelItem)
 
     if severity:
-        query = query.where(IntelItem.severity == severity)
+        query = query.where(IntelItem.severity == text(f"'{severity}'::severity_level"))
     if feed_type:
         query = query.where(IntelItem.feed_type == feed_type)
     if source_name:
