@@ -404,9 +404,11 @@ function NotificationSettings() {
                       className="rounded border-border"
                       checked={!!(newRule.conditions as any).severity?.includes("critical")}
                       onChange={(e) => {
-                        const sevs = new Set((newRule.conditions as any).severity || []);
-                        e.target.checked ? sevs.add("critical") : sevs.delete("critical");
-                        setNewRule({ ...newRule, conditions: { ...newRule.conditions, severity: [...sevs] } });
+                        const existing: string[] = (newRule.conditions as any).severity || [];
+                        const sevs = e.target.checked
+                          ? [...existing.filter((s: string) => s !== "critical"), "critical"]
+                          : existing.filter((s: string) => s !== "critical");
+                        setNewRule({ ...newRule, conditions: { ...newRule.conditions, severity: sevs } });
                       }}
                     />
                     Critical
@@ -417,9 +419,11 @@ function NotificationSettings() {
                       className="rounded border-border"
                       checked={!!(newRule.conditions as any).severity?.includes("high")}
                       onChange={(e) => {
-                        const sevs = new Set((newRule.conditions as any).severity || []);
-                        e.target.checked ? sevs.add("high") : sevs.delete("high");
-                        setNewRule({ ...newRule, conditions: { ...newRule.conditions, severity: [...sevs] } });
+                        const existing: string[] = (newRule.conditions as any).severity || [];
+                        const sevs = e.target.checked
+                          ? [...existing.filter((s: string) => s !== "high"), "high"]
+                          : existing.filter((s: string) => s !== "high");
+                        setNewRule({ ...newRule, conditions: { ...newRule.conditions, severity: sevs } });
                       }}
                     />
                     High
