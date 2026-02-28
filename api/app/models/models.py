@@ -238,7 +238,7 @@ class Notification(Base):
     category: Mapped[str] = mapped_column(String(50), nullable=False, default="alert")
     entity_type: Mapped[str | None] = mapped_column(String(30))
     entity_id: Mapped[str | None] = mapped_column(Text)
-    metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    meta: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, default=dict)
     is_read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

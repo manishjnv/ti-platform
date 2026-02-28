@@ -594,7 +594,7 @@ def _create_notification(
         category=category,
         entity_type=entity_type,
         entity_id=entity_id,
-        metadata=metadata or {},
+        meta=metadata or {},
     )
     session.add(notif)
     return notif

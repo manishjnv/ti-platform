@@ -358,7 +358,7 @@ class NotificationResponse(BaseModel):
     category: str
     entity_type: str | None = None
     entity_id: str | None = None
-    metadata: dict = Field(default_factory=dict)
+    metadata: dict = Field(default_factory=dict, validation_alias="meta")
     is_read: bool
     read_at: datetime | None = None
     created_at: datetime
