@@ -7,31 +7,25 @@ from sqlalchemy import text
 
 s = SyncSession()
 
-# Source distribution for T1486
+# Check tags of KEV items mapped to T1486
 rows = s.execute(text(
-    "SELECT source_name, COUNT(*) c "
+    "SELECT i.tags, LEFT(i.title, 80) "
     "FROM intel_items i JOIN intel_attack_links l ON i.id=l.intel_id "
-    "WHERE l.technique_id = 'T1486' GROUP BY source_name ORDER BY c DESC"
+    "WHERE l.technique_id = 'T1486' AND i.source_name LIKE 'CISA%' "
+    "ORDER BY random() LIMIT 5"
 )).fetchall()
-print("=== T1486 by source ===")
+print("=== Tags of T1486-mapped KEV items ===")
 for r in rows:
-    print(f"  {r[0]}: {r[1]}")
+    print(f"  Tags: {r[0]}")
+    print(f"  Title: {r[1]}")
+    print()
 
-# Count KEV items with Ransomware: Known
+# Check how many KEV items have ransomware in tags
 cnt = s.execute(text(
     "SELECT COUNT(*) FROM intel_items "
-    "WHERE source_name LIKE 'CISA%' "
-    "AND (description LIKE '%Ransomware: Known%' OR summary LIKE '%Ransomware: Known%')"
+    "WHERE source_name LIKE 'CISA%' AND tags::text LIKE '%ransomware%'"
 )).scalar()
-print(f"\nKEV items with 'Ransomware: Known': {cnt}")
-
-# Count KEV items with just 'ransomware' anywhere
-cnt2 = s.execute(text(
-    "SELECT COUNT(*) FROM intel_items "
-    "WHERE source_name LIKE 'CISA%' "
-    "AND (LOWER(description) LIKE '%ransomware%' OR LOWER(summary) LIKE '%ransomware%')"
-)).scalar()
-print(f"KEV items with any 'ransomware': {cnt2}")
+print(f"KEV items with 'ransomware' in tags: {cnt}")
 
 # Overall mapping stats
 total_links = s.execute(text("SELECT COUNT(*) FROM intel_attack_links")).scalar()
@@ -42,5 +36,14 @@ print(f"\n=== Overall Mapping Stats ===")
 print(f"  Total links: {total_links}")
 print(f"  Unique techniques used: {unique_techniques}")
 print(f"  Items with mappings: {unique_items}/{total_items} ({100*unique_items//total_items}%)")
+
+# Distribution top 10
+rows = s.execute(text(
+    "SELECT technique_id, COUNT(*) c FROM intel_attack_links "
+    "GROUP BY technique_id ORDER BY c DESC LIMIT 10"
+)).fetchall()
+print(f"\n=== Top technique distribution ===")
+for r in rows:
+    print(f"  {r[0]}: {r[1]}")
 
 s.close()
