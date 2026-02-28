@@ -20,6 +20,7 @@ import {
   BarChart3,
   Activity,
   Bell,
+  FileText,
 } from "lucide-react";
 import {
   BarChart,
@@ -52,15 +53,16 @@ const FEED_TYPE_COLORS: Record<string, string> = {
 };
 
 export default function DashboardPage() {
-  const { dashboard, dashboardLoading, fetchDashboard, unreadCount, fetchUnreadCount } = useAppStore();
+  const { dashboard, dashboardLoading, fetchDashboard, unreadCount, fetchUnreadCount, reportStats, fetchReportStats } = useAppStore();
 
   useEffect(() => {
     fetchDashboard();
     fetchUnreadCount();
+    fetchReportStats();
     const interval = setInterval(fetchDashboard, 60000);
     const notifInterval = setInterval(fetchUnreadCount, 30000);
     return () => { clearInterval(interval); clearInterval(notifInterval); };
-  }, [fetchDashboard, fetchUnreadCount]);
+  }, [fetchDashboard, fetchUnreadCount, fetchReportStats]);
 
   // Severity distribution for donut chart
   const sevDonut = useMemo(() => {
@@ -190,7 +192,7 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI Stats Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
         <StatCard
           title="Total Intel"
           value={totalItems}
@@ -217,6 +219,12 @@ export default function DashboardPage() {
           subtitle="Known Exploited Vulns"
           icon={<AlertTriangle className="h-5 w-5" />}
           variant="danger"
+        />
+        <StatCard
+          title="Reports"
+          value={reportStats?.total_reports ?? 0}
+          subtitle={`${reportStats?.by_status?.published ?? 0} published`}
+          icon={<FileText className="h-5 w-5" />}
         />
         <StatCard
           title="Alerts"

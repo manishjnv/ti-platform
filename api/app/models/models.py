@@ -242,3 +242,41 @@ class Notification(Base):
     is_read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ─── Report System ────────────────────────────────────────
+
+class Report(Base):
+    __tablename__ = "reports"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text)
+    content: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    report_type: Mapped[str] = mapped_column(String(30), nullable=False, default="custom")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
+    severity: Mapped[str] = mapped_column(String(20), nullable=False, default="medium")
+    tlp: Mapped[str] = mapped_column(String(30), nullable=False, default="TLP:GREEN")
+    author_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    template: Mapped[str | None] = mapped_column(String(50))
+    linked_intel_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    linked_ioc_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    linked_technique_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tags: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ReportItem(Base):
+    __tablename__ = "report_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    report_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    item_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    item_id: Mapped[str] = mapped_column(Text, nullable=False)
+    item_title: Mapped[str | None] = mapped_column(Text)
+    item_metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    added_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

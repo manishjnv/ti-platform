@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { IntelItem, DashboardData, User, SearchResponse, IntelListResponse, SearchFilters, Notification, NotificationListResponse } from "@/types";
+import type { IntelItem, DashboardData, User, SearchResponse, IntelListResponse, SearchFilters, Notification, NotificationListResponse, Report, ReportListResponse, ReportStats } from "@/types";
 import * as api from "@/lib/api";
 
 interface AppState {
@@ -57,6 +57,16 @@ interface AppState {
   fetchUnreadCount: () => Promise<void>;
   markRead: (ids: string[]) => Promise<void>;
   markAllRead: () => Promise<void>;
+
+  // Reports
+  reports: Report[];
+  reportsTotal: number;
+  reportsPage: number;
+  reportsPages: number;
+  reportsLoading: boolean;
+  reportStats: ReportStats | null;
+  fetchReports: (params?: Record<string, string | number | undefined>) => Promise<void>;
+  fetchReportStats: () => Promise<void>;
 
   // Error
   error: string | null;
@@ -258,6 +268,37 @@ export const useAppStore = create<AppState>((set, get) => ({
         notifications: s.notifications.map((n) => ({ ...n, is_read: true })),
         unreadCount: 0,
       }));
+    } catch {
+      // silent
+    }
+  },
+
+  // Reports
+  reports: [],
+  reportsTotal: 0,
+  reportsPage: 1,
+  reportsPages: 1,
+  reportsLoading: false,
+  reportStats: null,
+  fetchReports: async (params) => {
+    set({ reportsLoading: true });
+    try {
+      const data = await api.getReports(params);
+      set({
+        reports: data.reports,
+        reportsTotal: data.total,
+        reportsPage: data.page,
+        reportsPages: data.pages,
+        reportsLoading: false,
+      });
+    } catch (e: any) {
+      set({ reportsLoading: false, error: e.message });
+    }
+  },
+  fetchReportStats: async () => {
+    try {
+      const stats = await api.getReportStats();
+      set({ reportStats: stats });
     } catch {
       // silent
     }

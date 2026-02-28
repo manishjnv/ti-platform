@@ -42,6 +42,10 @@ export default function IntelDetailPage() {
   const [attackLoading, setAttackLoading] = useState(false);
   const [relatedItems, setRelatedItems] = useState<RelatedIntelItem[]>([]);
   const [relatedLoading, setRelatedLoading] = useState(false);
+  const [addingToReport, setAddingToReport] = useState(false);
+  const [reportMenuOpen, setReportMenuOpen] = useState(false);
+  const [userReports, setUserReports] = useState<{ id: string; title: string }[]>([]);
+  const [reportActionMsg, setReportActionMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (id) fetchItem(id);
@@ -73,10 +77,74 @@ export default function IntelDetailPage() {
 
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
-      {/* Back button */}
-      <Button variant="ghost" onClick={() => router.back()} className="gap-2">
-        <ArrowLeft className="h-4 w-4" /> Back
-      </Button>
+      {/* Back button + Actions */}
+      <div className="flex items-center justify-between">
+        <Button variant="ghost" onClick={() => router.back()} className="gap-2">
+          <ArrowLeft className="h-4 w-4" /> Back
+        </Button>
+        <div className="relative">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              if (!reportMenuOpen) {
+                try {
+                  const data = await api.getReports({ page: 1, page_size: 20, status: "draft" });
+                  setUserReports(data.reports.map((r) => ({ id: r.id, title: r.title })));
+                } catch { setUserReports([]); }
+              }
+              setReportMenuOpen(!reportMenuOpen);
+            }}
+          >
+            <FileText className="h-3.5 w-3.5 mr-1" />
+            Add to Report
+          </Button>
+          {reportMenuOpen && (
+            <div className="absolute right-0 top-full mt-1 w-64 border rounded-lg bg-popover shadow-lg z-50 p-1 max-h-60 overflow-y-auto">
+              {userReports.length === 0 ? (
+                <p className="text-xs text-muted-foreground p-2">No draft reports. Create one first.</p>
+              ) : (
+                userReports.map((r) => (
+                  <button
+                    key={r.id}
+                    className="w-full text-left px-3 py-1.5 text-sm rounded hover:bg-accent/50 truncate"
+                    onClick={async () => {
+                      setAddingToReport(true);
+                      setReportMenuOpen(false);
+                      try {
+                        await api.addReportItem(r.id, {
+                          item_type: "intel",
+                          item_id: item!.id,
+                          item_title: item!.title,
+                          item_metadata: {
+                            severity: item!.severity,
+                            risk_score: item!.risk_score,
+                            source_name: item!.source_name,
+                            feed_type: item!.feed_type,
+                            cve_ids: item!.cve_ids,
+                          },
+                        });
+                        setReportActionMsg(`Added to "${r.title}"`);
+                      } catch {
+                        setReportActionMsg("Already linked or error");
+                      }
+                      setAddingToReport(false);
+                      setTimeout(() => setReportActionMsg(null), 3000);
+                    }}
+                  >
+                    {r.title}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+          {reportActionMsg && (
+            <div className="absolute right-0 top-full mt-1 px-3 py-1.5 rounded-md bg-primary/10 text-primary text-xs whitespace-nowrap z-50">
+              {reportActionMsg}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Header */}
       <div className="flex items-start gap-4">

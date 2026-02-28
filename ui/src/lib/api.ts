@@ -247,3 +247,75 @@ export async function toggleNotificationRule(id: string) {
     method: "POST",
   });
 }
+
+// ─── Reports ────────────────────────────────────────────
+export async function getReports(params: Record<string, string | number | undefined> = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== "") query.set(k, String(v));
+  });
+  return fetcher<import("@/types").ReportListResponse>(`/reports?${query}`);
+}
+
+export async function getReport(id: string) {
+  return fetcher<import("@/types").Report>(`/reports/${id}`);
+}
+
+export async function createReport(data: import("@/types").ReportCreate) {
+  return fetcher<import("@/types").Report>("/reports", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateReport(id: string, data: import("@/types").ReportUpdate) {
+  return fetcher<import("@/types").Report>(`/reports/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteReport(id: string) {
+  return fetcher<{ deleted: boolean }>(`/reports/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function getReportTemplates() {
+  return fetcher<Record<string, import("@/types").ReportTemplate>>("/reports/templates");
+}
+
+export async function getReportStats() {
+  return fetcher<import("@/types").ReportStats>("/reports/stats");
+}
+
+export async function addReportItem(reportId: string, data: {
+  item_type: string;
+  item_id: string;
+  item_title?: string;
+  item_metadata?: Record<string, unknown>;
+  notes?: string;
+}) {
+  return fetcher<import("@/types").ReportItem>(`/reports/${reportId}/items`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function removeReportItem(reportId: string, itemId: string) {
+  return fetcher<{ deleted: boolean }>(`/reports/${reportId}/items/${itemId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function generateReportAISummary(reportId: string, includeLinkedItems = true) {
+  return fetcher<{ summary: string }>(`/reports/${reportId}/ai-summary`, {
+    method: "POST",
+    body: JSON.stringify({ include_linked_items: includeLinkedItems }),
+  });
+}
+
+export async function exportReport(reportId: string, format = "markdown", includeTlpWatermark = true) {
+  const query = new URLSearchParams({ format, include_tlp_watermark: String(includeTlpWatermark) });
+  return `${API_PREFIX}/reports/${reportId}/export?${query}`;
+}

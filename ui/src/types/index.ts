@@ -259,3 +259,96 @@ export interface NotificationStats {
   by_category: Record<string, number>;
   by_severity: Record<string, number>;
 }
+
+// ─── Reports ────────────────────────────────────────────
+export type ReportStatus = 'draft' | 'review' | 'published' | 'archived';
+export type ReportType = 'incident' | 'threat_advisory' | 'weekly_summary' | 'ioc_bulletin' | 'custom';
+
+export interface ReportItem {
+  id: string;
+  report_id: string;
+  item_type: 'intel' | 'ioc' | 'technique';
+  item_id: string;
+  item_title: string | null;
+  item_metadata: Record<string, unknown>;
+  added_by: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface Report {
+  id: string;
+  title: string;
+  summary: string | null;
+  content: {
+    sections?: Array<{
+      key: string;
+      title: string;
+      hint?: string;
+      body: string;
+    }>;
+  };
+  report_type: ReportType;
+  status: ReportStatus;
+  severity: Severity;
+  tlp: string;
+  author_id: string;
+  template: string | null;
+  linked_intel_count: number;
+  linked_ioc_count: number;
+  linked_technique_count: number;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+  published_at: string | null;
+  items: ReportItem[];
+  author_email: string | null;
+}
+
+export interface ReportListResponse {
+  reports: Report[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+}
+
+export interface ReportCreate {
+  title: string;
+  summary?: string;
+  content?: Record<string, unknown>;
+  report_type?: ReportType;
+  severity?: Severity;
+  tlp?: string;
+  template?: string;
+  tags?: string[];
+}
+
+export interface ReportUpdate {
+  title?: string;
+  summary?: string;
+  content?: Record<string, unknown>;
+  report_type?: ReportType;
+  status?: ReportStatus;
+  severity?: Severity;
+  tlp?: string;
+  template?: string;
+  tags?: string[];
+}
+
+export interface ReportStats {
+  total_reports: number;
+  by_status: Record<string, number>;
+  by_type: Record<string, number>;
+  recent_published: number;
+}
+
+export interface ReportTemplate {
+  label: string;
+  description: string;
+  sections: Array<{
+    key: string;
+    title: string;
+    hint?: string;
+  }>;
+}

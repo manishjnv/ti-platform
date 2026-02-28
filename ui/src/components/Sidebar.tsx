@@ -21,6 +21,7 @@ import {
   Bug,
   Crosshair,
   Share2,
+  FileText,
 } from "lucide-react";
 
 const NAV_SECTIONS = [
@@ -35,6 +36,7 @@ const NAV_SECTIONS = [
     label: "Investigation",
     items: [
       { href: "/intel", label: "Intel Items", icon: List },
+      { href: "/reports", label: "Reports", icon: FileText },
       { href: "/investigate", label: "Investigate", icon: Share2 },
       { href: "/techniques", label: "ATT&CK Map", icon: Crosshair },
       { href: "/search", label: "IOC Search", icon: Search },

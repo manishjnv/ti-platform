@@ -418,3 +418,115 @@ class NotificationStatsResponse(BaseModel):
     last_24h_total: int
     by_category: dict[str, int]
     by_severity: dict[str, int]
+
+
+# ─── Reports ─────────────────────────────────────────────
+
+class ReportStatus(str, Enum):
+    draft = "draft"
+    review = "review"
+    published = "published"
+    archived = "archived"
+
+
+class ReportType(str, Enum):
+    incident = "incident"
+    threat_advisory = "threat_advisory"
+    weekly_summary = "weekly_summary"
+    ioc_bulletin = "ioc_bulletin"
+    custom = "custom"
+
+
+class ReportItemResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    report_id: uuid.UUID
+    item_type: str
+    item_id: str
+    item_title: str | None = None
+    item_metadata: dict = Field(default_factory=dict)
+    added_by: uuid.UUID | None = None
+    notes: str | None = None
+    created_at: datetime
+
+
+class ReportItemCreate(BaseModel):
+    item_type: str = Field(..., description="intel, ioc, or technique")
+    item_id: str
+    item_title: str | None = None
+    item_metadata: dict = Field(default_factory=dict)
+    notes: str | None = None
+
+
+class ReportResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    title: str
+    summary: str | None = None
+    content: dict = Field(default_factory=dict)
+    report_type: ReportType
+    status: ReportStatus
+    severity: SeverityLevel
+    tlp: TLPLevel
+    author_id: uuid.UUID
+    template: str | None = None
+    linked_intel_count: int = 0
+    linked_ioc_count: int = 0
+    linked_technique_count: int = 0
+    tags: list[str] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+    published_at: datetime | None = None
+    items: list[ReportItemResponse] = Field(default_factory=list)
+    author_email: str | None = None
+
+
+class ReportCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=500)
+    summary: str | None = None
+    content: dict = Field(default_factory=dict)
+    report_type: ReportType = ReportType.custom
+    severity: SeverityLevel = SeverityLevel.medium
+    tlp: TLPLevel = TLPLevel.green
+    template: str | None = None
+    tags: list[str] = Field(default_factory=list)
+
+
+class ReportUpdate(BaseModel):
+    title: str | None = None
+    summary: str | None = None
+    content: dict | None = None
+    report_type: ReportType | None = None
+    status: ReportStatus | None = None
+    severity: SeverityLevel | None = None
+    tlp: TLPLevel | None = None
+    template: str | None = None
+    tags: list[str] | None = None
+
+
+class ReportListResponse(BaseModel):
+    reports: list[ReportResponse]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+class ReportStatsResponse(BaseModel):
+    total_reports: int
+    by_status: dict[str, int]
+    by_type: dict[str, int]
+    recent_published: int
+
+
+class ReportAISummaryRequest(BaseModel):
+    """Request AI to generate executive summary for report."""
+    include_linked_items: bool = True
+
+
+class ReportExportRequest(BaseModel):
+    """Export format options."""
+    format: str = Field(default="markdown", description="markdown or pdf")
+    include_tlp_watermark: bool = True

@@ -358,3 +358,56 @@ BEGIN
     REFRESH MATERIALIZED VIEW CONCURRENTLY mv_top_risks;
 END;
 $$ LANGUAGE plpgsql;
+
+-- ─── Reports ────────────────────────────────────────────
+
+DO $$ BEGIN
+    CREATE TYPE report_status AS ENUM ('draft','review','published','archived');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE report_type AS ENUM ('incident','threat_advisory','weekly_summary','ioc_bulletin','custom');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE TABLE IF NOT EXISTS reports (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title          VARCHAR(500) NOT NULL,
+    summary        TEXT,
+    content        JSONB NOT NULL DEFAULT '{}',
+    report_type    report_type NOT NULL DEFAULT 'custom',
+    status         report_status NOT NULL DEFAULT 'draft',
+    severity       severity_level NOT NULL DEFAULT 'medium',
+    tlp            tlp_level NOT NULL DEFAULT 'TLP:GREEN',
+    author_id      UUID NOT NULL REFERENCES users(id),
+    template       VARCHAR(50),
+    linked_intel_count     INTEGER NOT NULL DEFAULT 0,
+    linked_ioc_count       INTEGER NOT NULL DEFAULT 0,
+    linked_technique_count INTEGER NOT NULL DEFAULT 0,
+    tags           TEXT[] NOT NULL DEFAULT '{}',
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    published_at   TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS report_items (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    report_id       UUID NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+    item_type       VARCHAR(30) NOT NULL,
+    item_id         TEXT NOT NULL,
+    item_title      TEXT,
+    item_metadata   JSONB NOT NULL DEFAULT '{}',
+    added_by        UUID REFERENCES users(id),
+    notes           TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(report_id, item_type, item_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_reports_author   ON reports(author_id);
+CREATE INDEX IF NOT EXISTS idx_reports_status   ON reports(status);
+CREATE INDEX IF NOT EXISTS idx_reports_type     ON reports(report_type);
+CREATE INDEX IF NOT EXISTS idx_reports_created  ON reports(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_reports_tags     ON reports USING gin(tags);
+CREATE INDEX IF NOT EXISTS idx_report_items_report ON report_items(report_id);
+CREATE INDEX IF NOT EXISTS idx_report_items_type   ON report_items(item_type, item_id);
