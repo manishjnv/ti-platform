@@ -70,6 +70,7 @@ async def generate_summary(
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {settings.ai_api_key}",
+                "User-Agent": "IntelWatch/1.0",
             }
 
             payload = {
@@ -134,7 +135,10 @@ async def check_ai_health() -> bool:
         return False
     try:
         async with httpx.AsyncClient(timeout=8) as client:
-            headers = {"Authorization": f"Bearer {settings.ai_api_key}"}
+            headers = {
+                "Authorization": f"Bearer {settings.ai_api_key}",
+                "User-Agent": "IntelWatch/1.0",
+            }
             # Try models endpoint (works for OpenAI, Gemini, Groq)
             base = settings.ai_api_url.rsplit("/", 1)[0]  # Remove /completions
             response = await client.get(f"{base}/models", headers=headers)
