@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.core.logging import setup_logging
-from app.routes import health, intel, search, dashboard, admin, auth, techniques, graph, notifications, reports
+from app.routes import health, intel, search, dashboard, admin, auth, techniques, graph, notifications, reports, iocs
 from app.routes import settings as settings_route
 
 settings = get_settings()
@@ -62,6 +62,7 @@ app.include_router(techniques.router, prefix=PREFIX)
 app.include_router(graph.router, prefix=PREFIX)
 app.include_router(notifications.router, prefix=PREFIX)
 app.include_router(reports.router, prefix=PREFIX)
+app.include_router(iocs.router, prefix=PREFIX)
 app.include_router(settings_route.router, prefix=PREFIX)
 
 

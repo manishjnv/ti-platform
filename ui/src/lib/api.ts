@@ -331,6 +331,61 @@ export async function exportReport(reportId: string, format = "markdown", includ
 }
 
 // ─── Settings ───────────────────────────────────────────
+
+// ─── IOC Database ───────────────────────────────────────
+export interface IOCItem {
+  id: string;
+  value: string;
+  ioc_type: string;
+  risk_score: number;
+  first_seen: string | null;
+  last_seen: string | null;
+  sighting_count: number;
+  tags: string[];
+  geo: string[];
+  source_names: string[];
+  context: Record<string, unknown>;
+}
+
+export interface IOCListResponse {
+  items: IOCItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+}
+
+export interface IOCStatsResponse {
+  total_iocs: number;
+  type_distribution: Array<{ name: string; count: number }>;
+  risk_distribution: Record<string, number>;
+  source_distribution: Array<{ name: string; count: number }>;
+  unique_sources: number;
+}
+
+export async function getIOCs(params: {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  ioc_type?: string;
+  min_risk?: number;
+  max_risk?: number;
+  source?: string;
+  sort_by?: string;
+  sort_dir?: string;
+} = {}): Promise<IOCListResponse> {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== "") query.set(k, String(v));
+  });
+  return fetcher<IOCListResponse>(`/iocs?${query}`);
+}
+
+export async function getIOCStats(): Promise<IOCStatsResponse> {
+  return fetcher<IOCStatsResponse>("/iocs/stats");
+}
+
+// ─── Settings (cont'd) ────────────────────────────────── 
 export async function getUserSettings() {
   return fetcher<{ settings: Record<string, unknown> }>("/settings");
 }
