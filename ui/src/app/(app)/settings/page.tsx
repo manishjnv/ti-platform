@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -10,11 +10,15 @@ import {
   Palette,
   Database,
   Key,
-  Globe,
   Save,
   Check,
   Trash2,
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
+import * as api from "@/lib/api";
 
 interface SettingSection {
   id: string;
@@ -34,13 +38,13 @@ const SECTIONS: SettingSection[] = [
     id: "security",
     title: "Security",
     icon: <Shield className="h-4 w-4" />,
-    description: "API keys, authentication, and access controls",
+    description: "Session, rate limiting, and PII controls",
   },
   {
     id: "notifications",
     title: "Notifications",
     icon: <Bell className="h-4 w-4" />,
-    description: "Alerts, email, and webhook integrations",
+    description: "Alerts, rules, and webhook integrations",
   },
   {
     id: "appearance",
@@ -58,17 +62,49 @@ const SECTIONS: SettingSection[] = [
     id: "api",
     title: "API Keys",
     icon: <Key className="h-4 w-4" />,
-    description: "Manage external API integrations",
+    description: "External API integration status",
   },
 ];
 
 export default function SettingsPage() {
   const [activeSection, setActiveSection] = useState("general");
+  const [settings, setSettings] = useState<Record<string, unknown>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const loadSettings = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await api.getUserSettings();
+      setSettings(data.settings);
+    } catch {
+      setError("Failed to load settings");
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const data = await api.updateUserSettings(settings);
+      setSettings(data.settings);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      setError("Failed to save settings");
+    }
+    setSaving(false);
+  };
+
+  const updateSetting = (key: string, value: unknown) => {
+    setSettings((prev) => ({ ...prev, [key]: value }));
   };
 
   return (
@@ -84,13 +120,27 @@ export default function SettingsPage() {
             Configure platform preferences and integrations
           </p>
         </div>
-        <button
-          onClick={handleSave}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors"
-        >
-          {saved ? <Check className="h-3.5 w-3.5" /> : <Save className="h-3.5 w-3.5" />}
-          {saved ? "Saved" : "Save Changes"}
-        </button>
+        <div className="flex items-center gap-2">
+          {error && (
+            <span className="text-[10px] text-red-400 flex items-center gap-1">
+              <AlertCircle className="h-3 w-3" /> {error}
+            </span>
+          )}
+          <button
+            onClick={handleSave}
+            disabled={saving || loading}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+          >
+            {saving ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : saved ? (
+              <Check className="h-3.5 w-3.5" />
+            ) : (
+              <Save className="h-3.5 w-3.5" />
+            )}
+            {saving ? "Saving..." : saved ? "Saved!" : "Save Changes"}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
@@ -117,17 +167,37 @@ export default function SettingsPage() {
 
         {/* Content */}
         <div className="lg:col-span-3">
-          {activeSection === "general" && <GeneralSettings />}
-          {activeSection === "security" && <SecuritySettings />}
-          {activeSection === "notifications" && <NotificationSettings />}
-          {activeSection === "appearance" && <AppearanceSettings />}
-          {activeSection === "data" && <DataSettings />}
-          {activeSection === "api" && <APISettings />}
+          {loading ? (
+            <Card>
+              <CardContent className="py-12 flex items-center justify-center">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              {activeSection === "general" && (
+                <GeneralSettings settings={settings} onChange={updateSetting} />
+              )}
+              {activeSection === "security" && (
+                <SecuritySettings settings={settings} onChange={updateSetting} />
+              )}
+              {activeSection === "notifications" && <NotificationSettings />}
+              {activeSection === "appearance" && (
+                <AppearanceSettings settings={settings} onChange={updateSetting} />
+              )}
+              {activeSection === "data" && (
+                <DataSettings settings={settings} onChange={updateSetting} />
+              )}
+              {activeSection === "api" && <APISettings />}
+            </>
+          )}
         </div>
       </div>
     </div>
   );
 }
+
+/* ─── Shared Components ─── */
 
 function SettingField({
   label,
@@ -151,25 +221,37 @@ function SettingField({
   );
 }
 
-function ToggleSwitch({ defaultChecked = false }: { defaultChecked?: boolean }) {
-  const [on, setOn] = useState(defaultChecked);
+function ToggleSwitch({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
   return (
     <button
-      onClick={() => setOn(!on)}
+      onClick={() => onChange(!checked)}
       className={`w-9 h-5 rounded-full transition-colors relative ${
-        on ? "bg-primary" : "bg-muted"
+        checked ? "bg-primary" : "bg-muted"
       }`}
     >
       <div
         className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-          on ? "translate-x-4" : "translate-x-0.5"
+          checked ? "translate-x-4" : "translate-x-0.5"
         }`}
       />
     </button>
   );
 }
 
-function GeneralSettings() {
+/* ─── Section Components ─── */
+
+interface SettingsProps {
+  settings: Record<string, unknown>;
+  onChange: (key: string, value: unknown) => void;
+}
+
+function GeneralSettings({ settings, onChange }: SettingsProps) {
   return (
     <Card>
       <CardHeader className="pb-2 pt-4 px-5">
@@ -182,7 +264,8 @@ function GeneralSettings() {
         >
           <input
             type="text"
-            defaultValue="TI Platform"
+            value={(settings.platform_name as string) || "IntelWatch"}
+            onChange={(e) => onChange("platform_name", e.target.value)}
             className="w-48 h-8 px-3 rounded-md bg-muted/40 border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </SettingField>
@@ -190,12 +273,17 @@ function GeneralSettings() {
           label="Timezone"
           description="Default timezone for all timestamps"
         >
-          <select className="w-48 h-8 px-3 rounded-md bg-muted/40 border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary">
-            <option>UTC</option>
-            <option>US/Eastern</option>
-            <option>US/Pacific</option>
-            <option>Europe/London</option>
-            <option>Asia/Tokyo</option>
+          <select
+            value={(settings.timezone as string) || "UTC"}
+            onChange={(e) => onChange("timezone", e.target.value)}
+            className="w-48 h-8 px-3 rounded-md bg-muted/40 border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            <option value="UTC">UTC</option>
+            <option value="US/Eastern">US/Eastern</option>
+            <option value="US/Pacific">US/Pacific</option>
+            <option value="Europe/London">Europe/London</option>
+            <option value="Asia/Kolkata">Asia/Kolkata</option>
+            <option value="Asia/Tokyo">Asia/Tokyo</option>
           </select>
         </SettingField>
         <SettingField
@@ -204,7 +292,8 @@ function GeneralSettings() {
         >
           <input
             type="number"
-            defaultValue="70"
+            value={(settings.default_risk_threshold as number) ?? 70}
+            onChange={(e) => onChange("default_risk_threshold", parseInt(e.target.value) || 70)}
             className="w-24 h-8 px-3 rounded-md bg-muted/40 border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </SettingField>
@@ -212,14 +301,17 @@ function GeneralSettings() {
           label="Auto-refresh Dashboard"
           description="Automatically refresh dashboard data"
         >
-          <ToggleSwitch defaultChecked />
+          <ToggleSwitch
+            checked={settings.auto_refresh !== false}
+            onChange={(v) => onChange("auto_refresh", v)}
+          />
         </SettingField>
       </CardContent>
     </Card>
   );
 }
 
-function SecuritySettings() {
+function SecuritySettings({ settings, onChange }: SettingsProps) {
   return (
     <Card>
       <CardHeader className="pb-2 pt-4 px-5">
@@ -230,18 +322,25 @@ function SecuritySettings() {
           label="API Authentication"
           description="Require authentication for API endpoints"
         >
-          <ToggleSwitch defaultChecked />
+          <ToggleSwitch
+            checked={settings.api_auth_required !== false}
+            onChange={(v) => onChange("api_auth_required", v)}
+          />
         </SettingField>
         <SettingField
           label="Session Timeout"
           description="Automatically log out after inactivity"
         >
-          <select className="w-36 h-8 px-3 rounded-md bg-muted/40 border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary">
-            <option>15 minutes</option>
-            <option>30 minutes</option>
-            <option>1 hour</option>
-            <option>4 hours</option>
-            <option>Never</option>
+          <select
+            value={(settings.session_timeout as string) || "4 hours"}
+            onChange={(e) => onChange("session_timeout", e.target.value)}
+            className="w-36 h-8 px-3 rounded-md bg-muted/40 border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            <option value="15 minutes">15 minutes</option>
+            <option value="30 minutes">30 minutes</option>
+            <option value="1 hour">1 hour</option>
+            <option value="4 hours">4 hours</option>
+            <option value="never">Never</option>
           </select>
         </SettingField>
         <SettingField
@@ -250,7 +349,8 @@ function SecuritySettings() {
         >
           <input
             type="number"
-            defaultValue="100"
+            value={(settings.rate_limit as number) ?? 100}
+            onChange={(e) => onChange("rate_limit", parseInt(e.target.value) || 100)}
             className="w-24 h-8 px-3 rounded-md bg-muted/40 border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </SettingField>
@@ -258,7 +358,10 @@ function SecuritySettings() {
           label="PII Redaction"
           description="Automatically redact personal data in logs"
         >
-          <ToggleSwitch defaultChecked />
+          <ToggleSwitch
+            checked={settings.pii_redaction !== false}
+            onChange={(v) => onChange("pii_redaction", v)}
+          />
         </SettingField>
       </CardContent>
     </Card>
@@ -381,7 +484,9 @@ function NotificationSettings() {
                 className="h-8 px-3 rounded-md bg-muted/40 border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 <option value="threshold">Threshold</option>
+                <option value="keyword">Keyword</option>
                 <option value="feed_error">Feed Health</option>
+                <option value="risk_change">Risk Change</option>
                 <option value="correlation">Cross-Feed Correlation</option>
               </select>
               <input
@@ -462,6 +567,40 @@ function NotificationSettings() {
                     className="flex-1 h-7 px-2 rounded-md bg-muted/40 border border-border/50 text-[10px] focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </div>
+              </div>
+            )}
+
+            {/* Keyword rule conditions */}
+            {newRule.rule_type === "keyword" && (
+              <div className="space-y-2">
+                <p className="text-[10px] text-muted-foreground font-medium">Keywords to match</p>
+                <input
+                  type="text"
+                  placeholder="Keywords (comma-separated, e.g. ransomware, APT28, zero-day)"
+                  value={((newRule.conditions as any).keywords || []).join(", ")}
+                  onChange={(e) => {
+                    const kws = e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean);
+                    setNewRule({ ...newRule, conditions: { ...newRule.conditions, keywords: kws.length ? kws : undefined } });
+                  }}
+                  className="w-full h-7 px-2 rounded-md bg-muted/40 border border-border/50 text-[10px] focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+            )}
+
+            {/* Risk change conditions */}
+            {newRule.rule_type === "risk_change" && (
+              <div className="space-y-2">
+                <p className="text-[10px] text-muted-foreground font-medium">Minimum score change</p>
+                <input
+                  type="number"
+                  placeholder="Min score change (e.g. 20)"
+                  value={(newRule.conditions as any).risk_change_min || ""}
+                  onChange={(e) => {
+                    const val = e.target.value ? parseInt(e.target.value) : undefined;
+                    setNewRule({ ...newRule, conditions: { ...newRule.conditions, risk_change_min: val } });
+                  }}
+                  className="w-40 h-7 px-2 rounded-md bg-muted/40 border border-border/50 text-[10px] focus:outline-none focus:ring-1 focus:ring-primary"
+                />
               </div>
             )}
 
@@ -561,7 +700,7 @@ function NotificationSettings() {
   );
 }
 
-function AppearanceSettings() {
+function AppearanceSettings({ settings, onChange }: SettingsProps) {
   return (
     <Card>
       <CardHeader className="pb-2 pt-4 px-5">
@@ -569,30 +708,40 @@ function AppearanceSettings() {
       </CardHeader>
       <CardContent className="px-5 pb-4">
         <SettingField label="Theme" description="Visual theme preference">
-          <select className="w-36 h-8 px-3 rounded-md bg-muted/40 border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary">
-            <option>Dark (Default)</option>
-            <option>Light</option>
-            <option>System</option>
+          <select
+            value={(settings.theme as string) || "dark"}
+            onChange={(e) => onChange("theme", e.target.value)}
+            className="w-36 h-8 px-3 rounded-md bg-muted/40 border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            <option value="dark">Dark (Default)</option>
+            <option value="light">Light</option>
+            <option value="system">System</option>
           </select>
         </SettingField>
         <SettingField
           label="Compact Mode"
           description="Reduce spacing for denser layout"
         >
-          <ToggleSwitch />
+          <ToggleSwitch
+            checked={!!settings.compact_mode}
+            onChange={(v) => onChange("compact_mode", v)}
+          />
         </SettingField>
         <SettingField
           label="Show Risk Scores"
           description="Display risk scores in item lists"
         >
-          <ToggleSwitch defaultChecked />
+          <ToggleSwitch
+            checked={settings.show_risk_scores !== false}
+            onChange={(v) => onChange("show_risk_scores", v)}
+          />
         </SettingField>
       </CardContent>
     </Card>
   );
 }
 
-function DataSettings() {
+function DataSettings({ settings, onChange }: SettingsProps) {
   return (
     <Card>
       <CardHeader className="pb-2 pt-4 px-5">
@@ -603,25 +752,35 @@ function DataSettings() {
           label="Data Retention"
           description="Automatically delete items older than"
         >
-          <select className="w-36 h-8 px-3 rounded-md bg-muted/40 border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary">
-            <option>30 days</option>
-            <option>90 days</option>
-            <option>180 days</option>
-            <option>1 year</option>
-            <option>Never</option>
+          <select
+            value={(settings.data_retention as string) || "never"}
+            onChange={(e) => onChange("data_retention", e.target.value)}
+            className="w-36 h-8 px-3 rounded-md bg-muted/40 border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            <option value="30 days">30 days</option>
+            <option value="90 days">90 days</option>
+            <option value="180 days">180 days</option>
+            <option value="1 year">1 year</option>
+            <option value="never">Never</option>
           </select>
         </SettingField>
         <SettingField
           label="Deduplication"
           description="Skip duplicate intel items during ingestion"
         >
-          <ToggleSwitch defaultChecked />
+          <ToggleSwitch
+            checked={settings.deduplication !== false}
+            onChange={(v) => onChange("deduplication", v)}
+          />
         </SettingField>
         <SettingField
           label="OpenSearch Sync"
           description="Sync ingested items to OpenSearch index"
         >
-          <ToggleSwitch defaultChecked />
+          <ToggleSwitch
+            checked={settings.opensearch_sync !== false}
+            onChange={(v) => onChange("opensearch_sync", v)}
+          />
         </SettingField>
       </CardContent>
     </Card>
@@ -629,43 +788,133 @@ function DataSettings() {
 }
 
 function APISettings() {
-  const keys = [
-    { name: "AbuseIPDB", masked: "••••••••••3f2a", status: "active" },
-    { name: "NVD", masked: "••••••••••7b91", status: "active" },
-    { name: "VirusTotal", masked: "Not configured", status: "missing" },
-    { name: "Shodan", masked: "Not configured", status: "missing" },
-  ];
+  const [keys, setKeys] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [platform, setPlatform] = useState<any>(null);
+
+  useEffect(() => {
+    loadKeys();
+  }, []);
+
+  const loadKeys = async () => {
+    setLoading(true);
+    try {
+      const [keyData, platformData] = await Promise.all([
+        api.getApiKeyStatus(),
+        api.getPlatformInfo(),
+      ]);
+      setKeys(keyData.keys);
+      setPlatform(platformData);
+    } catch {
+      // silent
+    }
+    setLoading(false);
+  };
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="py-12 flex items-center justify-center">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
-    <Card>
-      <CardHeader className="pb-2 pt-4 px-5">
-        <CardTitle className="text-sm font-semibold">API Keys</CardTitle>
-      </CardHeader>
-      <CardContent className="px-5 pb-4">
-        {keys.map((k) => (
-          <SettingField
-            key={k.name}
-            label={k.name}
-            description={k.masked}
-          >
-            <div className="flex items-center gap-2">
-              <Badge
-                variant="outline"
-                className="text-[10px]"
-                style={{
-                  borderColor: k.status === "active" ? "#22c55e" : "#6b7280",
-                  color: k.status === "active" ? "#22c55e" : "#6b7280",
-                }}
-              >
-                {k.status === "active" ? "Active" : "Missing"}
-              </Badge>
-              <button className="px-2 py-1 rounded text-[10px] bg-muted/40 hover:bg-muted/60 transition-colors">
-                {k.status === "active" ? "Update" : "Configure"}
-              </button>
+    <div className="space-y-4">
+      {/* Platform info card */}
+      {platform && (
+        <Card>
+          <CardHeader className="pb-2 pt-4 px-5">
+            <CardTitle className="text-sm font-semibold">Platform Info</CardTitle>
+          </CardHeader>
+          <CardContent className="px-5 pb-4">
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <span className="text-muted-foreground">Version:</span>{" "}
+                <span className="font-medium">{platform.version}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Environment:</span>{" "}
+                <Badge variant="outline" className="text-[10px] ml-1">
+                  {platform.environment}
+                </Badge>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Domain:</span>{" "}
+                <span className="font-mono text-[10px]">{platform.domain}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">AI:</span>{" "}
+                {platform.ai_enabled ? (
+                  <span className="text-green-400 text-[10px]">
+                    {platform.ai_model}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground/50">Disabled</span>
+                )}
+              </div>
+              <div>
+                <span className="text-muted-foreground">Feeds:</span>{" "}
+                <span className="font-medium">
+                  {platform.active_feeds}/{platform.total_feeds} active
+                </span>
+              </div>
             </div>
-          </SettingField>
-        ))}
-      </CardContent>
-    </Card>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* API Keys status */}
+      <Card>
+        <CardHeader className="pb-2 pt-4 px-5">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-semibold">API Keys</CardTitle>
+            <span className="text-[10px] text-muted-foreground">
+              {keys.filter((k) => k.configured).length}/{keys.length} configured
+            </span>
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-0.5">
+            API keys are managed via environment variables on the server. Status shown below is live.
+          </p>
+        </CardHeader>
+        <CardContent className="px-5 pb-4">
+          {keys.map((k) => (
+            <SettingField
+              key={k.name}
+              label={k.name}
+              description={
+                k.configured
+                  ? k.masked + (k.model ? ` (${k.model})` : "")
+                  : "Not configured — set in .env on server"
+              }
+            >
+              <div className="flex items-center gap-2">
+                {k.configured ? (
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] gap-1"
+                    style={{ borderColor: "#22c55e", color: "#22c55e" }}
+                  >
+                    <CheckCircle2 className="h-2.5 w-2.5" />
+                    Active
+                  </Badge>
+                ) : (
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] gap-1"
+                    style={{ borderColor: "#6b7280", color: "#6b7280" }}
+                  >
+                    <XCircle className="h-2.5 w-2.5" />
+                    Missing
+                  </Badge>
+                )}
+              </div>
+            </SettingField>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

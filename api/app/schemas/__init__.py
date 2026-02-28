@@ -530,3 +530,13 @@ class ReportExportRequest(BaseModel):
     """Export format options."""
     format: str = Field(default="markdown", description="markdown or pdf")
     include_tlp_watermark: bool = True
+
+
+# ─── User Settings ───────────────────────────────────────
+
+class UserSettingsResponse(BaseModel):
+    settings: dict
+
+
+class UserSettingsUpdate(BaseModel):
+    settings: dict

@@ -329,3 +329,42 @@ export async function exportReport(reportId: string, format = "markdown", includ
   const query = new URLSearchParams({ format, include_tlp_watermark: String(includeTlpWatermark) });
   return `${API_PREFIX}/reports/${reportId}/export?${query}`;
 }
+
+// ─── Settings ───────────────────────────────────────────
+export async function getUserSettings() {
+  return fetcher<{ settings: Record<string, unknown> }>("/settings");
+}
+
+export async function updateUserSettings(settings: Record<string, unknown>) {
+  return fetcher<{ settings: Record<string, unknown> }>("/settings", {
+    method: "PUT",
+    body: JSON.stringify({ settings }),
+  });
+}
+
+export async function getApiKeyStatus() {
+  return fetcher<{
+    keys: Array<{
+      name: string;
+      configured: boolean;
+      masked: string;
+      model?: string | null;
+    }>;
+    configured_count: number;
+    total_count: number;
+  }>("/settings/api-keys");
+}
+
+export async function getPlatformInfo() {
+  return fetcher<{
+    version: string;
+    environment: string;
+    domain: string;
+    domain_ui: string;
+    domain_api: string;
+    ai_enabled: boolean;
+    ai_model: string | null;
+    total_feeds: number;
+    active_feeds: number;
+  }>("/settings/platform-info");
+}

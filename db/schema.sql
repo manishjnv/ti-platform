@@ -411,3 +411,13 @@ CREATE INDEX IF NOT EXISTS idx_reports_created  ON reports(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_reports_tags     ON reports USING gin(tags);
 CREATE INDEX IF NOT EXISTS idx_report_items_report ON report_items(report_id);
 CREATE INDEX IF NOT EXISTS idx_report_items_type   ON report_items(item_type, item_id);
+
+-- =============================================
+-- User Settings (per-user preferences)
+-- =============================================
+CREATE TABLE IF NOT EXISTS user_settings (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    preferences JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
