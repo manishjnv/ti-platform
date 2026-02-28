@@ -1013,7 +1013,7 @@ async def export_csv(
     db: AsyncSession,
     report_id: uuid.UUID,
 ) -> str | None:
-    """Export report linked items as CSV (IOC-focused)."""
+    """Export report as CSV including metadata, sections, and linked items."""
     report = await get_report(db, report_id)
     if not report:
         return None
@@ -1021,27 +1021,50 @@ async def export_csv(
 
     output = io.StringIO()
     writer = csv.writer(output)
+
+    # ── Report metadata ──
     writer.writerow(["Report", report.title])
     writer.writerow(["Type", report.report_type])
     writer.writerow(["Severity", report.severity])
     writer.writerow(["TLP", report.tlp])
     writer.writerow(["Status", report.status])
+    writer.writerow(["Tags", ", ".join(report.tags) if report.tags else ""])
     writer.writerow(["Created", report.created_at.strftime("%Y-%m-%d %H:%M UTC") if report.created_at else ""])
+    writer.writerow(["Published", report.published_at.strftime("%Y-%m-%d %H:%M UTC") if report.published_at else ""])
     writer.writerow([])
-    writer.writerow(["Item Type", "Title / Value", "IOC Type", "Severity", "Risk Score", "Source", "Tactic", "Notes"])
 
-    for item in items:
-        meta = item.item_metadata or {}
-        writer.writerow([
-            item.item_type,
-            item.item_title or meta.get("value", str(item.item_id)),
-            meta.get("ioc_type", ""),
-            meta.get("severity", ""),
-            meta.get("risk_score", ""),
-            meta.get("source_name", ""),
-            meta.get("tactic", ""),
-            item.notes or "",
-        ])
+    # ── Summary ──
+    if report.summary:
+        writer.writerow(["Summary"])
+        writer.writerow([report.summary])
+        writer.writerow([])
+
+    # ── Content sections ──
+    sections = report.content.get("sections", []) if report.content else []
+    if sections:
+        writer.writerow(["Section Title", "Section Content"])
+        for section in sections:
+            body = (section.get("body") or section.get("content", "")).strip()
+            if body:
+                writer.writerow([section.get("title", "Section"), body])
+        writer.writerow([])
+
+    # ── Linked items ──
+    if items:
+        writer.writerow(["Linked Items"])
+        writer.writerow(["Item Type", "Title / Value", "IOC Type", "Severity", "Risk Score", "Source", "Tactic", "Notes"])
+        for item in items:
+            meta = item.item_metadata or {}
+            writer.writerow([
+                item.item_type,
+                item.item_title or meta.get("value", str(item.item_id)),
+                meta.get("ioc_type", ""),
+                meta.get("severity", ""),
+                meta.get("risk_score", ""),
+                meta.get("source_name", ""),
+                meta.get("tactic", ""),
+                item.notes or "",
+            ])
 
     return output.getvalue()
 
