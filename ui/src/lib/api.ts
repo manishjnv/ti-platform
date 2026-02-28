@@ -182,6 +182,14 @@ export async function getRelatedIntel(itemId: string, limit = 20) {
   return fetcher<import("@/types").RelatedIntelItem[]>(`/graph/related/${itemId}?limit=${limit}`);
 }
 
+export async function getIntelEnrichment(itemId: string) {
+  return fetcher<import("@/types").IntelEnrichment>(`/intel/${itemId}/enrichment`);
+}
+
+export async function getIntelRelated(itemId: string, limit = 20) {
+  return fetcher<import("@/types").RelatedIntelItemEnriched[]>(`/intel/${itemId}/related?limit=${limit}`);
+}
+
 export async function getGraphStats() {
   return fetcher<import("@/types").GraphStatsResponse>("/graph/stats");
 }

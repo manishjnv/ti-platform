@@ -297,6 +297,89 @@ export interface GraphStatsResponse {
   avg_confidence: number;
 }
 
+// ─── Intel Enrichment ───────────────────────────────────
+export interface EnrichmentThreatActor {
+  name: string;
+  aliases: string[];
+  motivation: string;
+  confidence: string;
+  description: string;
+}
+
+export interface EnrichmentAttackTechnique {
+  technique_id: string;
+  technique_name: string;
+  tactic: string;
+  description: string;
+  mitigations: string[];
+}
+
+export interface EnrichmentAffectedVersion {
+  product: string;
+  vendor: string;
+  versions_affected: string;
+  fixed_version: string | null;
+  patch_url: string | null;
+  cpe: string | null;
+}
+
+export interface EnrichmentTimelineEvent {
+  date: string | null;
+  event: string;
+  description: string;
+  type: string;
+}
+
+export interface EnrichmentCampaign {
+  name: string;
+  date: string;
+  description: string;
+  impact: string;
+}
+
+export interface EnrichmentExploitInfo {
+  epss_estimate: number | null;
+  exploit_maturity: string;
+  in_the_wild: boolean;
+  ransomware_use: boolean;
+  description: string | null;
+}
+
+export interface EnrichmentRemediation {
+  priority: string | null;
+  guidance: string[];
+  workarounds: string[];
+  references: { title: string; url: string }[];
+}
+
+export interface IntelEnrichment {
+  executive_summary: string | null;
+  threat_actors: EnrichmentThreatActor[];
+  attack_techniques: EnrichmentAttackTechnique[];
+  affected_versions: EnrichmentAffectedVersion[];
+  timeline_events: EnrichmentTimelineEvent[];
+  notable_campaigns: EnrichmentCampaign[];
+  exploitation_info: EnrichmentExploitInfo;
+  remediation: EnrichmentRemediation;
+  related_cves: string[];
+  tags_suggested: string[];
+}
+
+export interface RelatedIntelItemEnriched {
+  id: string;
+  title: string;
+  severity: Severity;
+  risk_score: number;
+  source_name: string;
+  feed_type: FeedType;
+  ingested_at: string;
+  relationship_type: string;
+  confidence: number;
+  shared_cves: string[];
+  shared_tags: string[];
+  shared_products: string[];
+}
+
 // ─── Notifications ──────────────────────────────────────
 export interface Notification {
   id: string;
