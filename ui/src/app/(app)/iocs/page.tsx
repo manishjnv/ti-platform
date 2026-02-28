@@ -9,10 +9,11 @@ import { DonutChart, HorizontalBarChart } from "@/components/charts";
 import {
   Database, Search, Filter, Copy, ExternalLink, Check, AlertTriangle,
   ChevronUp, ChevronDown, ArrowUpDown, Shield, Eye, Globe,
+  X, Loader2, Zap, Server, ShieldAlert, ShieldCheck, Info,
 } from "lucide-react";
 import {
-  getIOCs, getIOCStats,
-  type IOCItem, type IOCListResponse, type IOCStatsResponse,
+  getIOCs, getIOCStats, enrichIOC,
+  type IOCItem, type IOCListResponse, type IOCStatsResponse, type IOCEnrichmentResult,
 } from "@/lib/api";
 
 const IOC_TYPE_COLORS: Record<string, string> = {
@@ -53,6 +54,9 @@ export default function IOCDatabasePage() {
   const [sortBy, setSortBy] = useState("last_seen");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const [enrichTarget, setEnrichTarget] = useState<IOCItem | null>(null);
+  const [enrichData, setEnrichData] = useState<IOCEnrichmentResult | null>(null);
+  const [enrichLoading, setEnrichLoading] = useState(false);
   const pageSize = 50;
 
   // Debounced search
@@ -108,6 +112,20 @@ export default function IOCDatabasePage() {
     } else {
       setSortBy(col);
       setSortDir("desc");
+    }
+  };
+
+  const handleEnrich = async (ioc: IOCItem) => {
+    setEnrichTarget(ioc);
+    setEnrichData(null);
+    setEnrichLoading(true);
+    try {
+      const result = await enrichIOC(ioc.value, ioc.ioc_type);
+      setEnrichData(result);
+    } catch (err) {
+      setEnrichData({ virustotal: null, shodan: null, errors: ["Failed to enrich IOC"] });
+    } finally {
+      setEnrichLoading(false);
     }
   };
 
@@ -377,17 +395,26 @@ export default function IOCDatabasePage() {
                         {ioc.last_seen ? new Date(ioc.last_seen).toLocaleDateString() : "—"}
                       </td>
                       <td className="py-2 px-4">
-                        <button
-                          onClick={() => handleCopy(ioc.value, idx)}
-                          className="p-1 rounded hover:bg-muted/40 transition-colors"
-                          title="Copy IOC"
-                        >
-                          {copiedIdx === idx ? (
-                            <Check className="h-3.5 w-3.5 text-green-400" />
-                          ) : (
-                            <Copy className="h-3.5 w-3.5 text-muted-foreground" />
-                          )}
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleEnrich(ioc)}
+                            className="p-1 rounded hover:bg-primary/10 transition-colors"
+                            title="Enrich with VT/Shodan"
+                          >
+                            <Zap className={`h-3.5 w-3.5 ${enrichTarget?.id === ioc.id && enrichLoading ? "text-yellow-400 animate-pulse" : "text-yellow-500/60 hover:text-yellow-400"}`} />
+                          </button>
+                          <button
+                            onClick={() => handleCopy(ioc.value, idx)}
+                            className="p-1 rounded hover:bg-muted/40 transition-colors"
+                            title="Copy IOC"
+                          >
+                            {copiedIdx === idx ? (
+                              <Check className="h-3.5 w-3.5 text-green-400" />
+                            ) : (
+                              <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+                            )}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -407,6 +434,213 @@ export default function IOCDatabasePage() {
       {data && data.pages > 1 && (
         <Pagination page={data.page} pages={data.pages} onPageChange={setPage} />
       )}
+
+      {/* Enrichment Panel */}
+      {enrichTarget && (
+        <div className="fixed inset-y-0 right-0 w-full max-w-md bg-background border-l border-border shadow-2xl z-50 flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b border-border">
+            <div className="flex items-center gap-2 min-w-0">
+              <Zap className="h-4 w-4 text-yellow-400 shrink-0" />
+              <span className="text-sm font-semibold truncate">Enrich: {enrichTarget.value}</span>
+            </div>
+            <button
+              onClick={() => { setEnrichTarget(null); setEnrichData(null); }}
+              className="p-1 rounded hover:bg-muted/40"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {enrichLoading && (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                <span className="ml-2 text-sm text-muted-foreground">Querying VT & Shodan...</span>
+              </div>
+            )}
+
+            {enrichData && !enrichLoading && (
+              <>
+                {/* Errors */}
+                {enrichData.errors.length > 0 && (
+                  <div className="space-y-1">
+                    {enrichData.errors.map((e, i) => (
+                      <div key={i} className="text-xs text-yellow-400 bg-yellow-400/10 rounded px-2 py-1">
+                        {e}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* VirusTotal */}
+                <Card>
+                  <CardHeader className="pb-1 pt-3 px-4">
+                    <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+                      <ShieldAlert className="h-3.5 w-3.5 text-blue-400" />
+                      VirusTotal
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-3">
+                    {enrichData.virustotal ? (
+                      <VTResultCard data={enrichData.virustotal as Record<string, any>} iocType={enrichTarget.ioc_type} />
+                    ) : (
+                      <p className="text-xs text-muted-foreground">No VirusTotal data available</p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Shodan */}
+                {(enrichTarget.ioc_type === "ip" || enrichTarget.ioc_type === "domain") && (
+                  <Card>
+                    <CardHeader className="pb-1 pt-3 px-4">
+                      <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+                        <Server className="h-3.5 w-3.5 text-orange-400" />
+                        Shodan
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-4 pb-3">
+                      {enrichData.shodan && (enrichData.shodan as any).found ? (
+                        <ShodanResultCard data={enrichData.shodan as Record<string, any>} />
+                      ) : (
+                        <p className="text-xs text-muted-foreground">No Shodan data available</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+/* ── Enrichment sub-components ─────────────────────────── */
+
+function VTResultCard({ data, iocType }: { data: Record<string, any>; iocType: string }) {
+  if (data.found === false) {
+    return <p className="text-xs text-muted-foreground">{data.message || "Not found in VirusTotal"}</p>;
+  }
+
+  const malicious = data.malicious || 0;
+  const total = data.total_engines || 0;
+  const pct = total ? Math.round((malicious / total) * 100) : 0;
+  const barColor = malicious > 5 ? "#ef4444" : malicious > 0 ? "#f97316" : "#22c55e";
+
+  return (
+    <div className="space-y-3">
+      {/* Detection bar */}
+      <div>
+        <div className="flex justify-between text-[10px] font-medium mb-1">
+          <span>Detection</span>
+          <span style={{ color: barColor }}>{malicious}/{total} engines ({pct}%)</span>
+        </div>
+        <div className="h-2 rounded-full bg-muted/40 overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all"
+            style={{ width: `${pct}%`, backgroundColor: barColor }}
+          />
+        </div>
+      </div>
+
+      {/* Key details */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
+        {data.reputation !== undefined && (
+          <DetailRow label="Reputation" value={String(data.reputation)} />
+        )}
+        {data.country && <DetailRow label="Country" value={data.country} />}
+        {data.as_owner && <DetailRow label="AS Owner" value={data.as_owner} />}
+        {data.asn && <DetailRow label="ASN" value={String(data.asn)} />}
+        {data.network && <DetailRow label="Network" value={data.network} />}
+        {data.registrar && <DetailRow label="Registrar" value={data.registrar} />}
+        {data.name && <DetailRow label="File Name" value={data.name} />}
+        {data.type_description && <DetailRow label="File Type" value={data.type_description} />}
+        {data.size && <DetailRow label="Size" value={`${(data.size / 1024).toFixed(1)} KB`} />}
+        {data.suspicious > 0 && <DetailRow label="Suspicious" value={String(data.suspicious)} />}
+        {data.harmless > 0 && <DetailRow label="Harmless" value={String(data.harmless)} />}
+      </div>
+
+      {/* Tags */}
+      {data.tags && data.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {data.tags.slice(0, 10).map((t: string) => (
+            <Badge key={t} variant="secondary" className="text-[9px]">{t}</Badge>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ShodanResultCard({ data }: { data: Record<string, any> }) {
+  return (
+    <div className="space-y-3">
+      {/* Ports */}
+      {data.ports && data.ports.length > 0 && (
+        <div>
+          <p className="text-[10px] font-medium text-muted-foreground mb-1">Open Ports ({data.ports.length})</p>
+          <div className="flex flex-wrap gap-1">
+            {data.ports.slice(0, 20).map((p: number) => (
+              <Badge key={p} variant="outline" className="text-[9px] font-mono">{p}</Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Vulnerabilities */}
+      {data.vulns && data.vulns.length > 0 && (
+        <div>
+          <p className="text-[10px] font-medium text-red-400 mb-1">Vulnerabilities ({data.vulns.length})</p>
+          <div className="flex flex-wrap gap-1">
+            {data.vulns.slice(0, 15).map((v: string) => (
+              <Badge key={v} variant="destructive" className="text-[9px]">{v}</Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Key details */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
+        {data.org && <DetailRow label="Organization" value={data.org} />}
+        {data.isp && <DetailRow label="ISP" value={data.isp} />}
+        {data.country_name && <DetailRow label="Country" value={data.country_name} />}
+        {data.city && <DetailRow label="City" value={data.city} />}
+        {data.os && <DetailRow label="OS" value={data.os} />}
+        {data.services_count > 0 && <DetailRow label="Services" value={String(data.services_count)} />}
+      </div>
+
+      {/* Hostnames */}
+      {data.hostnames && data.hostnames.length > 0 && (
+        <div>
+          <p className="text-[10px] font-medium text-muted-foreground mb-1">Hostnames</p>
+          <div className="text-[11px] text-muted-foreground font-mono space-y-0.5">
+            {data.hostnames.slice(0, 5).map((h: string) => (
+              <div key={h}>{h}</div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Tags / CPEs */}
+      {data.tags && data.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {data.tags.map((t: string) => (
+            <Badge key={t} variant="secondary" className="text-[9px]">{t}</Badge>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <>
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium truncate" title={value}>{value}</span>
+    </>
   );
 }

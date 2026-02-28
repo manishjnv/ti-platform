@@ -385,6 +385,17 @@ export async function getIOCStats(): Promise<IOCStatsResponse> {
   return fetcher<IOCStatsResponse>("/iocs/stats");
 }
 
+export interface IOCEnrichmentResult {
+  virustotal: Record<string, unknown> | null;
+  shodan: Record<string, unknown> | null;
+  errors: string[];
+}
+
+export async function enrichIOC(value: string, ioc_type: string): Promise<IOCEnrichmentResult> {
+  const query = new URLSearchParams({ value, ioc_type });
+  return fetcher<IOCEnrichmentResult>(`/iocs/enrich?${query}`);
+}
+
 // ─── Settings (cont'd) ────────────────────────────────── 
 export async function getUserSettings() {
   return fetcher<{ settings: Record<string, unknown> }>("/settings");

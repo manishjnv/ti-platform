@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.models import User, IOC
+from app.services.enrichment import enrich_ioc
 
 router = APIRouter(prefix="/iocs", tags=["iocs"])
 
@@ -148,3 +149,14 @@ async def ioc_stats(
         "source_distribution": source_dist,
         "unique_sources": unique_sources,
     }
+
+
+@router.get("/enrich")
+async def enrich_ioc_endpoint(
+    user: Annotated[User, Depends(get_current_user)],
+    value: str = Query(..., max_length=2000),
+    ioc_type: str = Query(..., max_length=30),
+):
+    """On-demand enrichment of a single IOC via VirusTotal + Shodan."""
+    result = await enrich_ioc(value, ioc_type)
+    return result
