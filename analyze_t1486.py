@@ -17,33 +17,30 @@ print("=== T1486 by source ===")
 for r in rows:
     print(f"  {r[0]}: {r[1]}")
 
-# Sample titles of T1486-mapped items
-rows = s.execute(text(
-    "SELECT LEFT(i.title, 100), i.source_name "
-    "FROM intel_items i JOIN intel_attack_links l ON i.id=l.intel_id "
-    "WHERE l.technique_id = 'T1486' ORDER BY random() LIMIT 10"
-)).fetchall()
-print("\n=== Sample T1486 items (random 10) ===")
-for r in rows:
-    print(f"  [{r[1]}] {r[0]}")
+# Count KEV items with Ransomware: Known
+cnt = s.execute(text(
+    "SELECT COUNT(*) FROM intel_items "
+    "WHERE source_name LIKE 'CISA%' "
+    "AND (description LIKE '%Ransomware: Known%' OR summary LIKE '%Ransomware: Known%')"
+)).scalar()
+print(f"\nKEV items with 'Ransomware: Known': {cnt}")
 
-# Check which keyword actually matched
-from app.services.mitre import _COMPILED_PATTERNS
-rows = s.execute(text(
-    "SELECT i.title, i.description, i.summary "
-    "FROM intel_items i JOIN intel_attack_links l ON i.id=l.intel_id "
-    "WHERE l.technique_id = 'T1486' LIMIT 5"
-)).fetchall()
-print("\n=== Keyword analysis for 5 items ===")
-for r in rows:
-    combined = f"{r[0] or ''} {r[2] or ''} {r[1] or ''}"
-    for pat, tids in _COMPILED_PATTERNS:
-        if "T1486" in tids and pat.search(combined):
-            print(f"  Matched keyword pattern: {pat.pattern}")
-            match = pat.search(combined)
-            start = max(0, match.start() - 20)
-            end = min(len(combined), match.end() + 20)
-            print(f"    Context: ...{combined[start:end]}...")
-            break
+# Count KEV items with just 'ransomware' anywhere
+cnt2 = s.execute(text(
+    "SELECT COUNT(*) FROM intel_items "
+    "WHERE source_name LIKE 'CISA%' "
+    "AND (LOWER(description) LIKE '%ransomware%' OR LOWER(summary) LIKE '%ransomware%')"
+)).scalar()
+print(f"KEV items with any 'ransomware': {cnt2}")
+
+# Overall mapping stats
+total_links = s.execute(text("SELECT COUNT(*) FROM intel_attack_links")).scalar()
+unique_techniques = s.execute(text("SELECT COUNT(DISTINCT technique_id) FROM intel_attack_links")).scalar()
+unique_items = s.execute(text("SELECT COUNT(DISTINCT intel_id) FROM intel_attack_links")).scalar()
+total_items = s.execute(text("SELECT COUNT(*) FROM intel_items")).scalar()
+print(f"\n=== Overall Mapping Stats ===")
+print(f"  Total links: {total_links}")
+print(f"  Unique techniques used: {unique_techniques}")
+print(f"  Items with mappings: {unique_items}/{total_items} ({100*unique_items//total_items}%)")
 
 s.close()
