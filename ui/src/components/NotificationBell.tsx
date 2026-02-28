@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { Bell, Check, CheckCheck, Trash2, AlertTriangle, Radio, GitBranch, Info, X } from "lucide-react";
+import { Bell, Check, CheckCheck, Trash2, AlertTriangle, Radio, GitBranch, Info, X, Loader2 } from "lucide-react";
 import { useAppStore } from "@/store";
 import type { Notification } from "@/types";
 import * as api from "@/lib/api";
@@ -35,11 +35,21 @@ function timeAgo(dateStr: string): string {
 }
 
 export function NotificationBell() {
-  const { notifications, unreadCount, fetchNotifications, fetchUnreadCount, markRead, markAllRead } = useAppStore();
+  const { notifications, unreadCount, notificationsLoading, fetchNotifications, fetchUnreadCount, markRead, markAllRead } = useAppStore();
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<"all" | "unread">("all");
   const dropdownRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [animating, setAnimating] = useState(false);
+
+  // Animate open
+  useEffect(() => {
+    if (open) {
+      requestAnimationFrame(() => setAnimating(true));
+    } else {
+      setAnimating(false);
+    }
+  }, [open]);
 
   // Poll unread count every 30 seconds
   useEffect(() => {
@@ -109,7 +119,12 @@ export function NotificationBell() {
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-[380px] max-h-[520px] z-50 rounded-xl border border-border/50 bg-popover shadow-2xl flex flex-col overflow-hidden">
+        <div
+          className={cn(
+            "absolute right-0 top-full mt-2 w-[380px] max-h-[520px] z-50 rounded-xl border border-border/50 bg-popover shadow-2xl flex flex-col overflow-hidden transition-all duration-200 origin-top-right",
+            animating ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-95 -translate-y-1"
+          )}
+        >
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-border/30">
             <div className="flex items-center gap-2">
@@ -159,11 +174,17 @@ export function NotificationBell() {
           </div>
 
           {/* Notification List */}
-          <div className="flex-1 overflow-y-auto">
-            {notifications.length === 0 ? (
+          <div className="flex-1 overflow-y-auto scrollbar-thin">
+            {notificationsLoading ? (
+              <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                <Loader2 className="h-5 w-5 mb-2 animate-spin opacity-40" />
+                <p className="text-[10px] opacity-50">Loading...</p>
+              </div>
+            ) : notifications.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                 <Bell className="h-8 w-8 mb-2 opacity-30" />
                 <p className="text-xs">No notifications</p>
+                <p className="text-[10px] opacity-40 mt-0.5">Alerts will appear here when triggered</p>
               </div>
             ) : (
               notifications.map((n) => (
@@ -176,6 +197,18 @@ export function NotificationBell() {
               ))
             )}
           </div>
+
+          {/* Footer */}
+          {notifications.length > 0 && (
+            <div className="border-t border-border/20 px-4 py-2 flex items-center justify-center">
+              <a
+                href="/settings"
+                className="text-[10px] text-muted-foreground hover:text-primary transition-colors"
+              >
+                Manage notification rules
+              </a>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -199,7 +232,7 @@ function NotificationItem({
     <div
       className={cn(
         "group flex gap-3 px-4 py-3 border-b border-border/10 hover:bg-muted/20 transition-colors",
-        !n.is_read && "bg-primary/[0.03]"
+        !n.is_read && "bg-primary/10"
       )}
     >
       {/* Severity dot + category icon */}
@@ -213,14 +246,14 @@ function NotificationItem({
       {/* Content */}
       <div className="flex-1 min-w-0">
         {entityUrl ? (
-          <a href={entityUrl} className="text-xs font-medium leading-snug hover:text-primary transition-colors line-clamp-2">
+          <a href={entityUrl} className="text-xs font-medium leading-snug hover:text-primary transition-colors line-clamp-2 break-words">
             {n.title}
           </a>
         ) : (
-          <p className="text-xs font-medium leading-snug line-clamp-2">{n.title}</p>
+          <p className="text-xs font-medium leading-snug line-clamp-2 break-words">{n.title}</p>
         )}
         {n.message && (
-          <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2 leading-relaxed">
+          <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2 leading-relaxed whitespace-pre-line break-all">
             {n.message}
           </p>
         )}
