@@ -473,7 +473,7 @@ async def get_dashboard_insights(db: AsyncSession) -> dict:
         "SELECT "
         "  count(*) FILTER (WHERE exploit_available) AS with_exploit, "
         "  count(*) FILTER (WHERE is_kev) AS kev_count, "
-        "  round(avg(exploitability_score)::numeric FILTER (WHERE exploitability_score IS NOT NULL), 3) AS avg_epss, "
+        "  round((avg(exploitability_score) FILTER (WHERE exploitability_score IS NOT NULL))::numeric, 3) AS avg_epss, "
         "  count(*) FILTER (WHERE exploitability_score >= 0.5) AS high_epss_count, "
         "  count(*) AS total "
         "FROM intel_items"
