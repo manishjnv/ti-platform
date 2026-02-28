@@ -23,6 +23,7 @@ class NVDConnector(BaseFeedConnector):
         params: dict = {
             "resultsPerPage": 100,
             "startIndex": 0,
+            "noRejected": "",
         }
 
         # Incremental: fetch CVEs modified since last cursor
@@ -30,8 +31,10 @@ class NVDConnector(BaseFeedConnector):
             params["lastModStartDate"] = last_cursor
             params["lastModEndDate"] = self.now_utc().strftime("%Y-%m-%dT%H:%M:%S.000")
         else:
-            # First run: only recent
-            params["pubStartDate"] = "2024-01-01T00:00:00.000"
+            # First run: only recent 30 days to avoid rate limiting on huge result sets
+            from datetime import timedelta
+            start = (self.now_utc() - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S.000")
+            params["pubStartDate"] = start
             params["pubEndDate"] = self.now_utc().strftime("%Y-%m-%dT%H:%M:%S.000")
 
         headers = {}
