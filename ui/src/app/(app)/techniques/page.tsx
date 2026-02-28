@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -20,6 +21,7 @@ import {
   List,
   ExternalLink,
   ChevronRight,
+  Eye,
 } from "lucide-react";
 
 export default function TechniquesPage() {
@@ -243,6 +245,14 @@ function TechniqueRow({ technique: t }: { technique: AttackTechnique }) {
             ))}
           </div>
         )}
+        <Link
+          href={`/techniques/${t.id}`}
+          className="p-1 rounded hover:bg-primary/10 transition-colors"
+          title="View detail"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Eye className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+        </Link>
       </div>
 
       {expanded && (
