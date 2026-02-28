@@ -43,11 +43,11 @@ async def get_intel_items(
     if severity:
         query = query.where(IntelItem.severity == text(f"'{severity}'::severity_level"))
     if feed_type:
-        query = query.where(IntelItem.feed_type == feed_type)
+        query = query.where(IntelItem.feed_type == text(f"'{feed_type}'::feed_type"))
     if source_name:
         query = query.where(IntelItem.source_name == source_name)
     if asset_type:
-        query = query.where(IntelItem.asset_type == asset_type)
+        query = query.where(IntelItem.asset_type == text(f"'{asset_type}'::asset_type"))
 
     # Count
     count_q = select(func.count()).select_from(query.subquery())
