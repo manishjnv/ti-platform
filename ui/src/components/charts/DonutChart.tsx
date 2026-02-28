@@ -17,6 +17,8 @@ interface DonutChartProps {
   showLegend?: boolean;
   innerRadius?: number;
   outerRadius?: number;
+  onSegmentClick?: (name: string) => void;
+  activeSegment?: string | null;
 }
 
 export function DonutChart({
@@ -27,6 +29,8 @@ export function DonutChart({
   showLegend = true,
   innerRadius = 55,
   outerRadius = 80,
+  onSegmentClick,
+  activeSegment,
 }: DonutChartProps) {
   const total = data.reduce((acc, d) => acc + d.value, 0);
 
@@ -44,9 +48,20 @@ export function DonutChart({
               paddingAngle={2}
               dataKey="value"
               strokeWidth={0}
+              style={onSegmentClick ? { cursor: "pointer" } : undefined}
+              onClick={onSegmentClick ? (_: any, index: number) => {
+                const name = data[index]?.name;
+                if (name) onSegmentClick(name);
+              } : undefined}
             >
               {data.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.color} />
+                <Cell
+                  key={`cell-${index}`}
+                  fill={entry.color}
+                  opacity={activeSegment && activeSegment !== entry.name ? 0.3 : 1}
+                  stroke={activeSegment === entry.name ? "#fff" : "none"}
+                  strokeWidth={activeSegment === entry.name ? 2 : 0}
+                />
               ))}
             </Pie>
             <Tooltip
@@ -79,7 +94,11 @@ export function DonutChart({
       {showLegend && (
         <div className="mt-3 space-y-1.5 w-full">
           {data.map((item) => (
-            <div key={item.name} className="flex items-center justify-between text-xs">
+            <div
+              key={item.name}
+              className={`flex items-center justify-between text-xs ${onSegmentClick ? "cursor-pointer hover:bg-muted/20 rounded px-1 -mx-1 py-0.5" : ""} ${activeSegment && activeSegment !== item.name ? "opacity-40" : ""}`}
+              onClick={onSegmentClick ? () => onSegmentClick(item.name) : undefined}
+            >
               <div className="flex items-center gap-2 min-w-0">
                 <span
                   className="h-2.5 w-2.5 rounded-full shrink-0"

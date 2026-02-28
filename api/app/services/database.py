@@ -33,6 +33,7 @@ async def get_intel_items(
     severity: str | None = None,
     feed_type: str | None = None,
     source_name: str | None = None,
+    asset_type: str | None = None,
     sort_by: str = "ingested_at",
     sort_order: str = "desc",
 ) -> tuple[list[IntelItem], int]:
@@ -45,6 +46,8 @@ async def get_intel_items(
         query = query.where(IntelItem.feed_type == feed_type)
     if source_name:
         query = query.where(IntelItem.source_name == source_name)
+    if asset_type:
+        query = query.where(IntelItem.asset_type == asset_type)
 
     # Count
     count_q = select(func.count()).select_from(query.subquery())

@@ -12,6 +12,11 @@ import {
   Zap,
   Clock,
   ChevronRight,
+  Package,
+  Bug,
+  Tag,
+  Link2,
+  ShieldCheck,
 } from "lucide-react";
 import { formatDate, severityBorder, riskColor, riskBg } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -32,6 +37,7 @@ export default function ThreatsPage() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [selectedSev, setSelectedSev] = useState<string | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -43,13 +49,14 @@ export default function ThreatsPage() {
         sort_order: "desc",
       };
       if (selectedSev) params.severity = selectedSev;
+      if (selectedAsset) params.asset_type = selectedAsset;
       const result = await api.getIntelItems(params);
       setData(result);
     } catch {
       /* silent */
     }
     setLoading(false);
-  }, [page, selectedSev]);
+  }, [page, selectedSev, selectedAsset]);
 
   useEffect(() => {
     fetchData();
@@ -60,18 +67,32 @@ export default function ThreatsPage() {
     if (!data?.items) return [];
     const grouped: Record<string, number> = {};
     data.items.forEach((item) => {
-      grouped[item.asset_type] = (grouped[item.asset_type] || 0) + 1;
+      const key = item.asset_type || "other";
+      grouped[key] = (grouped[key] || 0) + 1;
     });
     const colors = ["#3b82f6", "#ef4444", "#f97316", "#22c55e", "#a855f7", "#ec4899", "#14b8a6", "#6b7280"];
     return Object.entries(grouped).map(([key, count], i) => ({
       name: key.toUpperCase().replace(/_/g, " "),
       value: count,
       color: colors[i % colors.length],
+      rawKey: key,
     }));
   }, [data]);
 
   const handleSevFilter = (sev: string | null) => {
     setSelectedSev(sev);
+    setPage(1);
+  };
+
+  const handleAssetClick = (name: string) => {
+    // Map display name back to raw key
+    const match = assetDonut.find((d) => d.name === name);
+    const rawKey = (match as any)?.rawKey || name.toLowerCase().replace(/ /g, "_");
+    if (selectedAsset === rawKey) {
+      setSelectedAsset(null);
+    } else {
+      setSelectedAsset(rawKey);
+    }
     setPage(1);
   };
 
@@ -93,6 +114,7 @@ export default function ThreatsPage() {
               <span className="ml-2 text-muted-foreground/50">
                 — {data.total.toLocaleString()} items
                 {selectedSev && ` (${selectedSev})`}
+                {selectedAsset && ` · ${selectedAsset.toUpperCase()}`}
               </span>
             )}
           </p>
@@ -167,7 +189,7 @@ export default function ThreatsPage() {
                       <h3 className="text-sm font-medium leading-tight group-hover:text-primary transition-colors line-clamp-1">
                         {item.title}
                       </h3>
-                      <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
+                      <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground flex-wrap">
                         <span className="flex items-center gap-1">
                           <Shield className="h-3 w-3" /> {item.source_name}
                         </span>
@@ -186,7 +208,49 @@ export default function ThreatsPage() {
                             {item.cve_ids[0]}
                           </span>
                         )}
+                        {item.confidence > 0 && (
+                          <span className="flex items-center gap-1">
+                            <ShieldCheck className="h-3 w-3" /> {item.confidence}%
+                          </span>
+                        )}
+                        {item.related_ioc_count > 0 && (
+                          <span className="flex items-center gap-1">
+                            <Link2 className="h-3 w-3" /> {item.related_ioc_count} IOCs
+                          </span>
+                        )}
                       </div>
+                      {/* Affected products & exploitability row */}
+                      {(item.affected_products?.length > 0 || item.exploit_available || item.exploitability_score || item.tags?.length > 0) && (
+                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                          {item.affected_products?.length > 0 && (
+                            <span className="inline-flex items-center gap-1 text-[10px] bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded">
+                              <Package className="h-2.5 w-2.5" />
+                              {item.affected_products.slice(0, 2).join(", ")}
+                              {item.affected_products.length > 2 && ` +${item.affected_products.length - 2}`}
+                            </span>
+                          )}
+                          {item.exploit_available && (
+                            <span className="inline-flex items-center gap-1 text-[10px] bg-red-500/15 text-red-400 px-1.5 py-0.5 rounded font-medium">
+                              <Bug className="h-2.5 w-2.5" /> Exploit Available
+                            </span>
+                          )}
+                          {item.exploitability_score != null && item.exploitability_score > 0 && (
+                            <span className={cn(
+                              "inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-mono",
+                              item.exploitability_score >= 7 ? "bg-red-500/15 text-red-400" :
+                              item.exploitability_score >= 4 ? "bg-yellow-500/15 text-yellow-400" :
+                              "bg-green-500/15 text-green-400"
+                            )}>
+                              Exploit: {item.exploitability_score.toFixed(1)}
+                            </span>
+                          )}
+                          {item.tags?.length > 0 && item.tags.slice(0, 3).map((tag) => (
+                            <span key={tag} className="inline-flex items-center gap-0.5 text-[10px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded">
+                              <Tag className="h-2 w-2" /> {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <ChevronRight className="h-4 w-4 text-muted-foreground/30 group-hover:text-primary transition-colors shrink-0 mt-3" />
                   </div>
@@ -211,7 +275,22 @@ export default function ThreatsPage() {
         <div className="space-y-4">
           <Card>
             <CardHeader className="pb-1 pt-4 px-4">
-              <CardTitle className="text-xs font-semibold">Asset Types</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-xs font-semibold">Asset Types</CardTitle>
+                {selectedAsset && (
+                  <button
+                    onClick={() => { setSelectedAsset(null); setPage(1); }}
+                    className="text-[9px] text-primary hover:underline"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              {selectedAsset && (
+                <p className="text-[10px] text-primary/70 mt-0.5">
+                  Filtering: {selectedAsset.toUpperCase().replace(/_/g, " ")}
+                </p>
+              )}
             </CardHeader>
             <CardContent className="px-4 pb-4">
               <DonutChart
@@ -221,6 +300,8 @@ export default function ThreatsPage() {
                 height={160}
                 innerRadius={40}
                 outerRadius={60}
+                onSegmentClick={handleAssetClick}
+                activeSegment={selectedAsset ? selectedAsset.toUpperCase().replace(/_/g, " ") : null}
               />
             </CardContent>
           </Card>
