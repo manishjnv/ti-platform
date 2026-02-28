@@ -289,9 +289,9 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 ```
 app/layout.tsx (root HTML, dark class)
 ├── login/page.tsx (IntelWatch branded login — SSO or dev bypass)
-└── (app)/layout.tsx (AuthGuard + Sidebar + Header + main area)
+└── (app)/layout.tsx (AuthGuard + Sidebar + Header + ErrorBoundary + main area)
     ├── dashboard/page.tsx
-    │   ├── StatCard ×4
+    │   ├── StatCard ×4 (with optional tooltip)
     │   ├── ThreatLevelBar
     │   ├── DonutChart ×2
     │   ├── HorizontalBarChart
@@ -300,6 +300,7 @@ app/layout.tsx (root HTML, dark class)
     │   └── Data Table
     ├── threats/page.tsx
     ├── intel/page.tsx → intel/[id]/page.tsx
+    │   └── IntelCard (with DataTooltip on risk score)
     ├── investigate/page.tsx (GraphExplorer)
     ├── search/page.tsx
     ├── iocs/page.tsx
@@ -307,6 +308,13 @@ app/layout.tsx (root HTML, dark class)
     ├── geo/page.tsx
     ├── feeds/page.tsx
     └── settings/page.tsx
+
+Shared:
+├── ErrorBoundary / WidgetErrorBoundary (page + widget error recovery)
+├── Loading (skeleton-based page loading, no spinners)
+├── EmptyState (no-data guidance per Instruction.md)
+├── Tooltip / DataTooltip (Radix UI — score/status metadata)
+└── Skeleton / IntelCardSkeleton (loading placeholders)
 ```
 
 ---
@@ -506,6 +514,7 @@ GitHub Actions
 
 | Date | Change |
 |------|--------|
+| 2026-02-28 | Post-audit fixes: OpenSearch dedup (834K→3,944), ATT&CK keyword precision, skeleton loaders, ErrorBoundary, Tooltip system |
 | 2026-02-28 | Phase 1.2 Relationship Graph; added Codebase Metrics section (16,384 LOC / 112 files) |
 | 2026-02-24 | Production domain set to intelwatch.trendsmap.in; simplified login docs |
 | 2026-02-24 | Renamed to IntelWatch; added VirusTotal & Shodan API key support; login testing verified |
