@@ -149,6 +149,16 @@ def setup_schedules():
         meta={"task": "relationship_builder"},
     )
 
+    # ─── IOC Extraction — every 10 minutes ───────────────
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc) + timedelta(minutes=1),
+        func="worker.tasks.extract_iocs",
+        kwargs={"batch_size": 500},
+        interval=timedelta(minutes=10).total_seconds(),
+        queue_name="low",
+        meta={"task": "ioc_extraction"},
+    )
+
     print(f"Scheduled {len(list(scheduler.get_jobs()))} jobs")
 
 

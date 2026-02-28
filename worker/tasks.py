@@ -6,9 +6,12 @@ Pattern: fetch → normalize → score → store (PostgreSQL) → index (OpenSea
 from __future__ import annotations
 
 import asyncio
+import re
+import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import get_settings
@@ -321,6 +324,167 @@ def build_relationships(batch_size: int = 200) -> dict:
         return {"error": str(e)}
     finally:
         session.close()
+
+
+def extract_iocs(batch_size: int = 500) -> dict:
+    """Extract IOC values from intel items and populate iocs + intel_ioc_links tables.
+
+    Scans intel items with IOC-related asset types, extracts actual IOC values
+    from titles/descriptions, upserts into the iocs table, and creates
+    intel_ioc_links entries so the relationship graph can discover shared-IOC edges.
+    """
+    from app.models.models import IntelItem, IOC, IntelIOCLink
+
+    logger.info("ioc_extraction_start")
+    session = SyncSession()
+
+    try:
+        # Get IOC-type intel items that haven't been linked yet
+        linked_subq = (
+            select(IntelIOCLink.intel_id)
+            .distinct()
+            .subquery()
+        )
+
+        ioc_asset_types = ("ip", "url", "domain", "hash_sha256", "hash_md5", "hash_sha1")
+
+        items = session.execute(
+            select(IntelItem)
+            .where(
+                IntelItem.asset_type.in_(ioc_asset_types),
+                ~IntelItem.id.in_(select(linked_subq.c.intel_id)),
+            )
+            .order_by(IntelItem.ingested_at.desc())
+            .limit(batch_size)
+        ).scalars().all()
+
+        if not items:
+            logger.info("ioc_extraction_skip", reason="no unlinked IOC items")
+            return {"items_processed": 0, "iocs_extracted": 0, "links_created": 0}
+
+        extracted = 0
+        linked = 0
+
+        for item in items:
+            ioc_values = _extract_ioc_values(item)
+
+            for ioc_val, ioc_type in ioc_values:
+                # Upsert IOC record
+                ioc_id = uuid.uuid4()
+                stmt = pg_insert(IOC).values(
+                    id=ioc_id,
+                    value=ioc_val,
+                    ioc_type=ioc_type,
+                    risk_score=item.risk_score,
+                    tags=list(item.tags[:5]) if item.tags else [],
+                    geo=list(item.geo[:5]) if item.geo else [],
+                    source_names=[item.source_name],
+                    context={
+                        "severity": item.severity,
+                        "confidence": item.confidence,
+                    },
+                )
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["value", "ioc_type"],
+                    set_={
+                        "last_seen": func.now(),
+                        "sighting_count": IOC.sighting_count + 1,
+                        "risk_score": stmt.excluded.risk_score,
+                        "updated_at": func.now(),
+                    },
+                )
+                session.execute(stmt)
+
+                # Retrieve the IOC id (may be existing record)
+                ioc_row_id = session.execute(
+                    select(IOC.id).where(IOC.value == ioc_val, IOC.ioc_type == ioc_type)
+                ).scalar_one()
+
+                extracted += 1
+
+                # Create intel <-> IOC link
+                link_stmt = pg_insert(IntelIOCLink).values(
+                    intel_id=item.id,
+                    intel_ingested_at=item.ingested_at,
+                    ioc_id=ioc_row_id,
+                    relationship="indicates",
+                )
+                link_stmt = link_stmt.on_conflict_do_nothing()
+                result = session.execute(link_stmt)
+                if result.rowcount > 0:
+                    linked += 1
+
+        session.commit()
+        logger.info("ioc_extraction_complete", extracted=extracted, linked=linked, items=len(items))
+        return {"items_processed": len(items), "iocs_extracted": extracted, "links_created": linked}
+
+    except Exception as e:
+        logger.error("ioc_extraction_error", error=str(e))
+        session.rollback()
+        return {"error": str(e)}
+    finally:
+        session.close()
+
+
+def _extract_ioc_values(item) -> list[tuple[str, str]]:
+    """Extract IOC value(s) from an intel item based on source and asset type.
+
+    Returns list of (value, ioc_type) tuples.
+    """
+    results: list[tuple[str, str]] = []
+
+    # -- Source-specific extraction (most reliable) --------
+    if item.source_name == "AbuseIPDB" and item.asset_type == "ip":
+        if item.source_ref and re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", item.source_ref):
+            results.append((item.source_ref, "ip"))
+            return results
+
+    if item.source_name == "URLhaus" and item.asset_type == "url":
+        # Description: "Malicious URL detected by URLhaus. URL: {url}. Threat type: {threat}."
+        if item.description:
+            match = re.search(r"URL:\s*(https?://\S+?)\.?\s", item.description)
+            if match:
+                results.append((match.group(1), "url"))
+                return results
+        # Fallback: title "[URLhaus] Malicious URL: http://..."
+        if item.title:
+            match = re.search(r"Malicious URL:\s*(https?://\S+)", item.title)
+            if match:
+                results.append((match.group(1), "url"))
+                return results
+
+    # -- Generic regex extraction (fallback) ---------------
+    text = f"{item.title or ''} {item.description or ''}"
+
+    if item.asset_type == "ip":
+        for ip in set(re.findall(r"\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b", text)):
+            parts = ip.split(".")
+            if all(0 <= int(p) <= 255 for p in parts):
+                results.append((ip, "ip"))
+
+    elif item.asset_type == "url":
+        for url in set(re.findall(r"(https?://\S+)", text)):
+            results.append((url.rstrip(".,;)"), "url"))
+
+    elif item.asset_type == "domain":
+        skip = {"abuse.ch", "alienvault.com", "abuseipdb.com", "nist.gov", "mitre.org", "cisa.gov"}
+        for d in set(re.findall(r"\b([a-z0-9](?:[a-z0-9\-]{0,61}[a-z0-9])?(?:\.[a-z]{2,})+)\b", text, re.I)):
+            if d.lower() not in skip:
+                results.append((d.lower(), "domain"))
+
+    elif item.asset_type in ("hash_sha256", "hash_md5", "hash_sha1"):
+        sha256 = set(re.findall(r"\b([a-f0-9]{64})\b", text, re.I))
+        for h in sha256:
+            results.append((h.lower(), "hash_sha256"))
+        sha1 = set(re.findall(r"\b([a-f0-9]{40})\b", text, re.I))
+        for h in sha1:
+            if h.lower() not in {s[:40].lower() for s in sha256}:
+                results.append((h.lower(), "hash_sha1"))
+        md5 = set(re.findall(r"\b([a-f0-9]{32})\b", text, re.I))
+        for h in md5:
+            results.append((h.lower(), "hash_md5"))
+
+    return results
 
 
 # ─── Helpers ──────────────────────────────────────────────
