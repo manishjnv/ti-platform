@@ -526,30 +526,30 @@ async def export_pdf(
     styles.add(ParagraphStyle(
         "ReportTitle", parent=styles["Title"],
         fontSize=22, spaceAfter=4, fontName="Helvetica-Bold",
-        textColor=HexColor("#E0E0E0"),
+        textColor=HexColor("#1A1A2E"),
     ))
     styles.add(ParagraphStyle(
         "SectionHead", parent=styles["Heading2"],
         fontSize=13, spaceBefore=14, spaceAfter=6,
-        fontName="Helvetica-Bold", textColor=HexColor("#B0C4DE"),
+        fontName="Helvetica-Bold", textColor=HexColor("#16213E"),
         borderPadding=2,
     ))
     styles.add(ParagraphStyle(
         "MetaLabel", parent=styles["Normal"],
-        fontSize=9, textColor=HexColor("#9E9E9E"), fontName="Helvetica-Bold",
+        fontSize=9, textColor=HexColor("#555555"), fontName="Helvetica-Bold",
     ))
     styles.add(ParagraphStyle(
         "MetaValue", parent=styles["Normal"],
-        fontSize=9, textColor=HexColor("#D0D0D0"),
+        fontSize=9, textColor=HexColor("#222222"),
     ))
     styles.add(ParagraphStyle(
         "BodyText2", parent=styles["Normal"],
-        fontSize=10, textColor=HexColor("#CCCCCC"), leading=14,
+        fontSize=10, textColor=HexColor("#2D2D2D"), leading=14,
         spaceAfter=8,
     ))
     styles.add(ParagraphStyle(
         "FooterText", parent=styles["Normal"],
-        fontSize=8, textColor=HexColor("#777777"), alignment=TA_CENTER,
+        fontSize=8, textColor=HexColor("#666666"), alignment=TA_CENTER,
     ))
     styles.add(ParagraphStyle(
         "TableHeader", parent=styles["Normal"],
@@ -557,7 +557,7 @@ async def export_pdf(
     ))
     styles.add(ParagraphStyle(
         "TableCell", parent=styles["Normal"],
-        fontSize=8, textColor=HexColor("#D0D0D0"),
+        fontSize=8, textColor=HexColor("#2D2D2D"),
     ))
 
     elements: list = []
@@ -591,10 +591,10 @@ async def export_pdf(
     ]
     meta_table = Table(meta_data, colWidths=[55, 150, 55, 150])
     meta_table.setStyle(TableStyle([
-        ("TEXTCOLOR", (0, 0), (0, -1), HexColor("#9E9E9E")),
-        ("TEXTCOLOR", (2, 0), (2, -1), HexColor("#9E9E9E")),
-        ("TEXTCOLOR", (1, 0), (1, -1), HexColor("#D0D0D0")),
-        ("TEXTCOLOR", (3, 0), (3, -1), HexColor("#D0D0D0")),
+        ("TEXTCOLOR", (0, 0), (0, -1), HexColor("#555555")),
+        ("TEXTCOLOR", (2, 0), (2, -1), HexColor("#555555")),
+        ("TEXTCOLOR", (1, 0), (1, -1), HexColor("#222222")),
+        ("TEXTCOLOR", (3, 0), (3, -1), HexColor("#222222")),
         ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
         ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
         ("FONTSIZE", (0, 0), (-1, -1), 9),
@@ -607,7 +607,7 @@ async def export_pdf(
     # Summary
     if report.summary:
         elements.append(Paragraph("Executive Summary", styles["SectionHead"]))
-        elements.append(HRFlowable(width="100%", thickness=0.5, color=HexColor("#444444"), spaceAfter=6))
+        elements.append(HRFlowable(width="100%", thickness=0.5, color=HexColor("#CCCCCC"), spaceAfter=6))
         elements.append(Paragraph(report.summary.replace("\n", "<br/>"), styles["BodyText2"]))
 
     # Content sections
@@ -616,7 +616,7 @@ async def export_pdf(
         body = (section.get("body") or section.get("content", "")).strip()
         if body:
             elements.append(Paragraph(section.get("title", "Section"), styles["SectionHead"]))
-            elements.append(HRFlowable(width="100%", thickness=0.5, color=HexColor("#444444"), spaceAfter=6))
+            elements.append(HRFlowable(width="100%", thickness=0.5, color=HexColor("#CCCCCC"), spaceAfter=6))
             elements.append(Paragraph(body.replace("\n", "<br/>"), styles["BodyText2"]))
 
     # Linked items tables
@@ -626,17 +626,17 @@ async def export_pdf(
 
     def _build_table(title: str, headers: list[str], rows: list[list[str]], col_widths: list[int]):
         elements.append(Paragraph(title, styles["SectionHead"]))
-        elements.append(HRFlowable(width="100%", thickness=0.5, color=HexColor("#444444"), spaceAfter=6))
+        elements.append(HRFlowable(width="100%", thickness=0.5, color=HexColor("#CCCCCC"), spaceAfter=6))
         header_row = [Paragraph(h, styles["TableHeader"]) for h in headers]
         data_rows = [[Paragraph(c, styles["TableCell"]) for c in row] for row in rows]
         t = Table([header_row] + data_rows, colWidths=col_widths)
         t.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), HexColor("#2A3A4A")),
+            ("BACKGROUND", (0, 0), (-1, 0), HexColor("#1A1A2E")),
             ("TEXTCOLOR", (0, 0), (-1, 0), HexColor("#FFFFFF")),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
             ("FONTSIZE", (0, 0), (-1, -1), 8),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [HexColor("#1E1E1E"), HexColor("#252525")]),
-            ("GRID", (0, 0), (-1, -1), 0.5, HexColor("#444444")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [HexColor("#FFFFFF"), HexColor("#F5F5F5")]),
+            ("GRID", (0, 0), (-1, -1), 0.5, HexColor("#CCCCCC")),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
             ("TOPPADDING", (0, 0), (-1, -1), 4),
             ("LEFTPADDING", (0, 0), (-1, -1), 6),
@@ -681,7 +681,7 @@ async def export_pdf(
 
     # Footer
     elements.append(Spacer(1, 20))
-    elements.append(HRFlowable(width="100%", thickness=0.5, color=HexColor("#444444"), spaceAfter=6))
+    elements.append(HRFlowable(width="100%", thickness=0.5, color=HexColor("#CCCCCC"), spaceAfter=6))
     elements.append(Paragraph(
         f"Generated by IntelWatch · {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
         styles["FooterText"],
