@@ -41,10 +41,17 @@ export function NotificationBell() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [animating, setAnimating] = useState(false);
+  const bellRef = useRef<HTMLButtonElement>(null);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 });
 
-  // Animate open
+  // Animate open + compute position
   useEffect(() => {
-    if (open) {
+    if (open && bellRef.current) {
+      const rect = bellRef.current.getBoundingClientRect();
+      setDropdownPos({
+        top: rect.bottom + 8,
+        right: window.innerWidth - rect.right,
+      });
       requestAnimationFrame(() => setAnimating(true));
     } else {
       setAnimating(false);
@@ -94,6 +101,7 @@ export function NotificationBell() {
     <div className="relative" ref={dropdownRef}>
       {/* Bell Button */}
       <button
+        ref={bellRef}
         onClick={() => setOpen(!open)}
         className="p-1.5 rounded-md hover:bg-muted/40 transition-colors text-muted-foreground relative"
         aria-label="Notifications"
@@ -109,16 +117,17 @@ export function NotificationBell() {
       {/* Backdrop overlay */}
       {open && (
         <div
-          className="fixed inset-0 z-40"
+          className="fixed inset-0 z-[9998] bg-transparent"
           onClick={() => setOpen(false)}
         />
       )}
 
-      {/* Dropdown */}
+      {/* Dropdown — fixed position to escape stacking context */}
       {open && (
         <div
+          style={{ top: dropdownPos.top, right: dropdownPos.right }}
           className={cn(
-            "absolute right-0 top-full mt-2 w-[380px] max-h-[520px] z-50 rounded-xl border border-border bg-[hsl(222,47%,8%)] shadow-2xl flex flex-col overflow-hidden transition-all duration-200 origin-top-right",
+            "fixed w-[380px] max-h-[520px] z-[9999] rounded-xl border border-border bg-[hsl(222,47%,8%)] shadow-2xl flex flex-col overflow-hidden transition-all duration-200 origin-top-right",
             animating ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-95 -translate-y-1"
           )}
         >
