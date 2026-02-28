@@ -353,12 +353,23 @@ async def generate_ai_summary(
 
     description = "\n".join(context_parts)
 
+    report_prompt = (
+        "You are a cybersecurity threat intelligence analyst writing an executive summary "
+        "for a formal threat intelligence report. Based on the report title, sections, and "
+        "linked intelligence items provided, write a concise executive summary (3-5 sentences). "
+        "Cover: what the threat is, who/what is affected, the severity and urgency, and "
+        "recommended actions. Use professional, direct language suitable for C-level briefings."
+    )
+
     summary = await ai_generate_summary(
         title=report.title,
         description=description,
         severity=report.severity,
         source_name="IntelWatch Report",
         cve_ids=cve_ids if include_linked_items else None,
+        system_prompt=report_prompt,
+        max_tokens=400,
+        cache_prefix="report_ai_summary",
     )
 
     if summary:

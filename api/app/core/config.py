@@ -61,10 +61,10 @@ class Settings(BaseSettings):
     virustotal_api_key: str = ""
     shodan_api_key: str = ""
 
-    # AI / Open-WebUI
-    ai_api_url: str = "http://localhost:3000/api/chat/completions"
+    # AI — OpenAI-compatible endpoint (Google Gemini, Groq, OpenAI, etc.)
+    ai_api_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
     ai_api_key: str = ""
-    ai_model: str = "llama3"
+    ai_model: str = "gemini-2.0-flash"
     ai_timeout: int = 30
     ai_enabled: bool = True
 
