@@ -1,51 +1,86 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type { Report, ReportCreate, ReportTemplate, ReportType, Severity } from "@/types";
+import type { ReportCreate, ReportTemplate, ReportType, Severity } from "@/types";
 import * as api from "@/lib/api";
 import {
   ArrowLeft,
-  Save,
-  Sparkles,
+  Loader2,
   FileText,
   AlertTriangle,
   Shield,
   BarChart3,
   FileWarning,
-  Loader2,
-  Check,
+  Zap,
+  ChevronRight,
+  Sparkles,
+  Info,
+  Tag,
 } from "lucide-react";
 
-const TYPE_OPTIONS: { value: ReportType; label: string; icon: React.ElementType }[] = [
-  { value: "incident", label: "Incident Report", icon: AlertTriangle },
-  { value: "threat_advisory", label: "Threat Advisory", icon: Shield },
-  { value: "weekly_summary", label: "Weekly Summary", icon: BarChart3 },
-  { value: "ioc_bulletin", label: "IOC Bulletin", icon: FileWarning },
-  { value: "custom", label: "Custom Report", icon: FileText },
+const TYPE_OPTIONS: {
+  value: ReportType;
+  label: string;
+  desc: string;
+  icon: React.ElementType;
+  color: string;
+}[] = [
+  {
+    value: "incident",
+    label: "Incident Report",
+    desc: "Document security incidents with timeline, impact, IOCs, and response actions",
+    icon: AlertTriangle,
+    color: "text-red-400 border-red-500/30 hover:border-red-400/60 hover:bg-red-500/5",
+  },
+  {
+    value: "threat_advisory",
+    label: "Threat Advisory",
+    desc: "Proactive advisory on threat actors, campaigns, TTPs, and mitigations",
+    icon: Shield,
+    color: "text-amber-400 border-amber-500/30 hover:border-amber-400/60 hover:bg-amber-500/5",
+  },
+  {
+    value: "weekly_summary",
+    label: "Weekly Summary",
+    desc: "Weekly threat landscape overview with key threats, stats, and recommendations",
+    icon: BarChart3,
+    color: "text-blue-400 border-blue-500/30 hover:border-blue-400/60 hover:bg-blue-500/5",
+  },
+  {
+    value: "ioc_bulletin",
+    label: "IOC Bulletin",
+    desc: "IOC sharing bulletin with indicators, context, and detection guidance",
+    icon: FileWarning,
+    color: "text-purple-400 border-purple-500/30 hover:border-purple-400/60 hover:bg-purple-500/5",
+  },
+  {
+    value: "custom",
+    label: "Custom Report",
+    desc: "Blank canvas — executive summary, body, and conclusion",
+    icon: FileText,
+    color: "text-cyan-400 border-cyan-500/30 hover:border-cyan-400/60 hover:bg-cyan-500/5",
+  },
 ];
 
-const SEVERITY_OPTIONS: Severity[] = ["critical", "high", "medium", "low", "info"];
-const TLP_OPTIONS = ["TLP:RED", "TLP:AMBER+STRICT", "TLP:AMBER", "TLP:GREEN", "TLP:CLEAR"];
+const SEVERITY_OPTIONS: { value: Severity; label: string; color: string }[] = [
+  { value: "critical", label: "Critical", color: "bg-red-500/10 text-red-400 border-red-500/30" },
+  { value: "high", label: "High", color: "bg-orange-500/10 text-orange-400 border-orange-500/30" },
+  { value: "medium", label: "Medium", color: "bg-yellow-500/10 text-yellow-400 border-yellow-500/30" },
+  { value: "low", label: "Low", color: "bg-blue-500/10 text-blue-400 border-blue-500/30" },
+  { value: "info", label: "Info", color: "bg-cyan-500/10 text-cyan-400 border-cyan-500/30" },
+];
 
-const SEVERITY_COLORS: Record<string, string> = {
-  critical: "bg-red-500/10 text-red-400 border-red-500/20",
-  high: "bg-orange-500/10 text-orange-400 border-orange-500/20",
-  medium: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
-  low: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  info: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
-};
-
-const TLP_COLORS: Record<string, string> = {
-  "TLP:RED": "bg-red-500/10 text-red-400 border-red-500/20",
-  "TLP:AMBER+STRICT": "bg-amber-500/10 text-amber-400 border-amber-500/20",
-  "TLP:AMBER": "bg-amber-500/10 text-amber-400 border-amber-500/20",
-  "TLP:GREEN": "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-  "TLP:CLEAR": "bg-zinc-500/10 text-zinc-300 border-zinc-500/20",
-};
+const TLP_OPTIONS: { value: string; label: string; desc: string; color: string }[] = [
+  { value: "TLP:RED", label: "RED", desc: "Named recipients only", color: "bg-red-500/10 text-red-400 border-red-500/30" },
+  { value: "TLP:AMBER+STRICT", label: "AMBER+STRICT", desc: "Organization only", color: "bg-amber-500/10 text-amber-400 border-amber-500/30" },
+  { value: "TLP:AMBER", label: "AMBER", desc: "Limited sharing", color: "bg-amber-500/10 text-amber-400 border-amber-500/30" },
+  { value: "TLP:GREEN", label: "GREEN", desc: "Community sharing", color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" },
+  { value: "TLP:CLEAR", label: "CLEAR", desc: "Public / unrestricted", color: "bg-zinc-500/10 text-zinc-300 border-zinc-500/30" },
+];
 
 export default function NewReportPage() {
   const router = useRouter();
@@ -54,34 +89,25 @@ export default function NewReportPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Form state
+  const [reportType, setReportType] = useState<ReportType | null>(null);
   const [title, setTitle] = useState("");
-  const [reportType, setReportType] = useState<ReportType>("custom");
   const [severity, setSeverity] = useState<Severity>("medium");
   const [tlp, setTlp] = useState("TLP:GREEN");
   const [tags, setTags] = useState("");
-  const [sections, setSections] = useState<Array<{ key: string; title: string; hint?: string; body: string }>>([]);
 
   // Load templates
   useEffect(() => {
     api.getReportTemplates().then(setTemplates).catch(() => {});
   }, []);
 
-  // When type changes, load template sections
-  useEffect(() => {
-    const tmpl = templates[reportType];
-    if (tmpl) {
-      setSections(
-        tmpl.sections.map((s) => ({
-          key: s.key,
-          title: s.title,
-          hint: s.hint,
-          body: "",
-        }))
-      );
-    }
-  }, [reportType, templates]);
+  const selectedType = TYPE_OPTIONS.find((t) => t.value === reportType);
+  const selectedTemplate = reportType ? templates[reportType] : null;
 
-  const handleSave = async () => {
+  const handleCreate = async () => {
+    if (!reportType) {
+      setError("Please select a report type");
+      return;
+    }
     if (!title.trim()) {
       setError("Title is required");
       return;
@@ -89,6 +115,17 @@ export default function NewReportPage() {
     setSaving(true);
     setError(null);
     try {
+      // Build sections from template (blank bodies — user fills in detail page)
+      const tmpl = templates[reportType];
+      const sections = tmpl
+        ? tmpl.sections.map((s) => ({
+            key: s.key,
+            title: s.title,
+            hint: s.hint,
+            body: "",
+          }))
+        : [];
+
       const data: ReportCreate = {
         title: title.trim(),
         report_type: reportType,
@@ -108,33 +145,19 @@ export default function NewReportPage() {
     }
   };
 
-  const updateSection = (index: number, body: string) => {
-    setSections((prev) => prev.map((s, i) => (i === index ? { ...s, body } : s)));
-  };
-
   return (
-    <div className="p-6 space-y-4 max-w-4xl mx-auto">
+    <div className="p-6 space-y-6 max-w-4xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => router.push("/reports")}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">New Report</h1>
-            <p className="text-sm text-muted-foreground">
-              Create a threat intelligence report
-            </p>
-          </div>
-        </div>
-        <Button onClick={handleSave} disabled={saving || !title.trim()}>
-          {saving ? (
-            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-          ) : (
-            <Save className="h-4 w-4 mr-1" />
-          )}
-          Create Report
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="sm" onClick={() => router.push("/reports")}>
+          <ArrowLeft className="h-4 w-4" />
         </Button>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Create Report</h1>
+          <p className="text-sm text-muted-foreground">
+            Select a type, give it a title, and start writing
+          </p>
+        </div>
       </div>
 
       {error && (
@@ -143,125 +166,178 @@ export default function NewReportPage() {
         </div>
       )}
 
-      {/* Report Type Selection */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium">Report Type</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-            {TYPE_OPTIONS.map((opt) => {
-              const Icon = opt.icon;
-              const isSelected = reportType === opt.value;
-              return (
-                <button
-                  key={opt.value}
-                  onClick={() => setReportType(opt.value)}
-                  className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border text-xs transition-colors ${
-                    isSelected
-                      ? "border-primary bg-primary/5 text-primary"
-                      : "border-border hover:border-primary/30"
-                  }`}
-                >
+      {/* Step 1 ─ Report Type */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <span className="flex items-center justify-center h-6 w-6 rounded-full bg-primary/10 text-primary text-xs font-bold">1</span>
+          <h2 className="text-sm font-semibold">Choose Report Type</h2>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {TYPE_OPTIONS.map((opt) => {
+            const Icon = opt.icon;
+            const isSelected = reportType === opt.value;
+            return (
+              <button
+                key={opt.value}
+                onClick={() => {
+                  setReportType(opt.value);
+                  setError(null);
+                }}
+                className={`relative flex items-start gap-3 p-4 rounded-xl border-2 text-left transition-all ${
+                  isSelected
+                    ? `${opt.color} ring-1 ring-current/20 bg-opacity-10`
+                    : `border-border/50 hover:border-border ${opt.color.split(" ").slice(0, 1).join(" ")} opacity-70 hover:opacity-100`
+                }`}
+              >
+                {isSelected && (
+                  <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-current animate-pulse" />
+                )}
+                <div className={`mt-0.5 shrink-0 ${isSelected ? "" : "opacity-60"}`}>
                   <Icon className="h-5 w-5" />
-                  <span className="text-center leading-tight">{opt.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
+                </div>
+                <div className="min-w-0">
+                  <div className="font-medium text-sm">{opt.label}</div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">{opt.desc}</p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
-      {/* Title & Metadata */}
-      <Card>
-        <CardContent className="p-4 space-y-4">
-          {/* Title */}
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Title *</label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Enter report title..."
-              className="w-full px-3 py-2 rounded-md border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-            />
-          </div>
+      {/* Template preview hint */}
+      {selectedTemplate && (
+        <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-primary/5 border border-primary/10 text-xs text-muted-foreground">
+          <Sparkles className="h-3.5 w-3.5 mt-0.5 text-primary shrink-0" />
+          <span>
+            <strong className="text-foreground">{selectedType?.label}</strong> includes {selectedTemplate.sections.length} pre-built sections:{" "}
+            {selectedTemplate.sections.map((s) => s.title).join(" → ")}. You can edit them after creation.
+          </span>
+        </div>
+      )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {/* Severity */}
+      {/* Step 2 ─ Details */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <span className="flex items-center justify-center h-6 w-6 rounded-full bg-primary/10 text-primary text-xs font-bold">2</span>
+          <h2 className="text-sm font-semibold">Report Details</h2>
+        </div>
+
+        <Card>
+          <CardContent className="p-4 space-y-5">
+            {/* Title */}
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Severity</label>
-              <div className="flex flex-wrap gap-1">
-                {SEVERITY_OPTIONS.map((s) => (
-                  <Badge
-                    key={s}
-                    variant="outline"
-                    className={`cursor-pointer text-xs ${severity === s ? SEVERITY_COLORS[s] : ""}`}
-                    onClick={() => setSeverity(s)}
-                  >
-                    {s}
-                  </Badge>
-                ))}
-              </div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                Title <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => {
+                  setTitle(e.target.value);
+                  setError(null);
+                }}
+                placeholder={
+                  reportType === "incident"
+                    ? "e.g. Ransomware Incident — LockBit 3.0 Detected"
+                    : reportType === "threat_advisory"
+                    ? "e.g. APT28 Targeting European Energy Sector"
+                    : reportType === "weekly_summary"
+                    ? "e.g. Weekly Threat Summary — Feb 22-28, 2026"
+                    : reportType === "ioc_bulletin"
+                    ? "e.g. IOC Bulletin — Active C2 Infrastructure"
+                    : "Enter report title..."
+                }
+                className="w-full px-3 py-2.5 rounded-lg border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground/40"
+                autoFocus
+              />
             </div>
 
-            {/* TLP */}
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">TLP</label>
-              <div className="flex flex-wrap gap-1">
-                {TLP_OPTIONS.map((t) => (
-                  <Badge
-                    key={t}
-                    variant="outline"
-                    className={`cursor-pointer text-[10px] ${tlp === t ? TLP_COLORS[t] : ""}`}
-                    onClick={() => setTlp(t)}
-                  >
-                    {t}
-                  </Badge>
-                ))}
+            {/* Severity + TLP row */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              {/* Severity */}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-2 block">Severity</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {SEVERITY_OPTIONS.map((s) => (
+                    <button
+                      key={s.value}
+                      onClick={() => setSeverity(s.value)}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                        severity === s.value
+                          ? `${s.color} ring-1 ring-current/20`
+                          : "border-border/50 text-muted-foreground hover:border-border"
+                      }`}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* TLP */}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                  Traffic Light Protocol
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {TLP_OPTIONS.map((t) => (
+                    <button
+                      key={t.value}
+                      onClick={() => setTlp(t.value)}
+                      className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-medium transition-all ${
+                        tlp === t.value
+                          ? `${t.color} ring-1 ring-current/20`
+                          : "border-border/50 text-muted-foreground hover:border-border"
+                      }`}
+                      title={t.desc}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
             {/* Tags */}
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Tags</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1 block">
+                <Tag className="h-3 w-3" />
+                Tags <span className="text-muted-foreground/50 font-normal">(optional, comma-separated)</span>
+              </label>
               <input
                 type="text"
                 value={tags}
                 onChange={(e) => setTags(e.target.value)}
-                placeholder="tag1, tag2, ..."
-                className="w-full px-3 py-1.5 rounded-md border bg-background text-sm"
+                placeholder="apt28, ransomware, healthcare ..."
+                className="w-full px-3 py-2 rounded-lg border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground/40"
               />
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
-      {/* Sections */}
-      {sections.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="text-sm font-medium text-muted-foreground">Sections</h2>
-          {sections.map((section, idx) => (
-            <Card key={section.key}>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">{section.title}</CardTitle>
-                {section.hint && (
-                  <p className="text-xs text-muted-foreground">{section.hint}</p>
-                )}
-              </CardHeader>
-              <CardContent>
-                <textarea
-                  value={section.body}
-                  onChange={(e) => updateSection(idx, e.target.value)}
-                  placeholder={section.hint || `Write ${section.title.toLowerCase()}...`}
-                  rows={4}
-                  className="w-full px-3 py-2 rounded-md border bg-background text-sm resize-y focus:outline-none focus:ring-2 focus:ring-primary/30"
-                />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+      {/* Create button */}
+      <div className="flex items-center justify-between pt-2">
+        <p className="text-xs text-muted-foreground flex items-center gap-1">
+          <Info className="h-3 w-3" />
+          You can fill in section content after creation
+        </p>
+        <Button
+          size="lg"
+          onClick={handleCreate}
+          disabled={saving || !reportType || !title.trim()}
+          className="min-w-[180px]"
+        >
+          {saving ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Zap className="h-4 w-4 mr-2" />
+          )}
+          Create Report
+          <ChevronRight className="h-4 w-4 ml-1" />
+        </Button>
+      </div>
     </div>
   );
 }
