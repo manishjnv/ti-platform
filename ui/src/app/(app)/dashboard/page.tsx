@@ -288,7 +288,7 @@ export default function DashboardPage() {
           value={reportStats?.total_reports ?? 0}
           subtitle={`${reportStats?.by_status?.published ?? 0} published`}
           icon={<FileText className="h-5 w-5" />}
-          href="/intel"
+          href="/reports"
         />
         <StatCard
           title="Alerts"
@@ -399,6 +399,202 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          COMPETITIVE ENRICHMENTS: Trend, Geo, Industries, Techniques, EPSS
+          ═══════════════════════════════════════════════════════ */}
+
+      {/* ── Ingestion Trend (last 30 days) ─────────────── */}
+      {insights?.ingestion_trend && insights.ingestion_trend.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2 pt-4 px-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-emerald-400" />
+                <CardTitle className="text-sm font-semibold">Intel Ingestion Trend (30 Days)</CardTitle>
+              </div>
+              {insights.exploit_summary && (
+                <div className="flex gap-3 text-[10px]">
+                  <span className="text-muted-foreground">
+                    <Zap className="h-3 w-3 inline text-red-400 mr-0.5" />
+                    {insights.exploit_summary.exploit_pct}% exploitable
+                  </span>
+                  <span className="text-muted-foreground">
+                    <AlertTriangle className="h-3 w-3 inline text-orange-400 mr-0.5" />
+                    {insights.exploit_summary.kev_pct}% KEV
+                  </span>
+                  {insights.exploit_summary.avg_epss > 0 && (
+                    <span className="text-muted-foreground">
+                      Avg EPSS: <span className="font-mono text-primary">{insights.exploit_summary.avg_epss.toFixed(3)}</span>
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="px-5 pb-4">
+            <TrendLineChart
+              data={insights.ingestion_trend.map((d) => ({
+                date: new Date(d.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+                items: d.count,
+              }))}
+              series={[{ key: "items", label: "Intel Items", color: "#22c55e" }]}
+              xKey="date"
+              height={200}
+              showLegend={false}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Threat Geography & Target Industries & Attack Techniques ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Threat Geography */}
+        <Card>
+          <CardHeader className="pb-2 pt-4 px-5">
+            <div className="flex items-center gap-2">
+              <Globe className="h-4 w-4 text-cyan-400" />
+              <CardTitle className="text-sm font-semibold">Threat Geography</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="px-5 pb-4">
+            {insights?.threat_geography && insights.threat_geography.length > 0 ? (
+              <div className="space-y-1.5">
+                {insights.threat_geography.slice(0, 10).map((geo, idx) => {
+                  const maxCount = insights.threat_geography[0]?.count ?? 1;
+                  return (
+                    <div key={geo.name} className="group">
+                      <div className="flex items-center justify-between text-xs mb-0.5">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <span className="text-[10px] font-medium text-muted-foreground/50 w-4 text-right">{idx + 1}</span>
+                          <span className="h-2 w-2 rounded-full shrink-0 bg-cyan-500" />
+                          <span className="text-muted-foreground truncate font-medium">{geo.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2 ml-2">
+                          <span className={cn("text-[10px] font-mono px-1 rounded", RISK_BG(geo.avg_risk))}>{geo.avg_risk}</span>
+                          <span className="font-semibold tabular-nums">{geo.count}</span>
+                        </div>
+                      </div>
+                      <div className="h-1 rounded-full bg-muted/50 overflow-hidden">
+                        <div className="h-full rounded-full bg-cyan-500 transition-all duration-500" style={{ width: `${(geo.count / maxCount) * 100}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <EmptyState text="No geographic data" />
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Target Industries */}
+        <Card>
+          <CardHeader className="pb-2 pt-4 px-5">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-amber-400" />
+              <CardTitle className="text-sm font-semibold">Target Industries</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="px-5 pb-4">
+            {insights?.target_industries && insights.target_industries.length > 0 ? (
+              <div className="space-y-1.5">
+                {insights.target_industries.slice(0, 10).map((ind, idx) => {
+                  const maxCount = insights.target_industries[0]?.count ?? 1;
+                  return (
+                    <div key={ind.name} className="group">
+                      <div className="flex items-center justify-between text-xs mb-0.5">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <span className="text-[10px] font-medium text-muted-foreground/50 w-4 text-right">{idx + 1}</span>
+                          <span className="h-2 w-2 rounded-full shrink-0 bg-amber-500" />
+                          <span className="text-muted-foreground truncate font-medium capitalize">{ind.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2 ml-2">
+                          <span className={cn("text-[10px] font-mono px-1 rounded", RISK_BG(ind.avg_risk))}>{ind.avg_risk}</span>
+                          <span className="font-semibold tabular-nums">{ind.count}</span>
+                        </div>
+                      </div>
+                      <div className="h-1 rounded-full bg-muted/50 overflow-hidden">
+                        <div className="h-full rounded-full bg-amber-500 transition-all duration-500" style={{ width: `${(ind.count / maxCount) * 100}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <EmptyState text="No industry targeting data" />
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Attack Techniques */}
+        <Card>
+          <CardHeader className="pb-2 pt-4 px-5">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-rose-400" />
+              <CardTitle className="text-sm font-semibold">Attack Techniques</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="px-5 pb-4">
+            {insights?.attack_techniques && insights.attack_techniques.length > 0 ? (
+              <div className="space-y-1.5">
+                {insights.attack_techniques.slice(0, 10).map((tech, idx) => {
+                  const maxCount = insights.attack_techniques[0]?.count ?? 1;
+                  return (
+                    <div key={tech.name} className="group">
+                      <div className="flex items-center justify-between text-xs mb-0.5">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <span className="text-[10px] font-medium text-muted-foreground/50 w-4 text-right">{idx + 1}</span>
+                          <span className="h-2 w-2 rounded-full shrink-0 bg-rose-500" />
+                          <span className="text-muted-foreground truncate font-medium capitalize">{tech.name.replace(/_/g, " ")}</span>
+                        </div>
+                        <span className="font-semibold tabular-nums ml-2">{tech.count}</span>
+                      </div>
+                      <div className="h-1 rounded-full bg-muted/50 overflow-hidden">
+                        <div className="h-full rounded-full bg-rose-500 transition-all duration-500" style={{ width: `${(tech.count / maxCount) * 100}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <EmptyState text="No attack technique data" />
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── Exploit & EPSS Summary Bar ──────────────────── */}
+      {insights?.exploit_summary && (
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="rounded-lg border bg-card p-3">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Total Intel</p>
+            <p className="text-lg font-bold">{insights.exploit_summary.total.toLocaleString()}</p>
+          </div>
+          <div className="rounded-lg border bg-card p-3">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">With Exploits</p>
+            <p className="text-lg font-bold text-red-400">
+              {insights.exploit_summary.with_exploit.toLocaleString()}
+              <span className="text-xs font-normal text-muted-foreground ml-1">({insights.exploit_summary.exploit_pct}%)</span>
+            </p>
+          </div>
+          <div className="rounded-lg border bg-card p-3">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">KEV Listed</p>
+            <p className="text-lg font-bold text-orange-400">
+              {insights.exploit_summary.kev_count.toLocaleString()}
+              <span className="text-xs font-normal text-muted-foreground ml-1">({insights.exploit_summary.kev_pct}%)</span>
+            </p>
+          </div>
+          <div className="rounded-lg border bg-card p-3">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Avg EPSS Score</p>
+            <p className="text-lg font-bold text-blue-400">{insights.exploit_summary.avg_epss.toFixed(3)}</p>
+          </div>
+          <div className="rounded-lg border bg-card p-3">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">High EPSS (&ge;0.5)</p>
+            <p className="text-lg font-bold text-purple-400">{insights.exploit_summary.high_epss_count.toLocaleString()}</p>
+          </div>
+        </div>
+      )}
 
       {/* ═══════════════════════════════════════════════════════
           THREAT LANDSCAPE INSIGHTS

@@ -298,10 +298,13 @@ async def get_dashboard_insights(db: AsyncSession) -> dict:
         "apt|threat_actor|lazarus|charming_kitten|cozy_bear|fancy_bear|"
         "turla|sandworm|winnti|hafnium|mustang_panda|kimsuky|"
         "gamaredon|silent_librarian|ocean_lotus|fin7|fin8|cobalt|"
-        "ta505|ta551|sidewinder|bitter|donot|transparent_tribe|konni"
+        "ta505|ta551|sidewinder|bitter|donot|transparent_tribe|konni|"
+        "dprk|north.korea|luminousmoth|fire.cells|beavertail|"
+        "phantomcore|stonefly|uac-0050|espionage|cyber.espionage|"
+        "state.sponsor|nation.state"
     )
     ta_q = text(
-        "SELECT t AS tag, count(*) AS cnt, "
+        "SELECT t AS tag, count(DISTINCT intel_items.id) AS cnt, "
         "avg(risk_score) AS avg_risk, "
         "array_agg(DISTINCT unnest_cve) FILTER (WHERE unnest_cve IS NOT NULL) AS cves, "
         "array_agg(DISTINCT unnest_ind) FILTER (WHERE unnest_ind IS NOT NULL) AS industries, "
@@ -334,7 +337,7 @@ async def get_dashboard_insights(db: AsyncSession) -> dict:
         "maze|darkside|blackmatter|avoslocker|vice_society"
     )
     rw_q = text(
-        "SELECT t AS tag, count(*) AS cnt, "
+        "SELECT t AS tag, count(DISTINCT intel_items.id) AS cnt, "
         "avg(risk_score) AS avg_risk, "
         "bool_or(exploit_available) AS any_exploit, "
         "array_agg(DISTINCT unnest_ind) FILTER (WHERE unnest_ind IS NOT NULL) AS industries, "
@@ -366,10 +369,16 @@ async def get_dashboard_insights(db: AsyncSession) -> dict:
         "trickbot|qakbot|formbook|agent_tesla|"
         "remcos|asyncrat|redline|raccoon|vidar|"
         "lumma|aurora|stealc|risepro|amadey|"
-        "malware_url|malicious_ip|elf|botnetdomain"
+        "malware_url|malicious_ip|elf|botnetdomain|"
+        "hajime|clearfake|clickfix|purehvnc|purecrypter|"
+        "dohdoor|snakekeylogger|xworm|gootloader|"
+        "latrodectus|moonpeak|rekoobe|mimicrat|aisuru|"
+        "plugx|valleyrat|nanocore|quasarrat|metasploit|"
+        "shellcode|miner|okiru|arechclient|shadowpad|"
+        "invisibleferret|ldr4|dcrat|moonrise|webshell"
     )
     mw_q = text(
-        "SELECT t AS tag, count(*) AS cnt, "
+        "SELECT t AS tag, count(DISTINCT intel_items.id) AS cnt, "
         "avg(risk_score) AS avg_risk, "
         "array_agg(DISTINCT unnest_geo) FILTER (WHERE unnest_geo IS NOT NULL) AS regions "
         "FROM intel_items, unnest(tags) AS t "
@@ -395,12 +404,102 @@ async def get_dashboard_insights(db: AsyncSession) -> dict:
         )
     ).scalar() or 0
 
+    # ── Threat Geography (top targeted regions) ─
+    geo_q = text(
+        "SELECT g, count(DISTINCT id) AS cnt, "
+        "round(avg(risk_score)::numeric, 1) AS avg_risk "
+        "FROM intel_items, unnest(geo) AS g "
+        "WHERE g IS NOT NULL AND g != '' "
+        "GROUP BY g ORDER BY cnt DESC LIMIT 15"
+    )
+    geo_rows = (await db.execute(geo_q)).all()
+    threat_geography = [
+        {"name": r[0], "count": r[1], "avg_risk": float(r[2] or 0)}
+        for r in geo_rows
+    ]
+
+    # ── Target Industries ─
+    ind_q = text(
+        "SELECT i, count(DISTINCT id) AS cnt, "
+        "round(avg(risk_score)::numeric, 1) AS avg_risk "
+        "FROM intel_items, unnest(industries) AS i "
+        "WHERE i IS NOT NULL AND i != '' "
+        "GROUP BY i ORDER BY cnt DESC LIMIT 15"
+    )
+    ind_rows = (await db.execute(ind_q)).all()
+    target_industries = [
+        {"name": r[0], "count": r[1], "avg_risk": float(r[2] or 0)}
+        for r in ind_rows
+    ]
+
+    # ── Attack Techniques (from tags) ─
+    attack_technique_tags = (
+        "phishing|credential.theft|social.engineering|lateral.movement|"
+        "remote.code.execution|data.exfiltration|dll.sideloading|"
+        "spear.?phishing|process.hollowing|uacbypass|uac.bypass|"
+        "persistence|obfuscation|in-memory|typosquatting|"
+        "supply.chain|detection.evasion|dns.abuse|clipboard.access|"
+        "credential.stealing|consent.abuse|side.loading|"
+        "data.theft|c2.communication|remote.access|api.abuse"
+    )
+    atk_q = text(
+        "SELECT t AS tag, count(DISTINCT intel_items.id) AS cnt "
+        "FROM intel_items, unnest(tags) AS t "
+        "WHERE lower(t) ~ :pattern "
+        "GROUP BY t ORDER BY cnt DESC LIMIT 15"
+    )
+    atk_rows = (await db.execute(atk_q, {"pattern": attack_technique_tags})).all()
+    attack_techniques = [
+        {"name": r[0], "count": r[1]}
+        for r in atk_rows
+    ]
+
+    # ── Ingestion Trend (items per day, last 30 days) ─
+    trend_q = text(
+        "SELECT DATE(COALESCE(published_at, ingested_at)) AS day, count(*) AS cnt "
+        "FROM intel_items "
+        "WHERE COALESCE(published_at, ingested_at) >= NOW() - INTERVAL '30 days' "
+        "GROUP BY DATE(COALESCE(published_at, ingested_at)) "
+        "ORDER BY day"
+    )
+    trend_rows = (await db.execute(trend_q)).all()
+    ingestion_trend = [
+        {"date": r[0].isoformat(), "count": r[1]}
+        for r in trend_rows
+    ]
+
+    # ── EPSS / Exploit Summary Stats ─
+    epss_q = text(
+        "SELECT "
+        "  count(*) FILTER (WHERE exploit_available) AS with_exploit, "
+        "  count(*) FILTER (WHERE is_kev) AS kev_count, "
+        "  round(avg(exploitability_score)::numeric FILTER (WHERE exploitability_score IS NOT NULL), 3) AS avg_epss, "
+        "  count(*) FILTER (WHERE exploitability_score >= 0.5) AS high_epss_count, "
+        "  count(*) AS total "
+        "FROM intel_items"
+    )
+    epss_row = (await db.execute(epss_q)).one()
+    exploit_summary = {
+        "with_exploit": epss_row[0],
+        "kev_count": epss_row[1],
+        "avg_epss": float(epss_row[2] or 0),
+        "high_epss_count": epss_row[3],
+        "total": epss_row[4],
+        "exploit_pct": round(epss_row[0] / max(epss_row[4], 1) * 100, 1),
+        "kev_pct": round(epss_row[1] / max(epss_row[4], 1) * 100, 1),
+    }
+
     return {
         "trending_products": trending_products,
         "threat_actors": threat_actors,
         "ransomware": ransomware,
         "malware_families": malware_families,
         "exploit_count": exploit_count,
+        "threat_geography": threat_geography,
+        "target_industries": target_industries,
+        "attack_techniques": attack_techniques,
+        "ingestion_trend": ingestion_trend,
+        "exploit_summary": exploit_summary,
     }
 
 
@@ -523,7 +622,10 @@ async def get_all_insights_by_type(
             "apt|threat_actor|lazarus|charming_kitten|cozy_bear|fancy_bear|"
             "turla|sandworm|winnti|hafnium|mustang_panda|kimsuky|"
             "gamaredon|silent_librarian|ocean_lotus|fin7|fin8|cobalt|"
-            "ta505|ta551|sidewinder|bitter|donot|transparent_tribe|konni"
+            "ta505|ta551|sidewinder|bitter|donot|transparent_tribe|konni|"
+            "dprk|north.korea|luminousmoth|fire.cells|beavertail|"
+            "phantomcore|stonefly|uac-0050|espionage|cyber.espionage|"
+            "state.sponsor|nation.state"
         ),
         "ransomware": (
             "ransomware|lockbit|blackcat|alphv|clop|royal|"
@@ -538,7 +640,13 @@ async def get_all_insights_by_type(
             "trickbot|qakbot|formbook|agent_tesla|"
             "remcos|asyncrat|redline|raccoon|vidar|"
             "lumma|aurora|stealc|risepro|amadey|"
-            "malware_url|malicious_ip|elf|botnetdomain"
+            "malware_url|malicious_ip|elf|botnetdomain|"
+            "hajime|clearfake|clickfix|purehvnc|purecrypter|"
+            "dohdoor|snakekeylogger|xworm|gootloader|"
+            "latrodectus|moonpeak|rekoobe|mimicrat|aisuru|"
+            "plugx|valleyrat|nanocore|quasarrat|metasploit|"
+            "shellcode|miner|okiru|arechclient|shadowpad|"
+            "invisibleferret|ldr4|dcrat|moonrise|webshell"
         ),
     }
 
@@ -547,7 +655,7 @@ async def get_all_insights_by_type(
         return []
 
     q = text(
-        "SELECT t AS tag, count(*) AS cnt, "
+        "SELECT t AS tag, count(DISTINCT intel_items.id) AS cnt, "
         "avg(risk_score) AS avg_risk, "
         "array_agg(DISTINCT unnest_cve) FILTER (WHERE unnest_cve IS NOT NULL) AS cves, "
         "array_agg(DISTINCT unnest_ind) FILTER (WHERE unnest_ind IS NOT NULL) AS industries, "

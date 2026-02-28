@@ -118,6 +118,38 @@ export interface DashboardInsights {
   ransomware: RansomwareInsight[];
   malware_families: MalwareInsight[];
   exploit_count: number;
+  threat_geography: GeoInsight[];
+  target_industries: IndustryInsight[];
+  attack_techniques: NameCount[];
+  ingestion_trend: TrendPoint[];
+  exploit_summary: ExploitSummary;
+}
+
+export interface GeoInsight {
+  name: string;
+  count: number;
+  avg_risk: number;
+}
+
+export interface IndustryInsight {
+  name: string;
+  count: number;
+  avg_risk: number;
+}
+
+export interface TrendPoint {
+  date: string;
+  count: number;
+}
+
+export interface ExploitSummary {
+  with_exploit: number;
+  kev_count: number;
+  avg_epss: number;
+  high_epss_count: number;
+  total: number;
+  exploit_pct: number;
+  kev_pct: number;
 }
 
 export interface InsightDetailItem {
