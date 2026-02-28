@@ -10,6 +10,7 @@
 - [Core Design Principles](#core-design-principles)
 - [Configuration-Driven System](#%EF%B8%8F-configuration-driven-system)
 - [Feature Implementation Standard](#-feature-implementation-standard-mandatory)
+- [Cross-Feature Data Enrichment](#cross-feature-data-enrichment-mandatory)
 - [Data Freshness & Ordering](#-data-freshness--ordering)
 - [Intel Enrichment Standards](#-intel-enrichment-standards)
 - [Tooltip System](#-tooltip-system-mandatory)
@@ -108,6 +109,42 @@ Every feature must:
 - [ ] Have its **own state management scope** — no polluting shared stores
 - [ ] **Not break existing modules** — zero regressions
 - [ ] **Register itself** via a central feature registry
+
+### Cross-Feature Data Enrichment (MANDATORY)
+
+When implementing a new feature, **you must audit all existing pages and features** for opportunities to enrich them with the new data. New features do not exist in isolation — they must add value across the platform.
+
+#### Rule: Enrich existing pages when relevant
+
+Every new feature that introduces new data (tables, API endpoints, computed values) **must** also update existing pages/components if that data is relevant and adds value. Do not limit new data to its own page only.
+
+#### Examples
+
+| New Feature | Must Also Enrich |
+|-------------|-----------------|
+| MITRE ATT&CK | Intel Detail page (ATT&CK tab), Dashboard (technique coverage stat), Search results (technique badges) |
+| Dark Web Monitoring | Intel Detail (if IOC found on dark web, show badge), Dashboard (credential leak counter), IOC Database (dark web mention flag) |
+| Attack Surface Discovery | Dashboard (exposed asset count), Intel Detail (correlate IOCs with discovered assets), Geo View (overlay discovered assets) |
+| Compliance Mapping | Dashboard (compliance risk score card), Intel Detail (impacted controls badge), Reports (auto-include compliance impact) |
+| Detection Rules | Intel Detail (show generated rules for mapped techniques), IOC Database (link to generated detection rules) |
+| Brand Takedown | Dashboard (active takedown counter), Intel Detail (related brand impersonation alerts) |
+| Customer Onboarding | Dashboard (relevance-filtered stats), Intel Feed (relevance score column), All pages (org-scoped data) |
+
+#### Implementation checklist for cross-enrichment
+
+When adding a new feature, answer these questions:
+
+- [ ] **Dashboard** — Does this feature produce a count, score, or trend that belongs on the main dashboard?
+- [ ] **Intel Detail** — Does this feature add context to individual intel items? (badge, tab, sidebar section, linked data)
+- [ ] **Intel Feed list** — Should a column, badge, or filter be added to the feed list view?
+- [ ] **IOC Database** — Does this feature enrich IOC records? (new flags, scores, linked data)
+- [ ] **Search results** — Should search results surface data from this feature?
+- [ ] **Analytics** — Does this feature produce data worth charting? (new chart, new metric, new filter dimension)
+- [ ] **Existing detail pages** — Do any existing entity detail pages benefit from showing this feature's data?
+- [ ] **Sidebar stats** — Should any sidebar counters or quick-stats reflect this feature?
+- [ ] **Export** — Should exported data (Excel/PDF/STIX) include this feature's data?
+
+> **Principle:** A feature is not complete until every relevant existing page benefits from its data. New features that only live on their own page are considered incomplete.
 
 ### Feature Registry
 
