@@ -132,6 +132,12 @@ Scheduler ──► Redis (enqueues jobs only)
 │  │  attack_techniques  │◄──│  intel_attack_links   │                  │
 │  │  (691 MITRE ATT&CK) │   │  (junction table)    │                  │
 │  └────────────────────┘   └──────────────────────┘                  │
+│                                                                     │
+│  ┌────────────────────┐                                             │
+│  │   relationships     │  (1,181 auto-discovered graph edges)       │
+│  │  (source↔target     │                                            │
+│  │   + type + conf)    │                                            │
+│  └────────────────────┘                                             │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -148,6 +154,7 @@ Scheduler ──► Redis (enqueues jobs only)
 | `scoring_config` | Regular table | Configurable risk scoring weights |
 | `attack_techniques` | Regular table | MITRE ATT&CK techniques (synced from STIX) |
 | `intel_attack_links` | Junction | Many-to-many intel↔technique mappings (auto/manual) |
+| `relationships` | Regular table | Auto-discovered graph edges (shared IOC/CVE/technique) |
 | `mv_severity_distribution` | Materialized view | Pre-computed 30-day severity stats |
 | `mv_top_risks` | Materialized view | Pre-computed top-100 high-risk items |
 
@@ -168,6 +175,11 @@ Scheduler ──► Redis (enqueues jobs only)
 | `idx_attack_tactic` | B-tree | Filter techniques by tactic phase |
 | `idx_attack_parent` | B-tree | Sub-technique→parent lookups |
 | `idx_attack_name_trgm` | GIN (trigram) | Fuzzy technique name search |
+| `idx_rel_source` | B-tree | Find edges by source entity |
+| `idx_rel_target` | B-tree | Find edges by target entity |
+| `idx_rel_type` | B-tree | Filter by relationship type |
+| `idx_rel_confidence` | B-tree (desc) | Rank by confidence score |
+| `idx_rel_unique_edge` | Unique B-tree | Prevent duplicate edges |
 | `idx_ial_technique` | B-tree | Fast technique→intel lookups |
 
 ### OpenSearch Index
@@ -224,6 +236,9 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 | `GET` | `/api/v1/techniques/matrix` | Viewer | `routes/techniques.py` | — |
 | `GET` | `/api/v1/techniques/{id}` | Viewer | `routes/techniques.py` | — |
 | `GET` | `/api/v1/techniques/intel/{id}/techniques` | Viewer | `routes/techniques.py` | — |
+| `GET` | `/api/v1/graph/explore` | Viewer | `routes/graph.py` | `services/graph.py` |
+| `GET` | `/api/v1/graph/related/{id}` | Viewer | `routes/graph.py` | `services/graph.py` |
+| `GET` | `/api/v1/graph/stats` | Viewer | `routes/graph.py` | `services/graph.py` |
 
 ---
 
@@ -254,8 +269,10 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 │  │  Threat Feed   │    ├─────────────────────────│
 │  │ Investigation  │    │                         │
 │  │  Intel Items   │    │   Page Content           │
-│  │  IOC Search    │    │                         │
-│  │  IOC Database  │    │   (cards, charts,       │
+│  │  Investigate   │    │                         │
+│  │  ATT&CK Map   │    │   (cards, charts,       │
+│  │  IOC Search    │    │    tables, filters)     │
+│  │  IOC Database  │    │                         │
 │  │ Analytics      │    │    tables, filters)     │
 │  │  Analytics     │    │                         │
 │  │  Geo View      │    │                         │
@@ -282,6 +299,7 @@ app/layout.tsx (root HTML, dark class)
     │   └── Data Table
     ├── threats/page.tsx
     ├── intel/page.tsx → intel/[id]/page.tsx
+    ├── investigate/page.tsx (GraphExplorer)
     ├── search/page.tsx
     ├── iocs/page.tsx
     ├── analytics/page.tsx
@@ -351,6 +369,9 @@ class BaseFeedConnector(ABC):
 | AbuseIPDB | 15 min | Medium (IP reputation) |
 | OTX | 30 min | Medium (campaign intel) |
 | AI Summaries | 5 min | Low (enrichment pass) |
+| ATT&CK Sync | 6 hrs | Low (refresh STIX data) |
+| ATT&CK Mapping | 10 min | Low (auto-map intel→techniques) |
+| Relationship Builder | 15 min | Low (discover shared IOC/CVE/technique edges) |
 
 ---
 

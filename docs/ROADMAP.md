@@ -53,16 +53,23 @@ CISA KEV, NVD, URLhaus, AbuseIPDB, AlienVault OTX, VirusTotal, Shodan
 - **UI Component:** `ATTACKMatrix.tsx` — grid visualization of 14 tactics, color-coded by risk
 - **Sidebar:** "ATT&CK Map" link added under Investigation section
 
-### 1.2 Relationship Graph Visualization
-- **Module:** `api/app/services/graph.py` — build relationship graphs between intel items, IOCs, CVEs, and threat actors
-- **Database:** New `relationships` table (source_id, source_type, target_id, target_type, relationship_type, confidence, first_seen, last_seen)
-- **Page:** `/investigate` — Interactive graph explorer using D3.js force-directed layout or vis.js
+### 1.2 Relationship Graph Visualization ✅ DONE
+- **Status:** Deployed — 1,181 relationships (181 shared-CVE + 1,000 shared-technique), 3 API endpoints, SVG force-directed graph UI
+- **Commit:** `928a4f8` (initial) → `fcb9233` (fixes)
+- **Module:** `api/app/services/graph.py` — build relationship graphs between intel items, IOCs, CVEs, and ATT&CK techniques
+- **Routes:** `api/app/routes/graph.py` — `/graph/explore`, `/graph/related/{id}`, `/graph/stats`
+- **Database:** New `relationships` table (source_id, source_type, target_id, target_type, relationship_type, confidence, first_seen, last_seen, metadata)
+- **Worker:** `build_relationships` task in `worker/tasks.py`, runs every 15 minutes via scheduler
+- **Page:** `/investigate` — Interactive graph explorer with custom SVG force-directed layout (no external dependencies)
 - **Features:**
-  - Click any node to expand related entities
-  - Filter by relationship type, time range, confidence
-  - Highlight shortest path between two entities
-  - Export graph as image/JSON
-- **UI Component:** `GraphExplorer.tsx`, `GraphNode.tsx`, `GraphControls.tsx`
+  - Click any node to navigate to intel detail or re-center graph
+  - Depth control (1-3 hops), entity type selector
+  - Hover to highlight connected edges and show relationship details
+  - Drag nodes to rearrange layout, zoom via scroll wheel
+  - Relationship details table below graph
+  - Related Intel tab on intel detail pages (replaces placeholder)
+- **UI Components:** `GraphExplorer.tsx` — SVG force-directed graph with severity rings, risk score badges, edge highlighting
+- **Sidebar:** "Investigate" link added under Investigation section
 - **USP Features (Differentiators):**
   - **AI Relationship Discovery** — auto-detect implicit relationships between intel items from different feeds that share IOCs, CVEs, domains, or text similarity. Surface hidden connections analysts would miss.
   - **Attack Chain Reconstruction** — auto-connect ATT&CK techniques in kill-chain order to visualize full attack paths (Recon → Initial Access → Execution → Persistence → Exfil). Highlight gaps in observed chain.
