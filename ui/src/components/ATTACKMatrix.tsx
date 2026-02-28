@@ -168,16 +168,8 @@ export function ATTACKMatrix({ data }: ATTACKMatrixProps) {
                       selectedCell?.id === tech.id &&
                         "ring-1 ring-primary border-primary/50"
                     )}
-                    onClick={(e) => {
-                      // If just clicking (not navigating), show detail panel; hold Ctrl/Cmd to navigate
-                      if (!e.ctrlKey && !e.metaKey) {
-                        e.preventDefault();
-                        setSelectedCell(
-                          selectedCell?.id === tech.id ? null : tech
-                        );
-                      }
-                    }}
-                    title={`${tech.id}: ${tech.name} — ${tech.count} intel items mapped (max risk: ${tech.max_risk}). Click for details, Ctrl+Click to open.`}
+                    onMouseEnter={() => setSelectedCell(tech)}
+                    title={`${tech.id}: ${tech.name} — ${tech.count} intel items mapped (max risk: ${tech.max_risk}). Click to view details.`}
                   >
                     <div className="font-mono text-[9px] opacity-60">{tech.id}</div>
                     <div className="truncate">{tech.name}</div>

@@ -117,6 +117,26 @@ async def trigger_all_feeds(
     return {"status": "queued", "job_id": job.id}
 
 
+@router.post("/attack/remap")
+async def remap_attack_techniques(
+    user: Annotated[User, Depends(require_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Re-map ALL intel items to ATT&CK techniques using updated keyword map (admin only).
+
+    Clears all existing auto-mapped links and re-processes every intel item.
+    Useful after updating the keyword/technique mapping dictionary.
+    """
+    redis_conn = Redis.from_url(settings.redis_url)
+    q = Queue("low", connection=redis_conn)
+    job = q.enqueue("worker.tasks.remap_all_intel_to_attack", job_timeout=600)
+
+    await log_audit(
+        db, user_id=str(user.id), action="attack_remap", resource_type="attack"
+    )
+    return {"status": "queued", "job_id": job.id}
+
+
 @router.get("/setup/config")
 async def get_setup_config(
     user: Annotated[User, Depends(require_admin)],

@@ -306,6 +306,87 @@ def map_intel_to_attack(batch_size: int = 100) -> dict:
         session.close()
 
 
+def remap_all_intel_to_attack() -> dict:
+    """Delete all auto-mapped ATT&CK links and re-map ALL intel items.
+
+    Used when the keyword map is updated to rebuild all technique mappings.
+    """
+    from app.services.mitre import map_intel_item_to_techniques
+    from app.models.models import IntelItem, IntelAttackLink, AttackTechnique
+    from sqlalchemy import delete
+
+    session = SyncSession()
+    try:
+        # Get all valid technique IDs
+        valid_ids = set(
+            session.execute(select(AttackTechnique.id)).scalars().all()
+        )
+        if not valid_ids:
+            return {"error": "no techniques in DB"}
+
+        # Delete all existing auto-mapped links (preserve manual ones)
+        del_result = session.execute(
+            delete(IntelAttackLink).where(IntelAttackLink.mapping_type == "auto")
+        )
+        deleted = del_result.rowcount
+        logger.info("remap_cleared_auto_links", deleted=deleted)
+
+        # Process ALL intel items in batches
+        total_items = 0
+        total_links = 0
+        offset = 0
+        batch_size = 500
+
+        while True:
+            items = session.execute(
+                select(IntelItem)
+                .order_by(IntelItem.ingested_at.desc())
+                .offset(offset)
+                .limit(batch_size)
+            ).scalars().all()
+
+            if not items:
+                break
+
+            for item in items:
+                item_dict = {
+                    "title": item.title,
+                    "summary": item.summary,
+                    "description": item.description,
+                    "tags": item.tags,
+                }
+                technique_ids = map_intel_item_to_techniques(item_dict)
+
+                for tid in technique_ids:
+                    if tid not in valid_ids:
+                        continue
+                    link = IntelAttackLink(
+                        intel_id=item.id,
+                        intel_ingested_at=item.ingested_at,
+                        technique_id=tid,
+                        confidence=60,
+                        mapping_type="auto",
+                    )
+                    session.merge(link)
+                    total_links += 1
+
+            total_items += len(items)
+            offset += batch_size
+            # Commit in batches to avoid huge transactions
+            session.commit()
+            logger.info("remap_batch", items_so_far=total_items, links_so_far=total_links)
+
+        logger.info("remap_complete", total_items=total_items, total_links=total_links, deleted_old=deleted)
+        return {"items_processed": total_items, "links_created": total_links, "old_links_deleted": deleted}
+
+    except Exception as e:
+        logger.error("remap_error", error=str(e))
+        session.rollback()
+        return {"error": str(e)}
+    finally:
+        session.close()
+
+
 def build_relationships(batch_size: int = 200) -> dict:
     """Discover and store implicit relationships between intel items.
 
