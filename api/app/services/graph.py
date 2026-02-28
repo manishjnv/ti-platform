@@ -89,7 +89,7 @@ def _upsert_relationship(
         relationship_type=relationship_type,
         confidence=confidence,
         auto_generated=True,
-        metadata=metadata or {},
+        meta=metadata or {},
     )
     stmt = stmt.on_conflict_do_update(
         index_elements=["source_id", "source_type", "target_id", "target_type", "relationship_type"],
