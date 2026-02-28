@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAppStore } from "@/store";
 import { Badge } from "@/components/ui/badge";
@@ -28,18 +28,32 @@ import {
   Cpu,
   FileText,
   TrendingUp,
+  Crosshair,
 } from "lucide-react";
+import type { IntelAttackLink } from "@/types";
+import * as api from "@/lib/api";
 
 export default function IntelDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { selectedItem: item, selectedLoading, fetchItem, clearSelectedItem } = useAppStore();
   const id = params?.id as string;
+  const [attackLinks, setAttackLinks] = useState<IntelAttackLink[]>([]);
+  const [attackLoading, setAttackLoading] = useState(false);
 
   useEffect(() => {
     if (id) fetchItem(id);
     return () => clearSelectedItem();
   }, [id, fetchItem, clearSelectedItem]);
+
+  useEffect(() => {
+    if (!id) return;
+    setAttackLoading(true);
+    api.getIntelAttackLinks(id)
+      .then(setAttackLinks)
+      .catch(() => setAttackLinks([]))
+      .finally(() => setAttackLoading(false));
+  }, [id]);
 
   if (selectedLoading) return <Loading text="Loading intel item..." />;
   if (!item)
@@ -97,6 +111,14 @@ export default function IntelDetailPage() {
       <Tabs defaultValue="overview">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="attack" className="gap-1">
+            <Crosshair className="h-3 w-3" /> ATT&CK
+            {attackLinks.length > 0 && (
+              <Badge variant="secondary" className="text-[9px] ml-1 px-1 py-0">
+                {attackLinks.length}
+              </Badge>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
           <TabsTrigger value="related">Related Intel</TabsTrigger>
         </TabsList>
@@ -257,6 +279,62 @@ export default function IntelDetailPage() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="attack" className="mt-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Crosshair className="h-4 w-4 text-primary" /> MITRE ATT&CK Techniques
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {attackLoading ? (
+                <div className="text-center py-4 text-sm text-muted-foreground">Loading...</div>
+              ) : attackLinks.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Shield className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No ATT&CK techniques mapped to this item yet.</p>
+                  <p className="text-xs mt-1">Auto-mapping runs periodically based on text analysis.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {attackLinks.map((link) => (
+                    <div
+                      key={link.technique_id}
+                      className="flex items-center gap-3 rounded-md border border-border/30 px-3 py-2 hover:bg-muted/20 transition-colors"
+                    >
+                      <Badge variant="outline" className="font-mono text-[10px] shrink-0">
+                        {link.technique_id}
+                      </Badge>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-medium">{link.technique_name}</span>
+                        <span className="text-xs text-muted-foreground ml-2">
+                          {link.tactic_label}
+                        </span>
+                      </div>
+                      <Badge variant="secondary" className="text-[9px] shrink-0">
+                        {link.mapping_type}
+                      </Badge>
+                      <Badge variant="outline" className="text-[9px] shrink-0">
+                        {link.confidence}% conf
+                      </Badge>
+                      {link.url && (
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-muted-foreground hover:text-primary"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="timeline" className="mt-4">

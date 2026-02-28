@@ -207,6 +207,45 @@ INSERT INTO scoring_config (name, is_active) VALUES ('default', TRUE)
 ON CONFLICT DO NOTHING;
 
 -- =============================================
+-- MITRE ATT&CK Techniques
+-- =============================================
+CREATE TABLE attack_techniques (
+    id VARCHAR(20) PRIMARY KEY,                    -- e.g. T1059, T1059.001
+    name VARCHAR(255) NOT NULL,
+    tactic VARCHAR(50) NOT NULL,                   -- e.g. execution, persistence
+    tactic_label VARCHAR(100) NOT NULL,            -- e.g. Execution, Persistence
+    description TEXT,
+    url TEXT,
+    platforms TEXT[] NOT NULL DEFAULT '{}',         -- e.g. {Windows, Linux, macOS}
+    detection TEXT,
+    is_subtechnique BOOLEAN NOT NULL DEFAULT FALSE,
+    parent_id VARCHAR(20),                         -- e.g. T1059 for T1059.001
+    data_sources TEXT[] NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_attack_tactic ON attack_techniques(tactic);
+CREATE INDEX idx_attack_parent ON attack_techniques(parent_id) WHERE parent_id IS NOT NULL;
+CREATE INDEX idx_attack_name_trgm ON attack_techniques USING GIN(name gin_trgm_ops);
+
+-- =============================================
+-- Intel ↔ ATT&CK Link Table
+-- =============================================
+CREATE TABLE intel_attack_links (
+    intel_id UUID NOT NULL,
+    intel_ingested_at TIMESTAMPTZ NOT NULL,
+    technique_id VARCHAR(20) NOT NULL REFERENCES attack_techniques(id) ON DELETE CASCADE,
+    confidence SMALLINT NOT NULL DEFAULT 50 CHECK (confidence >= 0 AND confidence <= 100),
+    mapping_type VARCHAR(30) NOT NULL DEFAULT 'auto',  -- auto | manual
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (intel_id, intel_ingested_at, technique_id),
+    FOREIGN KEY (intel_id, intel_ingested_at) REFERENCES intel_items(id, ingested_at) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_ial_technique ON intel_attack_links(technique_id);
+
+-- =============================================
 -- Materialized Views for Dashboard
 -- =============================================
 CREATE MATERIALIZED VIEW mv_severity_distribution AS

@@ -229,6 +229,61 @@ class ScoringConfigResponse(BaseModel):
     is_active: bool
 
 
+# ─── MITRE ATT&CK ───────────────────────────────────────
+class AttackTechniqueResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    tactic: str
+    tactic_label: str
+    description: str | None = None
+    url: str | None = None
+    platforms: list[str] = Field(default_factory=list)
+    detection: str | None = None
+    is_subtechnique: bool = False
+    parent_id: str | None = None
+    data_sources: list[str] = Field(default_factory=list)
+    intel_count: int = 0  # populated at query time
+
+
+class AttackTechniqueListResponse(BaseModel):
+    techniques: list[AttackTechniqueResponse]
+    total: int
+    tactics: list[str]
+
+
+class AttackMatrixCell(BaseModel):
+    """A single cell in the matrix heatmap."""
+    id: str
+    name: str
+    count: int = 0
+    max_risk: int = 0
+
+
+class AttackMatrixTactic(BaseModel):
+    """One column (tactic) in the matrix."""
+    tactic: str
+    label: str
+    techniques: list[AttackMatrixCell]
+
+
+class AttackMatrixResponse(BaseModel):
+    tactics: list[AttackMatrixTactic]
+    total_techniques: int
+    total_mapped: int
+
+
+class IntelAttackLinkResponse(BaseModel):
+    technique_id: str
+    technique_name: str
+    tactic: str
+    tactic_label: str
+    confidence: int
+    mapping_type: str
+    url: str | None = None
+
+
 # ─── Health ──────────────────────────────────────────────
 class HealthResponse(BaseModel):
     status: str

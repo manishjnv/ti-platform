@@ -100,3 +100,54 @@ export interface SearchFilters {
   page: number;
   page_size: number;
 }
+
+// ─── MITRE ATT&CK ──────────────────────────────────────
+export interface AttackTechnique {
+  id: string;
+  name: string;
+  tactic: string;
+  tactic_label: string;
+  description: string | null;
+  url: string | null;
+  platforms: string[];
+  detection: string | null;
+  is_subtechnique: boolean;
+  parent_id: string | null;
+  data_sources: string[];
+  intel_count: number;
+}
+
+export interface AttackTechniqueListResponse {
+  techniques: AttackTechnique[];
+  total: number;
+  tactics: string[];
+}
+
+export interface AttackMatrixCell {
+  id: string;
+  name: string;
+  count: number;
+  max_risk: number;
+}
+
+export interface AttackMatrixTactic {
+  tactic: string;
+  label: string;
+  techniques: AttackMatrixCell[];
+}
+
+export interface AttackMatrixResponse {
+  tactics: AttackMatrixTactic[];
+  total_techniques: number;
+  total_mapped: number;
+}
+
+export interface IntelAttackLink {
+  technique_id: string;
+  technique_name: string;
+  tactic: string;
+  tactic_label: string;
+  confidence: number;
+  mapping_type: string;
+  url: string | null;
+}

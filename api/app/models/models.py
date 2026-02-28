@@ -157,3 +157,32 @@ class ScoringConfig(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AttackTechnique(Base):
+    __tablename__ = "attack_techniques"
+
+    id: Mapped[str] = mapped_column(String(20), primary_key=True)  # T1059, T1059.001
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    tactic: Mapped[str] = mapped_column(String(50), nullable=False)
+    tactic_label: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    url: Mapped[str | None] = mapped_column(Text)
+    platforms: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    detection: Mapped[str | None] = mapped_column(Text)
+    is_subtechnique: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    parent_id: Mapped[str | None] = mapped_column(String(20))
+    data_sources: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class IntelAttackLink(Base):
+    __tablename__ = "intel_attack_links"
+
+    intel_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    intel_ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    technique_id: Mapped[str] = mapped_column(String(20), primary_key=True)
+    confidence: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=50)
+    mapping_type: Mapped[str] = mapped_column(String(30), nullable=False, default="auto")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

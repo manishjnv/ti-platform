@@ -120,6 +120,25 @@ def setup_schedules():
         queue_name="low",
     )
 
+    # ─── MITRE ATT&CK Sync — every 24 hours ─────────────
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc),
+        func="worker.tasks.sync_attack_techniques",
+        interval=timedelta(hours=24).total_seconds(),
+        queue_name="low",
+        meta={"task": "attack_sync"},
+    )
+
+    # ─── ATT&CK Auto-Mapping — every 10 minutes ─────────
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc) + timedelta(minutes=2),  # delay to let sync run first
+        func="worker.tasks.map_intel_to_attack",
+        kwargs={"batch_size": 100},
+        interval=timedelta(minutes=10).total_seconds(),
+        queue_name="low",
+        meta={"task": "attack_mapping"},
+    )
+
     print(f"Scheduled {len(list(scheduler.get_jobs()))} jobs")
 
 

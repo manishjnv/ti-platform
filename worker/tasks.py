@@ -190,6 +190,118 @@ def generate_ai_summaries(batch_size: int = 10) -> dict:
         session.close()
 
 
+def sync_attack_techniques() -> dict:
+    """Fetch MITRE ATT&CK Enterprise techniques and upsert into DB."""
+    from app.services.mitre import fetch_attack_data
+    from app.models.models import AttackTechnique
+
+    logger.info("attack_sync_start")
+    session = SyncSession()
+    try:
+        techniques = _run_async(fetch_attack_data())
+
+        upserted = 0
+        for t in techniques:
+            existing = session.query(AttackTechnique).filter_by(
+                id=t["id"], tactic=t["tactic"]
+            ).first()
+
+            if existing:
+                existing.name = t["name"]
+                existing.tactic_label = t["tactic_label"]
+                existing.description = t["description"]
+                existing.url = t["url"]
+                existing.platforms = t["platforms"]
+                existing.detection = t["detection"]
+                existing.is_subtechnique = t["is_subtechnique"]
+                existing.parent_id = t["parent_id"]
+                existing.data_sources = t["data_sources"]
+                existing.updated_at = datetime.now(timezone.utc)
+            else:
+                # For multi-tactic techniques, use composite key id+tactic
+                # But our PK is just id, so we pick the first tactic
+                exists_any = session.query(AttackTechnique).filter_by(id=t["id"]).first()
+                if exists_any:
+                    continue  # Already stored under a different tactic
+                session.add(AttackTechnique(**t))
+            upserted += 1
+
+        session.commit()
+        logger.info("attack_sync_complete", upserted=upserted, total=len(techniques))
+        return {"upserted": upserted, "total_fetched": len(techniques)}
+
+    except Exception as e:
+        logger.error("attack_sync_error", error=str(e))
+        session.rollback()
+        return {"error": str(e)}
+    finally:
+        session.close()
+
+
+def map_intel_to_attack(batch_size: int = 100) -> dict:
+    """Auto-map unmapped intel items to ATT&CK techniques based on text analysis."""
+    from app.services.mitre import map_intel_item_to_techniques
+    from app.models.models import IntelItem, IntelAttackLink, AttackTechnique
+    from sqlalchemy import select, exists
+
+    session = SyncSession()
+    try:
+        # Get all valid technique IDs for validation
+        valid_ids = set(
+            session.execute(select(AttackTechnique.id)).scalars().all()
+        )
+        if not valid_ids:
+            logger.warning("attack_map_skip", reason="no techniques in DB — run sync_attack_techniques first")
+            return {"mapped": 0, "reason": "no techniques"}
+
+        # Get intel items that have NO attack links yet
+        already_mapped_subq = (
+            select(IntelAttackLink.intel_id)
+            .distinct()
+            .subquery()
+        )
+        items = session.execute(
+            select(IntelItem)
+            .where(~IntelItem.id.in_(select(already_mapped_subq.c.intel_id)))
+            .order_by(IntelItem.risk_score.desc())
+            .limit(batch_size)
+        ).scalars().all()
+
+        total_links = 0
+        for item in items:
+            item_dict = {
+                "title": item.title,
+                "summary": item.summary,
+                "description": item.description,
+                "tags": item.tags,
+            }
+            technique_ids = map_intel_item_to_techniques(item_dict)
+
+            for tid in technique_ids:
+                if tid not in valid_ids:
+                    continue
+                link = IntelAttackLink(
+                    intel_id=item.id,
+                    intel_ingested_at=item.ingested_at,
+                    technique_id=tid,
+                    confidence=60,
+                    mapping_type="auto",
+                )
+                session.add(link)
+                total_links += 1
+
+        session.commit()
+        logger.info("attack_mapping_complete", items=len(items), links=total_links)
+        return {"items_processed": len(items), "links_created": total_links}
+
+    except Exception as e:
+        logger.error("attack_mapping_error", error=str(e))
+        session.rollback()
+        return {"error": str(e)}
+    finally:
+        session.close()
+
+
 # ─── Helpers ──────────────────────────────────────────────
 
 def _get_connector(feed_name: str):

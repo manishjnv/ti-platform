@@ -120,3 +120,29 @@ export async function triggerAllFeeds() {
 export async function getFeedStatus() {
   return fetcher<import("@/types").FeedStatus[]>("/feeds/status");
 }
+
+// ─── MITRE ATT&CK ──────────────────────────────────────
+export async function getAttackMatrix() {
+  return fetcher<import("@/types").AttackMatrixResponse>("/techniques/matrix");
+}
+
+export async function getAttackTechniques(params: Record<string, string | number | undefined> = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== "") query.set(k, String(v));
+  });
+  return fetcher<import("@/types").AttackTechniqueListResponse>(`/techniques?${query}`);
+}
+
+export async function getAttackTechniqueDetail(id: string) {
+  return fetcher<{
+    technique: import("@/types").AttackTechnique;
+    intel_items: import("@/types").IntelItem[];
+    subtechniques: import("@/types").AttackTechnique[];
+    intel_count: number;
+  }>(`/techniques/${id}`);
+}
+
+export async function getIntelAttackLinks(itemId: string) {
+  return fetcher<import("@/types").IntelAttackLink[]>(`/techniques/intel/${itemId}/techniques`);
+}
