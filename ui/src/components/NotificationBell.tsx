@@ -24,6 +24,14 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   system: <Info className="h-3.5 w-3.5" />,
 };
 
+const CATEGORY_ACCENT: Record<string, string> = {
+  alert: "border-l-orange-500/70",
+  feed_error: "border-l-red-500/70",
+  correlation: "border-l-purple-500/70",
+  risk_change: "border-l-yellow-500/70",
+  system: "border-l-blue-500/70",
+};
+
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
@@ -240,7 +248,8 @@ function NotificationItem({
   return (
     <div
       className={cn(
-        "group flex gap-3 px-4 py-3 border-b border-border/10 transition-colors",
+        "group flex gap-3 px-4 py-3 border-b border-border/10 border-l-2 transition-colors",
+        CATEGORY_ACCENT[n.category] || CATEGORY_ACCENT.system,
         !n.is_read ? "bg-[hsl(222,47%,11%)] hover:bg-[hsl(222,47%,13%)]" : "bg-[hsl(222,47%,8%)] hover:bg-[hsl(222,47%,11%)]"
       )}
     >
@@ -256,17 +265,16 @@ function NotificationItem({
       <div className="flex-1 min-w-0">
         {entityUrl ? (
           <a href={entityUrl} className="text-xs font-medium leading-snug hover:text-primary transition-colors line-clamp-2 break-words">
-            {n.title}
+            <TruncatedTitle text={n.title} />
           </a>
         ) : (
-          <p className="text-xs font-medium leading-snug line-clamp-2 break-words">{n.title}</p>
-        )}
-        {n.message && (
-          <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2 leading-relaxed whitespace-pre-line break-all">
-            {n.message}
+          <p className="text-xs font-medium leading-snug line-clamp-2 break-words">
+            <TruncatedTitle text={n.title} />
           </p>
         )}
-        <div className="flex items-center gap-2 mt-1">
+        {n.message && <FormattedMessage message={n.message} />}
+        <MetadataBadges notification={n} />
+        <div className="flex items-center gap-2 mt-1.5">
           <span className="text-[9px] text-muted-foreground/50">{timeAgo(n.created_at)}</span>
           <span className={cn(
             "text-[9px] font-medium px-1.5 py-0.5 rounded capitalize",
@@ -301,6 +309,168 @@ function NotificationItem({
           <Trash2 className="h-3 w-3" />
         </button>
       </div>
+    </div>
+  );
+}
+
+/* ── Helper: Truncate long URLs in title text ── */
+function TruncatedTitle({ text }: { text: string }) {
+  // Shorten URLs longer than 45 chars for display
+  const shortened = text.replace(
+    /https?:\/\/[^\s]{45,}/g,
+    (url) => url.slice(0, 42) + "…"
+  );
+  return <>{shortened}</>;
+}
+
+/* ── Helper: Render pipe-delimited messages as structured chips, or plain text ── */
+function FormattedMessage({ message }: { message: string }) {
+  // Detect pipe-delimited key:value format (e.g. "Threat: x | Status: y | Reporter: z")
+  if (message.includes("|")) {
+    const parts = message.split(/\s*\|\s*/).filter(Boolean);
+    const kvParts = parts.filter((p) => p.includes(":"));
+    if (kvParts.length >= 2) {
+      return (
+        <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 mt-1">
+          {parts.map((part, i) => {
+            if (part.includes(":")) {
+              const [key, ...vals] = part.split(":");
+              const val = vals.join(":").trim();
+              return (
+                <span key={i} className="text-[10px]">
+                  <span className="text-muted-foreground/50">{key.trim()}</span>{" "}
+                  <span className="text-muted-foreground">{val}</span>
+                </span>
+              );
+            }
+            return (
+              <span key={i} className="text-[10px] text-muted-foreground">
+                {part}
+              </span>
+            );
+          })}
+        </div>
+      );
+    }
+  }
+
+  // Bullet-list messages (batch notifications)
+  if (message.includes("\n•") || message.startsWith("•")) {
+    const lines = message.split("\n").filter(Boolean);
+    return (
+      <div className="mt-0.5 space-y-0.5">
+        {lines.slice(0, 4).map((line, i) => (
+          <p key={i} className="text-[10px] text-muted-foreground leading-snug truncate">
+            {line}
+          </p>
+        ))}
+        {lines.length > 4 && (
+          <p className="text-[10px] text-muted-foreground/50">+{lines.length - 4} more</p>
+        )}
+      </div>
+    );
+  }
+
+  // Default plain text
+  return (
+    <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2 leading-relaxed whitespace-pre-line break-words">
+      {message}
+    </p>
+  );
+}
+
+/* ── Helper: Smart metadata badges from notification metadata ── */
+function MetadataBadges({ notification: n }: { notification: Notification }) {
+  const meta = n.metadata || {};
+  const badges: React.ReactNode[] = [];
+
+  // Risk score
+  const riskScore = (meta.risk_score ?? meta.top_risk_score) as number | undefined;
+  if (riskScore != null) {
+    const s = Number(riskScore);
+    const color =
+      s >= 90 ? "text-red-400 bg-red-500/10" :
+      s >= 70 ? "text-orange-400 bg-orange-500/10" :
+      s >= 50 ? "text-yellow-400 bg-yellow-500/10" :
+               "text-blue-400 bg-blue-500/10";
+    badges.push(
+      <span key="risk" className={cn("text-[9px] font-mono tabular-nums px-1.5 py-0.5 rounded-sm", color)}>
+        {meta.top_risk_score != null ? "Top " : ""}Risk {s}
+      </span>
+    );
+  }
+
+  // KEV indicator
+  if (meta.is_kev) {
+    badges.push(
+      <span key="kev" className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm bg-red-500/15 text-red-400">
+        ⚡ KEV
+      </span>
+    );
+  }
+
+  // Source name
+  if (meta.source_name) {
+    badges.push(
+      <span key="src" className="text-[9px] px-1.5 py-0.5 rounded-sm bg-primary/10 text-primary/80">
+        {String(meta.source_name)}
+      </span>
+    );
+  }
+
+  // Feed names (correlation)
+  if (meta.feed_names) {
+    const feeds = meta.feed_names as string[];
+    badges.push(
+      <span key="feeds" className="text-[9px] px-1.5 py-0.5 rounded-sm bg-cyan-500/10 text-cyan-400">
+        {feeds.join(" · ")}
+      </span>
+    );
+  }
+
+  // CVE tags
+  const cveIds = (meta.cve_ids || (meta.cve_id ? [meta.cve_id] : null)) as string[] | null;
+  if (cveIds && cveIds.length > 0) {
+    cveIds.slice(0, 2).forEach((cve, i) => {
+      badges.push(
+        <span key={`cve-${i}`} className="text-[9px] px-1.5 py-0.5 rounded-sm bg-violet-500/10 text-violet-400 font-mono">
+          {cve}
+        </span>
+      );
+    });
+    if (cveIds.length > 2) {
+      badges.push(
+        <span key="cve-more" className="text-[9px] text-muted-foreground/40">+{cveIds.length - 2}</span>
+      );
+    }
+  }
+
+  // Match count (batch)
+  if (meta.match_count != null) {
+    badges.push(
+      <span key="count" className="text-[9px] px-1.5 py-0.5 rounded-sm bg-muted/30 text-muted-foreground">
+        {Number(meta.match_count)} items
+      </span>
+    );
+  }
+
+  // Feed status (feed_error)
+  if (meta.status && n.category === "feed_error") {
+    const isFailed = meta.status === "failed";
+    badges.push(
+      <span key="fst" className={cn("text-[9px] px-1.5 py-0.5 rounded-sm font-medium",
+        isFailed ? "bg-red-500/10 text-red-400" : "bg-yellow-500/10 text-yellow-400"
+      )}>
+        {String(meta.status).toUpperCase()}
+      </span>
+    );
+  }
+
+  if (badges.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap gap-1 mt-1.5">
+      {badges}
     </div>
   );
 }

@@ -392,6 +392,53 @@ def _compute_notification_severity(item: IntelItem) -> str:
     return "info"
 
 
+def _sanitize_error_message(msg: str) -> str:
+    """Strip Python internals from error messages for human-readable display."""
+    import re as _re
+    if not msg:
+        return ""
+    # Strip RetryError wrappers
+    if "RetryError" in msg:
+        inner = _re.search(r'(\w*Error|\w*Exception)[:(]\s*(.{0,120})', msg)
+        if inner:
+            return f"{inner.group(1)}: {inner.group(2).rstrip(')> ')}"
+        return "Connection failed after multiple retries"
+    # Strip memory addresses like <Future at 0x7aff26993b60 state=finished>
+    msg = _re.sub(r'<[^>]*(?:at 0x[0-9a-fA-F]+)[^>]*>', '[internal]', msg)
+    # Strip common Python module prefixes
+    for prefix in ("requests.exceptions.", "aiohttp.", "urllib3.exceptions.",
+                   "httpx.", "asyncio."):
+        msg = msg.replace(prefix, "")
+    return msg[:200].strip()
+
+
+def _parse_summary_fields(summary: str) -> tuple[str, dict[str, str]]:
+    """Parse pipe-delimited summaries into clean message + structured fields.
+
+    Example input:  'Threat: malware_download | Status: online | Reporter: geen ensp'
+    Returns: ('Threat: malware_download\nStatus: online\nReporter: geen ensp',
+              {'threat': 'malware_download', 'status': 'online', 'reporter': 'geen ensp'})
+    """
+    if '|' not in summary:
+        return summary, {}
+
+    parts = [p.strip() for p in summary.split('|') if p.strip()]
+    parsed: dict[str, str] = {}
+    clean_parts: list[str] = []
+
+    for part in parts:
+        if ':' in part:
+            key, _, val = part.partition(':')
+            key_clean = key.strip().lower().replace(' ', '_')
+            val_clean = val.strip()
+            parsed[key_clean] = val_clean
+            clean_parts.append(f"{key.strip()}: {val_clean}")
+        else:
+            clean_parts.append(part)
+
+    return '\n'.join(clean_parts), parsed
+
+
 def _eval_threshold_rule(
     session: Session,
     rule: NotificationRule,
@@ -449,23 +496,27 @@ def _eval_threshold_rule(
     created = 0
     if len(matching_items) == 1:
         item = matching_items[0]
+        raw_summary = item.summary or item.description or ""
+        clean_msg, parsed_fields = _parse_summary_fields(raw_summary)
+        meta = {
+            "risk_score": item.risk_score,
+            "source_name": item.source_name,
+            "feed_type": item.feed_type,
+            "is_kev": item.is_kev,
+            "cve_ids": item.cve_ids or [],
+            **parsed_fields,
+        }
         _create_notification(
             session,
             user_id=rule.user_id,
             rule_id=rule.id,
             title=f"[{item.severity.upper()}] {item.title[:200]}",
-            message=item.summary or item.description or "",
+            message=clean_msg,
             severity=_compute_notification_severity(item),
             category="alert",
             entity_type="intel",
             entity_id=str(item.id),
-            metadata={
-                "risk_score": item.risk_score,
-                "source_name": item.source_name,
-                "feed_type": item.feed_type,
-                "is_kev": item.is_kev,
-                "cve_ids": item.cve_ids or [],
-            },
+            metadata=meta,
         )
         created = 1
     elif len(matching_items) > 1:
@@ -514,7 +565,7 @@ def _eval_feed_error_rule(
         if on_error and feed.status == "failed":
             issues.append(f"Feed '{feed.feed_name}' is in FAILED state")
             if feed.error_message:
-                issues.append(f"Error: {feed.error_message[:200]}")
+                issues.append(f"Error: {_sanitize_error_message(feed.error_message)}")
 
         # Check for stale feed (no success in stale_minutes)
         if feed.last_success:
