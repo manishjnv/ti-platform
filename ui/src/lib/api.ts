@@ -146,3 +146,26 @@ export async function getAttackTechniqueDetail(id: string) {
 export async function getIntelAttackLinks(itemId: string) {
   return fetcher<import("@/types").IntelAttackLink[]>(`/techniques/intel/${itemId}/techniques`);
 }
+
+// ─── Relationship Graph ─────────────────────────────────
+export async function getGraphExplore(params: {
+  entity_id: string;
+  entity_type?: string;
+  depth?: number;
+  limit?: number;
+}) {
+  const query = new URLSearchParams();
+  query.set("entity_id", params.entity_id);
+  if (params.entity_type) query.set("entity_type", params.entity_type);
+  if (params.depth) query.set("depth", String(params.depth));
+  if (params.limit) query.set("limit", String(params.limit));
+  return fetcher<import("@/types").GraphResponse>(`/graph/explore?${query}`);
+}
+
+export async function getRelatedIntel(itemId: string, limit = 20) {
+  return fetcher<import("@/types").RelatedIntelItem[]>(`/graph/related/${itemId}?limit=${limit}`);
+}
+
+export async function getGraphStats() {
+  return fetcher<import("@/types").GraphStatsResponse>("/graph/stats");
+}

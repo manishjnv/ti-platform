@@ -246,6 +246,31 @@ CREATE TABLE intel_attack_links (
 CREATE INDEX idx_ial_technique ON intel_attack_links(technique_id);
 
 -- =============================================
+-- Entity Relationships (Graph)
+-- =============================================
+CREATE TABLE relationships (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    source_id TEXT NOT NULL,              -- UUID or string ID of source entity
+    source_type VARCHAR(30) NOT NULL,     -- intel | ioc | technique | cve
+    target_id TEXT NOT NULL,              -- UUID or string ID of target entity
+    target_type VARCHAR(30) NOT NULL,     -- intel | ioc | technique | cve
+    relationship_type VARCHAR(50) NOT NULL DEFAULT 'related-to',  -- related-to | uses | indicates | targets | exploits | shares-ioc | shares-cve | co-occurs
+    confidence SMALLINT NOT NULL DEFAULT 50 CHECK (confidence >= 0 AND confidence <= 100),
+    auto_generated BOOLEAN NOT NULL DEFAULT TRUE,
+    first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    metadata JSONB DEFAULT '{}',          -- extra context: shared IOC values, matching keywords, etc.
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_rel_source ON relationships(source_id, source_type);
+CREATE INDEX idx_rel_target ON relationships(target_id, target_type);
+CREATE INDEX idx_rel_type ON relationships(relationship_type);
+CREATE INDEX idx_rel_confidence ON relationships(confidence DESC);
+-- Prevent duplicate edges
+CREATE UNIQUE INDEX idx_rel_unique_edge ON relationships(source_id, source_type, target_id, target_type, relationship_type);
+
+-- =============================================
 -- Materialized Views for Dashboard
 -- =============================================
 CREATE MATERIALIZED VIEW mv_severity_distribution AS

@@ -139,6 +139,16 @@ def setup_schedules():
         meta={"task": "attack_mapping"},
     )
 
+    # ─── Relationship Graph Builder — every 15 minutes ───
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc) + timedelta(minutes=3),
+        func="worker.tasks.build_relationships",
+        kwargs={"batch_size": 300},
+        interval=timedelta(minutes=15).total_seconds(),
+        queue_name="low",
+        meta={"task": "relationship_builder"},
+    )
+
     print(f"Scheduled {len(list(scheduler.get_jobs()))} jobs")
 
 

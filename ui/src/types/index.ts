@@ -151,3 +151,54 @@ export interface IntelAttackLink {
   mapping_type: string;
   url: string | null;
 }
+
+// ─── Relationship Graph ─────────────────────────────────
+export interface GraphNode {
+  id: string;
+  type: string;
+  label: string;
+  severity?: Severity;
+  risk_score?: number;
+  source?: string;
+  feed_type?: FeedType;
+  ioc_type?: string;
+  tactic?: string;
+}
+
+export interface GraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  type: string;
+  confidence: number;
+  first_seen: string | null;
+  last_seen: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface GraphResponse {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  center: string;
+  total_nodes: number;
+  total_edges: number;
+}
+
+export interface RelatedIntelItem {
+  id: string;
+  title: string;
+  severity: Severity;
+  risk_score: number;
+  source_name: string;
+  feed_type: FeedType;
+  ingested_at: string;
+  relationship_type: string;
+  confidence: number;
+  meta: Record<string, unknown>;
+}
+
+export interface GraphStatsResponse {
+  total_relationships: number;
+  by_type: Record<string, number>;
+  avg_confidence: number;
+}

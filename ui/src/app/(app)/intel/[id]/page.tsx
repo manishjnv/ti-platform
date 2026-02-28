@@ -30,7 +30,7 @@ import {
   TrendingUp,
   Crosshair,
 } from "lucide-react";
-import type { IntelAttackLink } from "@/types";
+import type { IntelAttackLink, RelatedIntelItem } from "@/types";
 import * as api from "@/lib/api";
 
 export default function IntelDetailPage() {
@@ -40,6 +40,8 @@ export default function IntelDetailPage() {
   const id = params?.id as string;
   const [attackLinks, setAttackLinks] = useState<IntelAttackLink[]>([]);
   const [attackLoading, setAttackLoading] = useState(false);
+  const [relatedItems, setRelatedItems] = useState<RelatedIntelItem[]>([]);
+  const [relatedLoading, setRelatedLoading] = useState(false);
 
   useEffect(() => {
     if (id) fetchItem(id);
@@ -53,6 +55,12 @@ export default function IntelDetailPage() {
       .then(setAttackLinks)
       .catch(() => setAttackLinks([]))
       .finally(() => setAttackLoading(false));
+
+    setRelatedLoading(true);
+    api.getRelatedIntel(id)
+      .then(setRelatedItems)
+      .catch(() => setRelatedItems([]))
+      .finally(() => setRelatedLoading(false));
   }, [id]);
 
   if (selectedLoading) return <Loading text="Loading intel item..." />;
@@ -120,7 +128,14 @@ export default function IntelDetailPage() {
             )}
           </TabsTrigger>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
-          <TabsTrigger value="related">Related Intel</TabsTrigger>
+          <TabsTrigger value="related">
+            Related Intel
+            {relatedItems.length > 0 && (
+              <Badge variant="secondary" className="text-[9px] ml-1 px-1 py-0">
+                {relatedItems.length}
+              </Badge>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4 mt-4">
@@ -372,12 +387,60 @@ export default function IntelDetailPage() {
 
         <TabsContent value="related" className="mt-4">
           <Card>
-            <CardContent className="py-12 text-center text-muted-foreground">
-              <Shield className="h-12 w-12 mx-auto mb-3 opacity-30" />
-              <p>Related intelligence correlation coming in Phase 2.</p>
-              <p className="text-sm mt-1">
-                IOC cross-reference, threat actor mapping, and campaign linking.
-              </p>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Shield className="h-4 w-4 text-primary" /> Related Intelligence
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {relatedLoading ? (
+                <div className="text-center py-4 text-sm text-muted-foreground">Loading…</div>
+              ) : relatedItems.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Shield className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No related intelligence found yet.</p>
+                  <p className="text-xs mt-1">
+                    Relationships are built automatically based on shared IOCs, CVEs and ATT&CK techniques.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {relatedItems.map((rel) => (
+                    <a
+                      key={rel.id}
+                      href={`/intel/${rel.id}`}
+                      className="flex items-center gap-3 rounded-md border border-border/30 px-3 py-2 hover:bg-muted/20 transition-colors"
+                    >
+                      <Badge variant={rel.severity as any} className="text-[10px] shrink-0">
+                        {rel.severity.toUpperCase()}
+                      </Badge>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-medium truncate block">{rel.title}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {rel.source_name} · {rel.feed_type}
+                        </span>
+                      </div>
+                      <Badge variant="secondary" className="text-[9px] shrink-0">
+                        {rel.relationship_type.replace(/_/g, " ")}
+                      </Badge>
+                      <Badge variant="outline" className="text-[9px] shrink-0">
+                        {rel.confidence}% conf
+                      </Badge>
+                      <span className="text-xs text-muted-foreground font-medium shrink-0">
+                        {rel.risk_score}
+                      </span>
+                    </a>
+                  ))}
+                  <div className="pt-2 text-center">
+                    <a
+                      href={`/investigate?id=${id}&type=intel`}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      View full relationship graph →
+                    </a>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

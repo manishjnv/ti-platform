@@ -284,6 +284,57 @@ class IntelAttackLinkResponse(BaseModel):
     url: str | None = None
 
 
+# ─── Graph / Relationships ───────────────────────────────
+class GraphNode(BaseModel):
+    id: str
+    type: str
+    label: str
+    severity: str | None = None
+    risk_score: int | None = None
+    source: str | None = None
+    feed_type: str | None = None
+    ioc_type: str | None = None
+    tactic: str | None = None
+
+
+class GraphEdge(BaseModel):
+    id: str
+    source: str
+    target: str
+    type: str
+    confidence: int = 50
+    first_seen: str | None = None
+    last_seen: str | None = None
+    metadata: dict = Field(default_factory=dict)
+
+
+class GraphResponse(BaseModel):
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]
+    center: str
+    total_nodes: int
+    total_edges: int
+
+
+class RelatedIntelItem(BaseModel):
+    id: str
+    title: str
+    severity: str
+    risk_score: int
+    source_name: str
+    feed_type: str
+    ingested_at: str
+    relationship_type: str
+    confidence: int
+    meta: dict = Field(default_factory=dict)
+
+
+class GraphStatsResponse(BaseModel):
+    total_relationships: int
+    by_type: dict[str, int]
+    avg_confidence: float
+
+
 # ─── Health ──────────────────────────────────────────────
 class HealthResponse(BaseModel):
     status: str

@@ -302,6 +302,27 @@ def map_intel_to_attack(batch_size: int = 100) -> dict:
         session.close()
 
 
+def build_relationships(batch_size: int = 200) -> dict:
+    """Discover and store implicit relationships between intel items.
+
+    Analyses shared IOCs, CVEs, and ATT&CK techniques to build graph edges.
+    """
+    from app.services.graph import build_relationships_batch
+
+    logger.info("relationship_build_start")
+    session = SyncSession()
+    try:
+        stats = build_relationships_batch(session, batch_size=batch_size)
+        logger.info("relationship_build_complete", **stats)
+        return stats
+    except Exception as e:
+        logger.error("relationship_build_error", error=str(e))
+        session.rollback()
+        return {"error": str(e)}
+    finally:
+        session.close()
+
+
 # ─── Helpers ──────────────────────────────────────────────
 
 def _get_connector(feed_name: str):

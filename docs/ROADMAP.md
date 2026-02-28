@@ -63,6 +63,11 @@ CISA KEV, NVD, URLhaus, AbuseIPDB, AlienVault OTX, VirusTotal, Shodan
   - Highlight shortest path between two entities
   - Export graph as image/JSON
 - **UI Component:** `GraphExplorer.tsx`, `GraphNode.tsx`, `GraphControls.tsx`
+- **USP Features (Differentiators):**
+  - **AI Relationship Discovery** — auto-detect implicit relationships between intel items from different feeds that share IOCs, CVEs, domains, or text similarity. Surface hidden connections analysts would miss.
+  - **Attack Chain Reconstruction** — auto-connect ATT&CK techniques in kill-chain order to visualize full attack paths (Recon → Initial Access → Execution → Persistence → Exfil). Highlight gaps in observed chain.
+  - **Temporal Playback** — animate the graph over time showing when relationships formed day-by-day as intel was ingested. Watch campaigns evolve visually.
+  - **Campaign Auto-Clustering** — graph community detection (Louvain algorithm) automatically groups IOCs/intel into probable campaigns based on shared infrastructure, timing, technique overlap.
 
 ### 1.3 Notifications & Alerting
 - **Module:** `api/app/services/notifications.py` — notification engine with rule evaluation

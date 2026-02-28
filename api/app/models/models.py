@@ -186,3 +186,20 @@ class IntelAttackLink(Base):
     confidence: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=50)
     mapping_type: Mapped[str] = mapped_column(String(30), nullable=False, default="auto")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Relationship(Base):
+    __tablename__ = "relationships"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_id: Mapped[str] = mapped_column(Text, nullable=False)
+    source_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    target_id: Mapped[str] = mapped_column(Text, nullable=False)
+    target_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    relationship_type: Mapped[str] = mapped_column(String(50), nullable=False, default="related-to")
+    confidence: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=50)
+    auto_generated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
