@@ -8,8 +8,10 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import func, select, text, or_, and_
+from sqlalchemy import select, or_, and_, cast
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy import Text as SAText
 
 from app.core.database import get_db
 from app.core.redis import cache_key, get_cached, set_cached
@@ -266,14 +268,14 @@ async def get_related_intel(
     if not item:
         raise HTTPException(status_code=404, detail="Intel item not found")
 
-    # Build overlap conditions
+    # Build overlap conditions using PostgreSQL && operator
     conditions = []
     if item.cve_ids:
-        conditions.append(IntelItem.cve_ids.overlap(item.cve_ids))
+        conditions.append(IntelItem.cve_ids.op("&&")(cast(item.cve_ids, ARRAY(SAText))))
     if item.tags:
-        conditions.append(IntelItem.tags.overlap(item.tags))
+        conditions.append(IntelItem.tags.op("&&")(cast(item.tags, ARRAY(SAText))))
     if item.affected_products:
-        conditions.append(IntelItem.affected_products.overlap(item.affected_products))
+        conditions.append(IntelItem.affected_products.op("&&")(cast(item.affected_products, ARRAY(SAText))))
 
     if not conditions:
         return []
