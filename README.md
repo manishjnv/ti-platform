@@ -16,146 +16,17 @@ A production-grade, self-hosted threat intelligence aggregation and analysis pla
 
 ## Table of Contents
 
-- [Project Standards (Permanent)](#-project-standards--permanent-rules)
 - [Architecture](#architecture)
 - [Pages & Features](#pages--features)
-- [Folder Structure](#folder-structure)
 - [Quick Start](#quick-start)
 - [Environment Variables](#environment-variables)
-- [Feed Connectors](#feed-connectors)
 - [API Reference](#api-reference)
-- [Data Flow](#data-flow)
-- [Deployment](#deployment)
-- [Troubleshooting](#troubleshooting)
 - [Login & Authentication](#-login--authentication)
 - [Documentation Index](#-documentation-index)
 
 ---
 
-## 📐 Project Standards — Permanent Rules
-
-> **This section is the SOURCE OF TRUTH for all development.**
-> Every feature, refactor, and phase MUST comply with these standards.
-> If a new feature conflicts with these rules — **redesign the feature, not the standards.**
-
-### 📁 Codebase Organization (Mandatory)
-
-- Strict **modular architecture** — clean separation of concerns.
-- No monolithic files. No mixed responsibilities.
-- Every module must be easy to **extend, refactor, test, and scale**.
-- Business logic lives in `services/`, NOT in route handlers.
-- Folder structure must be shown before implementing any new feature.
-
-### 🔐 Security Coding Practices (Non-Negotiable)
-
-| Area | Requirement |
-|------|-------------|
-| Input validation | On ALL endpoints — strict schema enforcement (Pydantic / Zod) |
-| Queries | Parameterized queries / ORM only — **no raw SQL concatenation** |
-| Output | Sanitized — no sensitive data leaks |
-| Secrets | Environment variables only — **never hardcoded** |
-| Auth | RBAC-ready, least-privilege access, Cloudflare Zero Trust SSO |
-| API | Rate limiting, request size limits, secure headers, CORS policy |
-| Compliance | OWASP secure coding practices |
-| Logging | All security-relevant events logged (auth, access, mutations) |
-
-### ⚡ Performance Optimization (Required by Default)
-
-**Backend:**
-- `async` everywhere possible (asyncpg, aiohttp, async Redis)
-- Pagination on ALL list APIs
-- Background workers (RQ) for heavy tasks
-- Caching layer (Redis)
-- DB indexing strategy (TimescaleDB hypertables + B-tree indexes)
-
-**Frontend:**
-- Code splitting (Next.js dynamic imports)
-- Lazy loading for below-fold components
-- API response caching (SWR / Zustand)
-- Minimal re-renders (memoized selectors, `useMemo`)
-- Optimized state management (Zustand — no prop drilling)
-
-**Data:**
-- No N+1 queries
-- Bulk operations for feed ingestion
-- OpenSearch for full-text / IOC search
-
-### 📜 Enterprise-Grade Logging
-
-Structured, centralized, SIEM-friendly logs with:
-
-| Field | Description |
-|-------|------------|
-| `timestamp` | ISO-8601 |
-| `module` | Source module name |
-| `event_type` | `security`, `audit`, `app`, `perf` |
-| `user` | Authenticated user (if available) |
-| `severity` | `debug`, `info`, `warning`, `error`, `critical` |
-| `request_id` | Trace ID for request correlation |
-
-Log categories: **application**, **security**, **audit**, **performance**.
-
-### 🎨 UI / UX Design Standards
-
-The reference dashboard images are the **PRIMARY DESIGN BASELINE**:
-
-- Follow their layout, spacing, component hierarchy, and visual density.
-- All new UI must feel like a natural extension of the references.
-- Modern dark threat-intel aesthetic (blue-tinted dark theme).
-- Components must be **modular, reusable, responsive, and performant**.
-- Do NOT invent random UI — every screen matches the reference design language.
-
-### 🧠 Engineering Behavior
-
-This is a **long-running, multi-phase production platform** — not throwaway code.
-
-For every feature:
-1. Update architecture if needed
-2. Place code in the correct module
-3. Wire logging
-4. Update tests
-5. Update README
-
-Always: think before coding, keep files small and focused, prefer extensibility.
-
-### 🚫 Strictly Forbidden
-
-| ❌ Forbidden | ✅ Required Instead |
-|---|---|
-| Monolithic files | Small, focused modules |
-| Hardcoded secrets | Environment variables |
-| Business logic in routes | Logic in `services/` layer |
-| Skipping validation | Pydantic / Zod schemas on every endpoint |
-| Console-only logging | Structured logging to stdout (JSON) |
-| Unpaginated APIs | Pagination on ALL list endpoints |
-| UI ignoring reference design | Match reference dashboards |
-
-### 📦 Output Standard for Every Implementation
-
-1. Show updated folder structure (affected parts only)
-2. Show files created / modified
-3. Provide production-grade code
-4. Update README section
-5. Explain why the design follows project standards
-
----
-
 ## Architecture
-
-```
-┌──────────────┐   Cloudflare Tunnel    ┌──────────────────────────────────────────────┐
-│   Browser    │ ─────────────────────► │  Docker Host                                 │
-│  (SSO via    │   intelwatch.trendsmap.in    │                                              │
-│  Zero Trust) │                        │  ┌──────┐  ┌──────┐  ┌────────────────┐     │
-└──────────────┘                        │  │  UI  │  │  API │  │  Worker +      │     │
-                                        │  │ :3000│→ │ :8000│  │  Scheduler     │     │
-                                        │  └──────┘  └──┬───┘  └───────┬────────┘     │
-                                        │               │              │               │
-                                        │  ┌────────────┴──────────────┴────────────┐  │
-                                        │  │  PostgreSQL/TimescaleDB │ Redis │ OS   │  │
-                                        │  └────────────────────────────────────────┘  │
-                                        └──────────────────────────────────────────────┘
-```
 
 **7 Docker services:** UI, API, Worker, Scheduler, PostgreSQL+TimescaleDB, Redis, OpenSearch
 
@@ -168,6 +39,8 @@ Always: think before coding, keep files small and focused, prefer extensibility.
 | Cache/Queue | Redis 7 | 6379 |
 | Worker | Python RQ (Redis Queue) | — |
 | Scheduler | Python APScheduler | — |
+
+> **Deep dives:** [Architecture & Data Model](docs/ARCHITECTURE.md) · [Technology Stack](docs/TECHNOLOGY.md) · [Feed Integrations](docs/INTEGRATION.md)
 
 ---
 
@@ -187,126 +60,6 @@ Always: think before coding, keep files small and focused, prefer extensibility.
 | **Settings** | `/settings` | General, Security, Notifications, Appearance, Data & Storage, API Keys, Platform Setup |
 
 **Shared components:** AuthGuard, StatCard, ThreatLevelBar, DonutChart, TrendLineChart, HorizontalBarChart, RankedDataList, FeedStatusPanel, Sidebar (4-section nav), Header bar (search, notifications, user menu).
-
----
-
-## Folder Structure
-
-```
-ti-platform/
-├── .github/workflows/ci.yml     # CI/CD pipeline
-├── api/                          # FastAPI backend
-│   ├── app/
-│   │   ├── core/                 # Config, DB, Redis, OpenSearch, logging
-│   │   │   ├── config.py
-│   │   │   ├── database.py
-│   │   │   ├── logging.py
-│   │   │   ├── opensearch.py
-│   │   │   └── redis.py
-│   │   ├── middleware/           # Auth, audit logging
-│   │   │   ├── audit.py
-│   │   │   └── auth.py
-│   │   ├── models/               # SQLAlchemy ORM models
-│   │   │   └── models.py
-│   │   ├── routes/               # API route handlers (thin — logic in services)
-│   │   │   ├── admin.py
-│   │   │   ├── auth.py           # Login, logout, session management
-│   │   │   ├── dashboard.py
-│   │   │   ├── health.py
-│   │   │   ├── intel.py
-│   │   │   └── search.py
-│   │   ├── schemas/              # Pydantic request/response schemas
-│   │   ├── services/             # Business logic layer
-│   │   │   ├── ai.py
-│   │   │   ├── auth.py           # JWT sessions, CF Access verification
-│   │   │   ├── database.py
-│   │   │   ├── domain.py         # Domain & deployment configuration
-│   │   │   ├── export.py
-│   │   │   ├── scoring.py
-│   │   │   ├── search.py
-│   │   │   └── feeds/            # Feed connector plugins
-│   │   │       ├── base.py       # Abstract base connector
-│   │   │       ├── abuseipdb.py
-│   │   │       ├── kev.py
-│   │   │       ├── nvd.py
-│   │   │       ├── otx.py
-│   │   │       └── urlhaus.py
-│   │   └── main.py               # FastAPI app entry point
-│   └── pyproject.toml
-├── cloudflare/tunnel-config.yml  # Cloudflare Tunnel setup
-├── db/schema.sql                 # PostgreSQL + TimescaleDB DDL
-├── docker/
-│   ├── Dockerfile.api
-│   ├── Dockerfile.ui
-│   └── Dockerfile.worker
-├── opensearch/
-│   └── intel-items-mapping.json  # Index mapping
-├── ui/                           # Next.js 14 frontend
-│   ├── src/
-│   │   ├── app/
-│   │   │   ├── (app)/            # Authenticated layout group
-│   │   │   │   ├── layout.tsx    # Sidebar + header bar wrapper
-│   │   │   │   ├── dashboard/page.tsx
-│   │   │   │   ├── threats/page.tsx
-│   │   │   │   ├── intel/page.tsx
-│   │   │   │   ├── intel/[id]/page.tsx
-│   │   │   │   ├── search/page.tsx
-│   │   │   │   ├── iocs/page.tsx
-│   │   │   │   ├── analytics/page.tsx
-│   │   │   │   ├── geo/page.tsx
-│   │   │   │   ├── feeds/page.tsx
-│   │   │   │   └── settings/page.tsx
-│   │   │   ├── globals.css
-│   │   │   ├── layout.tsx        # Root HTML layout
-│   │   │   ├── login/page.tsx    # Login page (SSO / dev bypass)
-│   │   │   └── page.tsx          # Redirect → /login
-│   │   ├── components/
-│   │   │   ├── charts/           # Reusable chart components
-│   │   │   │   ├── DonutChart.tsx
-│   │   │   │   ├── HorizontalBarChart.tsx
-│   │   │   │   ├── TrendLineChart.tsx
-│   │   │   │   └── index.ts
-│   │   │   ├── ui/               # shadcn/ui primitives
-│   │   │   │   ├── badge.tsx
-│   │   │   │   ├── button.tsx
-│   │   │   │   ├── card.tsx
-│   │   │   │   ├── input.tsx
-│   │   │   │   └── tabs.tsx
-│   │   │   ├── AuthGuard.tsx     # Session-gated route wrapper
-│   │   │   ├── FeedStatusPanel.tsx
-│   │   │   ├── IntelCard.tsx
-│   │   │   ├── Loading.tsx
-│   │   │   ├── Pagination.tsx
-│   │   │   ├── RankedDataList.tsx
-│   │   │   ├── Sidebar.tsx
-│   │   │   ├── StatCard.tsx
-│   │   │   └── ThreatLevelBar.tsx
-│   │   ├── hooks/                # (future — custom React hooks)
-│   │   ├── lib/
-│   │   │   ├── api.ts            # API client (fetch wrapper)
-│   │   │   └── utils.ts          # Utility functions
-│   │   ├── store/
-│   │   │   └── index.ts          # Zustand global state
-│   │   └── types/
-│   │       └── index.ts          # TypeScript interfaces
-│   ├── tailwind.config.ts
-│   └── package.json
-├── worker/
-│   ├── tasks.py                  # RQ task definitions
-│   ├── worker.py                 # RQ worker entry point
-│   └── scheduler.py              # APScheduler cron jobs
-├── docs/                         # Project documentation
-│   ├── ARCHITECTURE.md           # System architecture deep-dive
-│   ├── TECHNOLOGY.md             # Technology stack & rationale
-│   └── INTEGRATION.md            # Feed & integration requirements
-├── docker-compose.yml            # Production stack
-├── docker-compose.dev.yml        # Dev overlay (hot reload)
-├── .env.example                  # Environment template
-├── .dockerignore
-├── .gitignore
-├── WORKFLOW.md                   # Operations & deployment guide
-└── README.md                     # ← You are here
-```
 
 ---
 
@@ -336,22 +89,16 @@ docker compose up -d --build
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```
 
-This mounts source code for live reload on API, worker, and UI.
-
 ### 3. Verify
 
 ```bash
-# Health check
 curl -s http://localhost:8000/api/v1/health | jq .
 # Expected: {"status":"ok","postgres":true,"redis":true,"opensearch":true}
 
-# Open UI — you'll be redirected to the login page
-open http://localhost:3000
+open http://localhost:3000   # UI — redirects to login
 ```
 
-### 4. Test Login
-
-See the [Login Testing Guide](#-login-testing-guide) below for detailed steps.
+> **Full workflow:** Local dev, production deployment, Cloudflare Tunnel, CI/CD → [docs/WORKFLOW.md](docs/WORKFLOW.md)
 
 ---
 
@@ -389,22 +136,6 @@ See the [Login Testing Guide](#-login-testing-guide) below for detailed steps.
 
 ---
 
-## Feed Connectors
-
-| Feed | Source | Frequency | API Key |
-|------|--------|-----------|---------|
-| **CISA KEV** | cisa.gov Known Exploited Vulnerabilities | 5 min | No |
-| **NVD** | NVD CVE 2.0 API | 15 min | Optional |
-| **URLhaus** | abuse.ch malicious URL feed | 5 min | No |
-| **AbuseIPDB** | AbuseIPDB blacklist API | 15 min | **Yes** |
-| **OTX** | AlienVault OTX pulses | 30 min | **Yes** |
-| **VirusTotal** | VirusTotal malicious files, URLs, domains | 15 min | **Yes** (free tier) |
-| **Shodan** | Shodan exploits & exposed services | 30 min | **Yes** (free tier) |
-
-All connectors inherit from `api/app/services/feeds/base.py` — adding a new feed requires implementing `fetch()` and `normalize()`.
-
----
-
 ## API Reference
 
 Base URL: `http://localhost:8000/api/v1`
@@ -431,132 +162,43 @@ All list endpoints support `page`, `page_size`, `severity`, `feed_type`, `date_f
 
 ---
 
-## Data Flow
-
-```
-1. Scheduler  ──(cron)──►  Redis Queue
-2. Worker     ──(dequeue)──►  Feed Connector  ──(fetch)──►  External API
-3. Worker     ──(normalize + score)──►  PostgreSQL + OpenSearch
-4. API        ──(query)──►  PostgreSQL / OpenSearch / Redis cache
-5. UI         ──(fetch /api/v1/*)──►  API  ──(render)──►  Browser
-```
-
-- **Scoring:** `compute_risk_score()` in `services/scoring.py` — factors: CVSS, EPSS, KEV status, exploit availability, source reliability.
-- **AI Summaries:** Worker generates summaries for items missing `ai_summary` every 5 minutes.
-- **Caching:** Dashboard stats cached in Redis with TTL.
-
----
-
-## Deployment
-
-See [WORKFLOW.md](WORKFLOW.md) for full deployment walkthrough.
-
-### CI/CD — Auto-Deploy on Push
-
-Every `git push` to `main` triggers: **Lint → SSH Deploy to Hostinger VPS**.
-
-**One-time setup:**
-
-1. **Prepare the VPS** (SSH into Hostinger KVM):
-   ```bash
-   ssh root@<YOUR_VPS_IP>
-   bash -s < <(curl -fsSL https://raw.githubusercontent.com/manishjnv/ti-platform/main/scripts/server-setup.sh)
-   # Or: clone repo first, then run: bash scripts/server-setup.sh
-   ```
-
-2. **Generate an SSH key for GitHub Actions** (on the VPS):
-   ```bash
-   ssh-keygen -t ed25519 -f ~/.ssh/github_deploy -N ""
-   cat ~/.ssh/github_deploy.pub >> /home/deploy/.ssh/authorized_keys
-   cat ~/.ssh/github_deploy   # Copy this private key
-   ```
-
-3. **Add GitHub Secrets** at `github.com/manishjnv/ti-platform/settings/secrets/actions`:
-
-   | Secret | Value |
-   |--------|-------|
-   | `DEPLOY_HOST` | Your Hostinger VPS IP address |
-   | `DEPLOY_USER` | `deploy` |
-   | `DEPLOY_SSH_KEY` | The private key from step 2 |
-
-4. **Push to main** — deployment runs automatically:
-   ```bash
-   git add -A && git commit -m "deploy" && git push origin main
-   ```
-
-**Manual deploy** (SSH into VPS directly):
-```bash
-ssh deploy@<YOUR_VPS_IP>
-/opt/ti-platform/scripts/deploy.sh
-```
-
----
-
-## Troubleshooting
-
-| Problem | Solution |
-|---------|----------|
-| Feeds not syncing | Check `docker compose logs worker`. Verify API keys in `.env`. |
-| Login not working | In dev: set `DEV_BYPASS_AUTH=true` in `.env`. In prod: verify CF Access config. |
-| Session expired | Sessions last 8 hours by default. Adjust `JWT_EXPIRE_MINUTES` in `.env`. |
-| OpenSearch index missing | API auto-creates on startup — check `:9200/_cluster/health` |
-| TimescaleDB hypertable errors | Run `psql -f db/schema.sql` manually |
-| AI summaries not appearing | Verify `AI_API_URL` is reachable from worker container |
-| UI not loading | Check `docker compose logs ui` — rebuild with `docker compose build ui` |
-
----
-
 ## 🔐 Login & Authentication
-
-### Configuration
-
-| Variable | Purpose | Default |
-|----------|---------|---------|
-| `DEV_BYPASS_AUTH` | Skip SSO, auto-login as dev admin | `true` in dev compose |
-| `JWT_EXPIRE_MINUTES` | Session duration | `480` (8 hours) |
-| `CF_ACCESS_TEAM_NAME` | Cloudflare Zero Trust team name | — (production only) |
-| `CF_ACCESS_AUD` | Cloudflare Access audience tag | — (production only) |
-
-### Auth Modes
 
 | Mode | When | How |
 |------|------|-----|
-| **Dev Bypass** | `DEV_BYPASS_AUTH=true` or `ENVIRONMENT=development` | Click "Sign in (Dev Mode)" → auto-creates `dev@intelwatch.local` (admin) |
-| **Cloudflare SSO** | `CF_ACCESS_TEAM_NAME` + `CF_ACCESS_AUD` set | Cloudflare Zero Trust intercepts → Google SSO → auto-provisions user |
-
-### Auth Flow
+| **Dev Bypass** | `DEV_BYPASS_AUTH=true` | Click "Sign in (Dev Mode)" → auto-creates `dev@intelwatch.local` (admin) |
+| **Cloudflare SSO** | `CF_ACCESS_TEAM_NAME` + `CF_ACCESS_AUD` set | Cloudflare Zero Trust → Google SSO → auto-provisions user |
 
 ```
 Browser → /login → GET /api/v1/auth/config → determine auth method
-  ├── Dev Mode:  POST /auth/login → auto-create dev user → set iw_session cookie → /dashboard
-  └── SSO Mode:  Cloudflare redirect → SSO → POST /auth/login (with CF headers) → set iw_session cookie → /dashboard
+  ├── Dev Mode:  POST /auth/login → set iw_session cookie → /dashboard
+  └── SSO Mode:  Cloudflare redirect → SSO → POST /auth/login (CF headers) → /dashboard
 
-Protected routes: AuthGuard → GET /auth/session → valid? → render : redirect to /login
+Protected routes: AuthGuard → GET /auth/session → valid? → render : redirect /login
 Logout: POST /auth/logout → revoke Redis session → clear cookie → /login
 ```
 
-### Key Details
-
 - **Cookie:** `iw_session` — HttpOnly, SameSite=Lax, 8-hour TTL
 - **Session store:** Redis (server-side revocable)
-- **Protected routes:** All `(app)/*` pages wrapped in `AuthGuard` component
-- **Root `/`** redirects to `/login`
+- **Protected routes:** All `(app)/*` pages wrapped in `AuthGuard`
 
 ---
 
 ## 📚 Documentation Index
 
-Detailed documentation is maintained in the `docs/` folder. Each document is a **living document** updated as the platform evolves.
+All detailed docs live in `docs/`. Each is a **living document** updated as the platform evolves.
 
 | Document | Description |
 |----------|-------------|
-| [README.md](README.md) | Project overview, standards, quick start (this file) |
+| [README.md](README.md) | Project overview, quick start, API reference (this file) |
+| [docs/Instruction.md](docs/Instruction.md) | **Mandatory** engineering & development standards |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture, service topology, data model, security layers |
 | [docs/TECHNOLOGY.md](docs/TECHNOLOGY.md) | Full technology stack, library rationale, version matrix |
-| [docs/INTEGRATION.md](docs/INTEGRATION.md) | Feed & integration requirements — all planned data sources with endpoints, status, and coverage matrix |
-| [WORKFLOW.md](WORKFLOW.md) | Operations guide — deployment, CI/CD, Cloudflare Tunnel setup |
+| [docs/INTEGRATION.md](docs/INTEGRATION.md) | Feed & integration requirements — all planned data sources |
+| [docs/WORKFLOW.md](docs/WORKFLOW.md) | Operations guide — local dev, deployment, CI/CD, Cloudflare Tunnel |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Multi-phase feature roadmap & progress tracker |
 
-> **Rule:** When adding a new feature or integration, create or update the relevant doc in `docs/`.
+> **Rule:** When adding a new feature or integration, update the relevant doc in `docs/`.
 
 ---
 

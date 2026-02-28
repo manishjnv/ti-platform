@@ -486,7 +486,7 @@ NEW_FEED_API_KEY=
 ### 6. Update documentation
 
 - Update this file's Integration Status table
-- Update README.md Feed Connectors section
+- Update [ARCHITECTURE.md](ARCHITECTURE.md) if data flow changes
 - Update `.env.example` if new env vars added
 
 ---

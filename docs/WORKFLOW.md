@@ -1,21 +1,15 @@
-# IntelWatch TI Platform — Workflow Guide
+# IntelWatch TI Platform — Workflow & Operations Guide
 
-## Architecture Overview
+> **Architecture & data model** → [ARCHITECTURE.md](ARCHITECTURE.md) · **Technology stack** → [TECHNOLOGY.md](TECHNOLOGY.md) · **Feed integrations** → [INTEGRATION.md](INTEGRATION.md)
 
-```
-┌─────────────┐   Cloudflare Tunnel    ┌────────────────────────────────────────────┐
-│  Browser     │ ─────────────────────► │  Docker Host                               │
-│  (SSO via    │   intelwatch.trendsmap.in      │                                            │
-│  Zero Trust) │                        │  ┌──────┐  ┌──────┐  ┌───────────────┐    │
-└─────────────┘                        │  │  UI  │  │  API │  │  Worker +     │    │
-                                        │  │ :3000│→ │ :8000│  │  Scheduler    │    │
-                                        │  └──────┘  └──┬───┘  └───────┬───────┘    │
-                                        │               │              │             │
-                                        │  ┌────────────┴──────────────┴──────────┐  │
-                                        │  │  PostgreSQL │ Redis │ OpenSearch     │  │
-                                        │  └──────────────────────────────────────┘  │
-                                        └────────────────────────────────────────────┘
-```
+## Table of Contents
+
+- [Local Development](#local-development)
+- [Production Deployment](#production-deployment-hostinger-kvm-2)
+- [Key Paths](#key-paths)
+- [Troubleshooting](#troubleshooting)
+
+---
 
 ## Local Development
 
@@ -149,24 +143,9 @@ cat ~/.ssh/github_deploy   # Copy this private key
 
 **Test:** Push to main → Actions tab shows lint + deploy pipeline running.
 
-## Data Flow
+> **Data flow & feed connectors** → [ARCHITECTURE.md](ARCHITECTURE.md) · [INTEGRATION.md](INTEGRATION.md)
 
-1. **Scheduler** enqueues feed-sync jobs on cron intervals (KEV 5m, NVD 15m, etc.)
-2. **Worker** dequeues jobs → calls feed connectors → normalizes data
-3. Items are scored (`compute_risk_score()`), stored in PostgreSQL, indexed in OpenSearch
-4. **Worker** also generates AI summaries for items without one (every 5 minutes)
-5. **API** serves paginated feeds, search, dashboard stats (cached in Redis)
-6. **UI** renders the data with 30-60s auto-refresh on key pages
-
-## Feed Connectors
-
-| Feed | Source | Frequency | API Key Required |
-|------|--------|-----------|-----------------|
-| CISA KEV | https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json | 5 min | No |
-| NVD | https://services.nvd.nist.gov/rest/json/cves/2.0 | 15 min | Optional (higher rate) |
-| URLhaus | https://urlhaus.abuse.ch/downloads/csv_recent/ | 5 min | No |
-| AbuseIPDB | https://api.abuseipdb.com/api/v2/blacklist | 15 min | Yes |
-| OTX | https://otx.alienvault.com/api/v1/pulses/subscribed | 30 min | Yes |
+---
 
 ## Key Paths
 
@@ -184,12 +163,15 @@ cat ~/.ssh/github_deploy   # Copy this private key
 
 ## Troubleshooting
 
-**Feeds not syncing**: Check `docker compose logs worker`. Ensure API keys are set in `.env`.
-
-**Auth bypass in prod**: Make sure `DEV_BYPASS_AUTH` is NOT set to `true` in production `.env`.
-
-**OpenSearch index missing**: The API auto-creates the index on startup (`ensure_index()`). Check OpenSearch health at `:9200/_cluster/health`.
-
-**TimescaleDB hypertable errors**: The `db/schema.sql` DDL is applied on first postgres start. If the DB already exists, run `psql -f db/schema.sql` manually.
-
-**AI summaries not appearing**: Verify `AI_API_BASE_URL` is reachable from the worker container. Check `docker compose logs worker` for timeout errors.
+| Problem | Solution |
+|---------|----------|
+| Feeds not syncing | Check `docker compose logs worker`. Verify API keys in `.env`. |
+| Login not working (dev) | Set `DEV_BYPASS_AUTH=true` in `.env`, restart API. |
+| Login not working (prod) | Verify `CF_ACCESS_TEAM_NAME` and `CF_ACCESS_AUD` in `.env`. Check Cloudflare Access config. |
+| Auth bypass leaking to prod | Ensure `DEV_BYPASS_AUTH` is **not** `true` in production `.env`. |
+| Session expired | Sessions last 8 hours by default. Adjust `JWT_EXPIRE_MINUTES`. |
+| OpenSearch index missing | API auto-creates on startup. Check `:9200/_cluster/health`. |
+| TimescaleDB hypertable errors | Run `psql -f db/schema.sql` manually if DB already exists. |
+| AI summaries not appearing | Verify `AI_API_URL` is reachable from worker container. Check `docker compose logs worker`. |
+| UI not loading | Check `docker compose logs ui`. Rebuild with `docker compose build ui`. |
+| Docker Hub unreachable | Use Google mirror: `docker pull mirror.gcr.io/library/python:3.12-slim && docker tag mirror.gcr.io/library/python:3.12-slim python:3.12-slim` |
