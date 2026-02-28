@@ -42,14 +42,16 @@ CISA KEV, NVD, URLhaus, AbuseIPDB, AlienVault OTX, VirusTotal, Shodan
 
 **Goal:** Add the most universally expected TI platform features that differentiate IntelWatch from a simple feed aggregator.
 
-### 1.1 MITRE ATT&CK Integration
+### 1.1 MITRE ATT&CK Integration ✅ DONE (v1.1)
 - **Module:** `api/app/services/mitre.py` — fetch ATT&CK Enterprise JSON from MITRE's STIX repo
-- **Database:** New `attack_techniques` table (technique_id, name, tactic, description, url, platform, detection)
-- **Database:** New `intel_attack_links` junction table linking intel items to ATT&CK techniques
-- **Page:** `/techniques` — Interactive ATT&CK matrix heatmap (color by frequency/risk)
-- **Page update:** Intel Detail page — show mapped techniques with tactic phase and links
-- **Feed enhancement:** Auto-map CVEs and threat descriptions to ATT&CK techniques during ingestion
-- **UI Component:** `ATTACKMatrix.tsx` — grid visualization of the 14 tactics and their techniques
+- **Database:** `attack_techniques` table (691 techniques synced from STIX bundle)
+- **Database:** `intel_attack_links` junction table linking intel items to ATT&CK techniques
+- **Page:** `/techniques` — Interactive ATT&CK matrix heatmap + searchable list view
+- **Page update:** Intel Detail page — ATT&CK tab showing mapped techniques with confidence/tactic
+- **Scheduler:** 24h ATT&CK sync + 10min auto-mapping jobs (keyword-based text analysis)
+- **API:** 4 new endpoints — list, matrix, detail, intel-techniques
+- **UI Component:** `ATTACKMatrix.tsx` — grid visualization of 14 tactics, color-coded by risk
+- **Sidebar:** "ATT&CK Map" link added under Investigation section
 
 ### 1.2 Relationship Graph Visualization
 - **Module:** `api/app/services/graph.py` — build relationship graphs between intel items, IOCs, CVEs, and threat actors

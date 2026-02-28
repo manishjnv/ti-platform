@@ -127,6 +127,11 @@ Scheduler ──► Redis (enqueues jobs only)
 │  ┌──────────────────┐                                               │
 │  │  scoring_config   │  (configurable risk scoring weights)         │
 │  └──────────────────┘                                               │
+│                                                                     │
+│  ┌────────────────────┐   ┌──────────────────────┐                  │
+│  │  attack_techniques  │◄──│  intel_attack_links   │                  │
+│  │  (691 MITRE ATT&CK) │   │  (junction table)    │                  │
+│  └────────────────────┘   └──────────────────────┘                  │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -141,6 +146,8 @@ Scheduler ──► Redis (enqueues jobs only)
 | `users` | Regular table | User accounts (synced from Cloudflare Zero Trust) |
 | `audit_log` | Hypertable (partitioned by `created_at`) | Security audit trail |
 | `scoring_config` | Regular table | Configurable risk scoring weights |
+| `attack_techniques` | Regular table | MITRE ATT&CK techniques (synced from STIX) |
+| `intel_attack_links` | Junction | Many-to-many intel↔technique mappings (auto/manual) |
 | `mv_severity_distribution` | Materialized view | Pre-computed 30-day severity stats |
 | `mv_top_risks` | Materialized view | Pre-computed top-100 high-risk items |
 
@@ -158,6 +165,10 @@ Scheduler ──► Redis (enqueues jobs only)
 | `idx_intel_geo` | GIN | Array containment queries on geo |
 | `idx_intel_title_trgm` | GIN (trigram) | Fuzzy text search on titles |
 | `idx_iocs_value_trgm` | GIN (trigram) | Fuzzy IOC value search |
+| `idx_attack_tactic` | B-tree | Filter techniques by tactic phase |
+| `idx_attack_parent` | B-tree | Sub-technique→parent lookups |
+| `idx_attack_name_trgm` | GIN (trigram) | Fuzzy technique name search |
+| `idx_ial_technique` | B-tree | Fast technique→intel lookups |
 
 ### OpenSearch Index
 
@@ -189,7 +200,7 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 | **Models** | `api/app/models/` | SQLAlchemy ORM model definitions |
 | **Schemas** | `api/app/schemas/` | Pydantic v2 request/response schemas |
 | **Routes** | `api/app/routes/` | Thin route handlers — validate, delegate to service, return response |
-| **Services** | `api/app/services/` | All business logic: auth, scoring, search, AI, export, domain config, feed connectors |
+| **Services** | `api/app/services/` | All business logic: auth, scoring, search, AI, export, MITRE ATT&CK, domain config, feed connectors |
 | **Feeds** | `api/app/services/feeds/` | Plugin-based feed connectors (inherit from `BaseFeedConnector`) |
 
 ### Endpoint Map
@@ -209,6 +220,10 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 | `GET` | `/api/v1/admin/feeds` | Admin | `routes/admin.py` | `services/database.py` |
 | `GET` | `/api/v1/setup/config` | Admin | `routes/admin.py` | `services/domain.py` |
 | `GET` | `/api/v1/setup/status` | Admin | `routes/admin.py` | `services/domain.py` |
+| `GET` | `/api/v1/techniques` | Viewer | `routes/techniques.py` | `services/mitre.py` |
+| `GET` | `/api/v1/techniques/matrix` | Viewer | `routes/techniques.py` | — |
+| `GET` | `/api/v1/techniques/{id}` | Viewer | `routes/techniques.py` | — |
+| `GET` | `/api/v1/techniques/intel/{id}/techniques` | Viewer | `routes/techniques.py` | — |
 
 ---
 
