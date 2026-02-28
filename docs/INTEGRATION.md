@@ -54,11 +54,11 @@ Future phases will add **STIX/TAXII ingestion** for standards-compliant sharing.
 | Pulsedive | IOC Enrichment | 🔲 Planned | — | Free tier |
 | GreyNoise | Scan Noise | 🔲 Planned | — | Free tier |
 | Cisco Talos | IP/Domain | 🔲 Planned | — | No |
-| VirusTotal | File/URL | 🔲 Planned | — | Free tier |
+| VirusTotal | File/URL/IP | ✅ **Live** | `feeds/virustotal.py` | Free tier |
 | ThreatMiner | Passive DNS | 🔲 Planned | — | No |
 | VulnCheck | Exploit Intel | 🔲 Planned | — | Free tier |
 | Exploit-DB | Exploits | 🔲 Planned | — | No |
-| Shodan | Asset Exposure | 🔲 Planned | — | Free tier |
+| Shodan | CVE/Exploit | ✅ **Live** | `feeds/shodan.py` | Free (CVEDB) |
 | Censys | Asset Exposure | 🔲 Planned | — | Free tier |
 | MITRE ATT&CK | TTPs | 🔲 Planned | — | No |
 | Malpedia | Malware Families | 🔲 Planned | — | No |
@@ -122,10 +122,11 @@ These are not just feeds — they provide structured, STIX/TAXII-ready ingestion
 
 | Attribute | Detail |
 |-----------|--------|
-| Endpoint | `https://otx.alienvault.com/api/v1/pulses/subscribed` |
+| Endpoint | `https://otx.alienvault.com/api/v1/pulses/subscribed` (with `/pulses/activity` fallback) |
 | Data types | Pulses, malware, campaigns, IOCs (IP, domain, URL, hash) |
 | API key | **Yes** (free registration) |
 | Connector | `api/app/services/feeds/otx.py` |
+| Strategy | Fetches subscribed pulses; falls back to `/pulses/activity` for public community intelligence |
 | Status | **Implemented — live in production** |
 
 ### Abuse.ch Ecosystem
@@ -215,15 +216,17 @@ All abuse.ch feeds have REST APIs and are SOC-grade (used in enterprise SIEM/EDR
 
 ## 🧬 Malware & File Intel
 
-### VirusTotal (Free API)
+### VirusTotal (Free API) ✅ Live
 
 | Attribute | Detail |
 |-----------|--------|
 | Endpoint | `https://www.virustotal.com/api/v3/` |
-| Data types | Hash/domain/URL context, detection ratios, sandbox reports |
-| API key | Free tier (limited rate — 4 req/min) |
-| Use case | Enrichment layer for hashes and URLs from other feeds |
-| Status | 🔲 **Planned** |
+| Data types | Hash/IP context, detection ratios, threat classification |
+| API key | **Yes** — Free tier (4 req/min, 500 req/day) |
+| Connector | `api/app/services/feeds/virustotal.py` |
+| Strategy | Seeds from IPsum (malicious IPs) + MalwareBazaar (hashes), enriches via VT individual lookups |
+| Rate limiting | 16s between calls, max 12 lookups/cycle, cursor-based rotation |
+| Status | **Implemented — live in production** |
 
 ### ThreatMiner
 
@@ -280,15 +283,16 @@ All abuse.ch feeds have REST APIs and are SOC-grade (used in enterprise SIEM/EDR
 
 ## 🛰️ Attack Surface / Situational Intel
 
-### Shodan (Free Developer Tier)
+### Shodan CVEDB ✅ Live
 
 | Attribute | Detail |
 |-----------|--------|
-| Endpoint | `https://api.shodan.io/` |
-| Data types | Internet-exposed services, banners, vulnerabilities, asset discovery |
-| API key | Free developer tier |
-| Use case | Correlate IOC IPs with exposed services/assets |
-| Status | 🔲 **Planned** |
+| Endpoint | `https://cvedb.shodan.io/` (free, no auth) |
+| Data types | CVEs with EPSS scores, KEV status, ransomware flags |
+| API key | Not required (CVEDB is free) |
+| Connector | `api/app/services/feeds/shodan.py` |
+| Strategy | Fetches high-EPSS CVEs, KEV entries, and recent CVEs from Shodan CVEDB |
+| Status | **Implemented — live in production** |
 
 ### Censys (Free Tier)
 
@@ -491,6 +495,9 @@ NEW_FEED_API_KEY=
 
 | Date | Change |
 |------|--------|
+| 2026-02-28 | VT connector rewritten for free tier (IPsum + MalwareBazaar seeds → VT enrichment lookups) |
+| 2026-02-28 | OTX updated with `/pulses/activity` fallback for users without subscriptions |
+| 2026-02-28 | All 7 feeds verified live: CISA KEV, URLhaus, NVD, AbuseIPDB, OTX, VirusTotal, Shodan CVEDB |
 | 2026-02-24 | Production domain set to intelwatch.trendsmap.in |
 | 2026-02-24 | Added VirusTotal & Shodan API key configuration; GitHub repo URL updated |
 | 2026-02-23 | Initial integration requirements document created |
