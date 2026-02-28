@@ -270,7 +270,7 @@ async def get_dashboard_insights(db: AsyncSession) -> dict:
             "avg(risk_score) AS avg_risk, "
             "bool_or(exploit_available) AS any_exploit "
             "FROM intel_items, unnest(affected_products) AS p "
-            "WHERE ingested_at >= :since AND array_length(affected_products, 1) > 0 "
+            "WHERE COALESCE(published_at, ingested_at) >= :since AND array_length(affected_products, 1) > 0 "
             "GROUP BY p ORDER BY cnt DESC LIMIT 10"
         )
         rows = (await db.execute(q, {"since": since})).all()
@@ -388,6 +388,176 @@ async def get_dashboard_insights(db: AsyncSession) -> dict:
         "malware_families": malware_families,
         "exploit_count": exploit_count,
     }
+
+
+async def get_insight_detail(
+    db: AsyncSession,
+    *,
+    detail_type: str,
+    name: str,
+    limit: int = 20,
+) -> dict:
+    """Return detailed information for a dashboard insight entity.
+
+    detail_type: product | threat_actor | ransomware | malware | cve
+    name: the entity name / tag / CVE id
+    """
+    # Build WHERE clause depending on type
+    if detail_type == "product":
+        where_clause = ":name = ANY(affected_products)"
+    elif detail_type in ("threat_actor", "ransomware", "malware"):
+        where_clause = ":name = ANY(tags)"
+    elif detail_type == "cve":
+        where_clause = ":name = ANY(cve_ids)"
+    else:
+        return {"items": [], "summary": {}}
+
+    # Fetch matching intel items
+    items_q = text(
+        f"SELECT id, title, summary, severity::text, risk_score, confidence, "
+        f"source_name, source_url, feed_type::text, "
+        f"tags, geo, industries, cve_ids, affected_products, "
+        f"exploit_available, is_kev, published_at, ingested_at, "
+        f"related_ioc_count, exploitability_score "
+        f"FROM intel_items WHERE {where_clause} "
+        f"ORDER BY risk_score DESC, COALESCE(published_at, ingested_at) DESC "
+        f"LIMIT :lim"
+    )
+    rows = (await db.execute(items_q, {"name": name, "lim": limit})).all()
+
+    items = []
+    all_cves: list[str] = []
+    all_tags: list[str] = []
+    all_regions: list[str] = []
+    all_industries: list[str] = []
+    all_products: list[str] = []
+    severity_counts: dict[str, int] = {}
+    total_risk = 0.0
+    exploit_count = 0
+
+    for r in rows:
+        item = {
+            "id": str(r[0]),
+            "title": r[1],
+            "summary": r[2],
+            "severity": r[3],
+            "risk_score": r[4],
+            "confidence": r[5],
+            "source_name": r[6],
+            "source_url": r[7],
+            "feed_type": r[8],
+            "tags": r[9] or [],
+            "geo": r[10] or [],
+            "industries": r[11] or [],
+            "cve_ids": r[12] or [],
+            "affected_products": r[13] or [],
+            "exploit_available": r[14],
+            "is_kev": r[15],
+            "published_at": r[16].isoformat() if r[16] else None,
+            "ingested_at": r[17].isoformat() if r[17] else None,
+            "related_ioc_count": r[18],
+            "exploitability_score": float(r[19]) if r[19] else None,
+        }
+        items.append(item)
+
+        # Aggregate
+        all_cves.extend(r[12] or [])
+        all_tags.extend(r[9] or [])
+        all_regions.extend(r[10] or [])
+        all_industries.extend(r[11] or [])
+        all_products.extend(r[13] or [])
+        sev = r[3] or "unknown"
+        severity_counts[sev] = severity_counts.get(sev, 0) + 1
+        total_risk += float(r[4] or 0)
+        if r[14]:
+            exploit_count += 1
+
+    # Build summary
+    from collections import Counter
+
+    cve_counter = Counter(all_cves)
+    tag_counter = Counter(all_tags)
+    region_counter = Counter(all_regions)
+    industry_counter = Counter(all_industries)
+    product_counter = Counter(all_products)
+
+    summary = {
+        "total_items": len(items),
+        "avg_risk": round(total_risk / max(len(items), 1), 1),
+        "exploit_count": exploit_count,
+        "severity_distribution": severity_counts,
+        "top_cves": [{"name": c, "count": n} for c, n in cve_counter.most_common(10)],
+        "top_tags": [{"name": t, "count": n} for t, n in tag_counter.most_common(15)],
+        "top_regions": [{"name": r, "count": n} for r, n in region_counter.most_common(10)],
+        "top_industries": [{"name": i, "count": n} for i, n in industry_counter.most_common(10)],
+        "top_products": [{"name": p, "count": n} for p, n in product_counter.most_common(10)],
+    }
+
+    return {"items": items, "summary": summary}
+
+
+async def get_all_insights_by_type(
+    db: AsyncSession,
+    *,
+    insight_type: str,
+    limit: int = 50,
+) -> list[dict]:
+    """Return all entities for a given insight type (threat_actor, ransomware, malware)."""
+
+    type_patterns = {
+        "threat_actor": (
+            "apt|threat_actor|lazarus|charming_kitten|cozy_bear|fancy_bear|"
+            "turla|sandworm|winnti|hafnium|mustang_panda|kimsuky|"
+            "gamaredon|silent_librarian|ocean_lotus|fin7|fin8|cobalt|"
+            "ta505|ta551|sidewinder|bitter|donot|transparent_tribe|konni"
+        ),
+        "ransomware": (
+            "ransomware|lockbit|blackcat|alphv|clop|royal|"
+            "play|medusa|rhysida|akira|bianlian|blackbasta|"
+            "conti|ryuk|revil|hive|ragnar|cuba|babuk|"
+            "maze|darkside|blackmatter|avoslocker|vice_society"
+        ),
+        "malware": (
+            "malware|infostealer|stealer|rootkit|backdoor|"
+            "trojan|keylogger|worm|botnet|rat|spyware|"
+            "mozi|mirai|smartloader|sshdkit|emotet|"
+            "trickbot|qakbot|formbook|agent_tesla|"
+            "remcos|asyncrat|redline|raccoon|vidar|"
+            "lumma|aurora|stealc|risepro|amadey|"
+            "malware_url|malicious_ip|elf|botnetdomain"
+        ),
+    }
+
+    pattern = type_patterns.get(insight_type)
+    if not pattern:
+        return []
+
+    q = text(
+        "SELECT t AS tag, count(*) AS cnt, "
+        "avg(risk_score) AS avg_risk, "
+        "array_agg(DISTINCT unnest_cve) FILTER (WHERE unnest_cve IS NOT NULL) AS cves, "
+        "array_agg(DISTINCT unnest_ind) FILTER (WHERE unnest_ind IS NOT NULL) AS industries, "
+        "array_agg(DISTINCT unnest_geo) FILTER (WHERE unnest_geo IS NOT NULL) AS regions "
+        "FROM intel_items, unnest(tags) AS t "
+        "LEFT JOIN LATERAL unnest(cve_ids) AS unnest_cve ON true "
+        "LEFT JOIN LATERAL unnest(industries) AS unnest_ind ON true "
+        "LEFT JOIN LATERAL unnest(geo) AS unnest_geo ON true "
+        "WHERE lower(t) ~ :pattern "
+        "GROUP BY t ORDER BY cnt DESC LIMIT :lim"
+    )
+    rows = (await db.execute(q, {"pattern": pattern, "lim": limit})).all()
+
+    return [
+        {
+            "name": r[0],
+            "count": r[1],
+            "avg_risk": round(float(r[2] or 0), 1),
+            "cves": (r[3] or [])[:10],
+            "industries": (r[4] or [])[:8],
+            "regions": (r[5] or [])[:8],
+        }
+        for r in rows
+    ]
 
 
 # ─── Users ────────────────────────────────────────────────

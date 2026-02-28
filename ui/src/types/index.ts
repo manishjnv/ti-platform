@@ -120,6 +120,60 @@ export interface DashboardInsights {
   exploit_count: number;
 }
 
+export interface InsightDetailItem {
+  id: string;
+  title: string;
+  summary: string | null;
+  severity: string;
+  risk_score: number;
+  confidence: number;
+  source_name: string;
+  source_url: string | null;
+  feed_type: string;
+  tags: string[];
+  geo: string[];
+  industries: string[];
+  cve_ids: string[];
+  affected_products: string[];
+  exploit_available: boolean;
+  is_kev: boolean;
+  published_at: string | null;
+  ingested_at: string | null;
+  related_ioc_count: number;
+  exploitability_score: number | null;
+}
+
+export interface NameCount {
+  name: string;
+  count: number;
+}
+
+export interface InsightDetailSummary {
+  total_items: number;
+  avg_risk: number;
+  exploit_count: number;
+  severity_distribution: Record<string, number>;
+  top_cves: NameCount[];
+  top_tags: NameCount[];
+  top_regions: NameCount[];
+  top_industries: NameCount[];
+  top_products: NameCount[];
+}
+
+export interface InsightDetail {
+  items: InsightDetailItem[];
+  summary: InsightDetailSummary;
+}
+
+export interface AllInsightEntity {
+  name: string;
+  count: number;
+  avg_risk: number;
+  cves: string[];
+  industries: string[];
+  regions: string[];
+}
+
 export interface User {
   id: string;
   email: string;

@@ -98,6 +98,18 @@ export async function getDashboardInsights() {
   return fetcher<import("@/types").DashboardInsights>("/dashboard/insights");
 }
 
+export async function getInsightDetail(type: string, name: string) {
+  return fetcher<import("@/types").InsightDetail>(
+    `/dashboard/insights/detail?type=${encodeURIComponent(type)}&name=${encodeURIComponent(name)}`
+  );
+}
+
+export async function getAllInsights(type: string) {
+  return fetcher<import("@/types").AllInsightEntity[]>(
+    `/dashboard/insights/all?type=${encodeURIComponent(type)}`
+  );
+}
+
 // ─── User ───────────────────────────────────────────────
 export async function getCurrentUser() {
   return fetcher<import("@/types").User>("/me");

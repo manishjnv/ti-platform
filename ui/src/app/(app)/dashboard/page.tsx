@@ -9,6 +9,7 @@ import { StatCard } from "@/components/StatCard";
 import { ThreatLevelBar } from "@/components/ThreatLevelBar";
 import { FeedStatusPanel } from "@/components/FeedStatusPanel";
 import { RankedDataList } from "@/components/RankedDataList";
+import { InsightDetailModal, ViewAllModal } from "@/components/InsightDetailModal";
 import { DonutChart, TrendLineChart, HorizontalBarChart } from "@/components/charts";
 import {
   Shield,
@@ -29,6 +30,7 @@ import {
   Building2,
   ChevronRight,
   ExternalLink,
+  Eye,
 } from "lucide-react";
 import {
   BarChart,
@@ -75,6 +77,28 @@ export default function DashboardPage() {
   const [insights, setInsights] = useState<DashboardInsights | null>(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [productPeriod, setProductPeriod] = useState<string>("30d");
+
+  // Detail modal state
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailType, setDetailType] = useState("");
+  const [detailName, setDetailName] = useState("");
+
+  // View All modal state
+  const [viewAllOpen, setViewAllOpen] = useState(false);
+  const [viewAllType, setViewAllType] = useState("");
+  const [viewAllTitle, setViewAllTitle] = useState("");
+
+  const openDetail = useCallback((type: string, name: string) => {
+    setDetailType(type);
+    setDetailName(name);
+    setDetailOpen(true);
+  }, []);
+
+  const openViewAll = useCallback((type: string, title: string) => {
+    setViewAllType(type);
+    setViewAllTitle(title);
+    setViewAllOpen(true);
+  }, []);
 
   const fetchInsights = useCallback(async () => {
     setInsightsLoading(true);
@@ -410,10 +434,10 @@ export default function DashboardPage() {
           {currentProducts.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-2">
               {currentProducts.map((prod, i) => (
-                <Link
+                <button
                   key={prod.name}
-                  href={`/search?q=${encodeURIComponent(prod.name)}`}
-                  className="flex items-center gap-3 p-2.5 rounded-lg border bg-card hover:bg-accent/50 transition-colors group"
+                  onClick={() => openDetail("product", prod.name)}
+                  className="flex items-center gap-3 p-2.5 rounded-lg border bg-card hover:bg-accent/50 transition-colors group text-left"
                 >
                   <span className="flex items-center justify-center h-7 w-7 rounded-md bg-blue-500/10 text-blue-400 text-xs font-bold shrink-0">
                     {i + 1}
@@ -432,7 +456,7 @@ export default function DashboardPage() {
                       )}
                     </div>
                   </div>
-                </Link>
+                </button>
               ))}
             </div>
           ) : (
@@ -444,9 +468,17 @@ export default function DashboardPage() {
       {/* ── Threat Actors ────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-2 pt-4 px-5">
-          <div className="flex items-center gap-2">
-            <Skull className="h-4 w-4 text-red-400" />
-            <CardTitle className="text-sm font-semibold">Active Threat Actors</CardTitle>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Skull className="h-4 w-4 text-red-400" />
+              <CardTitle className="text-sm font-semibold">Active Threat Actors</CardTitle>
+            </div>
+            <button
+              onClick={() => openViewAll("threat_actor", "All Threat Actors")}
+              className="text-xs text-primary hover:underline flex items-center gap-1"
+            >
+              View all <Eye className="h-3 w-3" />
+            </button>
           </div>
         </CardHeader>
         <CardContent className="px-5 pb-4">
@@ -461,11 +493,11 @@ export default function DashboardPage() {
                   icon={<Skull className="h-3.5 w-3.5" />}
                   accentClass="text-red-400 bg-red-500/10"
                   badges={[
-                    ...ta.cves.slice(0, 3).map((c) => ({ label: c, color: "text-primary bg-primary/10", href: `/search?q=${c}` })),
+                    ...ta.cves.slice(0, 3).map((c) => ({ label: c, color: "text-primary bg-primary/10" })),
                     ...ta.industries.slice(0, 2).map((ind) => ({ label: ind, color: "text-blue-400 bg-blue-500/10" })),
                     ...ta.regions.slice(0, 3).map((r) => ({ label: r, color: "text-emerald-400 bg-emerald-500/10" })),
                   ]}
-                  searchQuery={ta.name}
+                  onClick={() => openDetail("threat_actor", ta.name)}
                 />
               ))}
             </div>
@@ -478,9 +510,17 @@ export default function DashboardPage() {
       {/* ── Ransomware ───────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-2 pt-4 px-5">
-          <div className="flex items-center gap-2">
-            <Lock className="h-4 w-4 text-orange-400" />
-            <CardTitle className="text-sm font-semibold">Active Ransomware</CardTitle>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Lock className="h-4 w-4 text-orange-400" />
+              <CardTitle className="text-sm font-semibold">Active Ransomware</CardTitle>
+            </div>
+            <button
+              onClick={() => openViewAll("ransomware", "All Ransomware")}
+              className="text-xs text-primary hover:underline flex items-center gap-1"
+            >
+              View all <Eye className="h-3 w-3" />
+            </button>
           </div>
         </CardHeader>
         <CardContent className="px-5 pb-4">
@@ -499,7 +539,7 @@ export default function DashboardPage() {
                     ...rw.industries.slice(0, 3).map((ind) => ({ label: ind, color: "text-blue-400 bg-blue-500/10" })),
                     ...rw.regions.slice(0, 3).map((r) => ({ label: r, color: "text-emerald-400 bg-emerald-500/10" })),
                   ]}
-                  searchQuery={rw.name}
+                  onClick={() => openDetail("ransomware", rw.name)}
                 />
               ))}
             </div>
@@ -512,19 +552,27 @@ export default function DashboardPage() {
       {/* ── Malware / Infostealer / Rootkit ──────────────── */}
       <Card>
         <CardHeader className="pb-2 pt-4 px-5">
-          <div className="flex items-center gap-2">
-            <Bug className="h-4 w-4 text-purple-400" />
-            <CardTitle className="text-sm font-semibold">Malware, Infostealers &amp; Botnets</CardTitle>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Bug className="h-4 w-4 text-purple-400" />
+              <CardTitle className="text-sm font-semibold">Malware, Infostealers &amp; Botnets</CardTitle>
+            </div>
+            <button
+              onClick={() => openViewAll("malware", "All Malware, Infostealers & Botnets")}
+              className="text-xs text-primary hover:underline flex items-center gap-1"
+            >
+              View all <Eye className="h-3 w-3" />
+            </button>
           </div>
         </CardHeader>
         <CardContent className="px-5 pb-4">
           {insights?.malware_families && insights.malware_families.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
               {insights.malware_families.map((mw) => (
-                <Link
+                <button
                   key={mw.name}
-                  href={`/search?q=${encodeURIComponent(mw.name)}`}
-                  className="flex items-center gap-3 p-2.5 rounded-lg border bg-card hover:bg-accent/50 transition-colors group"
+                  onClick={() => openDetail("malware", mw.name)}
+                  className="flex items-center gap-3 p-2.5 rounded-lg border bg-card hover:bg-accent/50 transition-colors group text-left"
                 >
                   <span className={cn(
                     "flex items-center justify-center h-8 w-8 rounded-md text-xs font-bold shrink-0",
@@ -549,7 +597,7 @@ export default function DashboardPage() {
                     )}
                   </div>
                   <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/30 group-hover:text-primary shrink-0" />
-                </Link>
+                </button>
               ))}
             </div>
           ) : (
@@ -581,7 +629,34 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="px-5 pb-4">
             {topCVEs.length > 0 ? (
-              <RankedDataList items={topCVEs} showIndex maxItems={8} />
+              <div className="space-y-1.5">
+                {topCVEs.slice(0, 8).map((cve, idx) => (
+                  <button
+                    key={cve.label}
+                    onClick={() => openDetail("cve", cve.label)}
+                    className="w-full group text-left"
+                  >
+                    <div className="flex items-center justify-between text-xs mb-0.5">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span className="text-[10px] font-medium text-muted-foreground/50 w-4 text-right">
+                          {idx + 1}
+                        </span>
+                        <span className="h-2 w-2 rounded-full shrink-0 bg-red-500" />
+                        <span className="text-muted-foreground truncate group-hover:text-primary transition-colors font-mono">
+                          {cve.label}
+                        </span>
+                      </div>
+                      <span className="font-semibold tabular-nums ml-2">{cve.value}</span>
+                    </div>
+                    <div className="h-1 rounded-full bg-muted/50 overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500 bg-red-500"
+                        style={{ width: `${(cve.value / Math.max(...topCVEs.map(c => c.value), 1)) * 100}%` }}
+                      />
+                    </div>
+                  </button>
+                ))}
+              </div>
             ) : (
               <EmptyState text="No CVE data" />
             )}
@@ -695,6 +770,24 @@ export default function DashboardPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* ═══ Modals ═══ */}
+      <InsightDetailModal
+        open={detailOpen}
+        onClose={() => setDetailOpen(false)}
+        type={detailType}
+        name={detailName}
+      />
+      <ViewAllModal
+        open={viewAllOpen}
+        onClose={() => setViewAllOpen(false)}
+        type={viewAllType}
+        title={viewAllTitle}
+        onSelect={(name) => {
+          // Map view-all type to detail type
+          openDetail(viewAllType, name);
+        }}
+      />
     </div>
   );
 }
@@ -715,20 +808,20 @@ function InsightRow({
   icon,
   accentClass,
   badges,
-  searchQuery,
+  onClick,
 }: {
   name: string;
   count: number;
   avgRisk: number;
   icon: React.ReactNode;
   accentClass: string;
-  badges: Array<{ label: string; color: string; href?: string }>;
-  searchQuery: string;
+  badges: Array<{ label: string; color: string }>;
+  onClick: () => void;
 }) {
   return (
-    <Link
-      href={`/search?q=${encodeURIComponent(searchQuery)}`}
-      className="flex items-start gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors group"
+    <button
+      onClick={onClick}
+      className="w-full flex items-start gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors group text-left"
     >
       <span className={cn("flex items-center justify-center h-9 w-9 rounded-md shrink-0", accentClass)}>
         {icon}
@@ -757,6 +850,6 @@ function InsightRow({
         )}
       </div>
       <ChevronRight className="h-4 w-4 text-muted-foreground/30 group-hover:text-primary shrink-0 mt-2.5" />
-    </Link>
+    </button>
   );
 }
