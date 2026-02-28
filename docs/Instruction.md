@@ -9,6 +9,7 @@
 
 - [Core Design Principles](#core-design-principles)
 - [Configuration-Driven System](#%EF%B8%8F-configuration-driven-system)
+- [Competitive USP Analysis Before Implementation](#-competitive-usp-analysis-before-implementation-mandatory)
 - [Feature Implementation Standard](#-feature-implementation-standard-mandatory)
 - [Cross-Feature Data Enrichment](#cross-feature-data-enrichment-mandatory)
 - [Data Freshness & Ordering](#-data-freshness--ordering)
@@ -84,7 +85,88 @@ The system must **never fail completely** due to external API failure, timeout, 
 
 ---
 
-## 🆕 Feature Implementation Standard (MANDATORY)
+## � Competitive USP Analysis Before Implementation (MANDATORY)
+
+> **Gate rule:** Before writing any code for a new feature, you **must** perform a competitive USP analysis. No implementation may begin without identifying differentiators that make IntelWatch's version of the feature **superior to most TI platforms in the market**.
+
+### Why This Exists
+
+Most TI platforms implement the same features the same way. IntelWatch's competitive edge comes from doing **every feature better** — with smarter defaults, deeper integrations, and capabilities competitors charge extra for or don't offer at all. This instruction ensures we never ship a "me-too" feature.
+
+### Pre-Implementation USP Checklist
+
+Before starting any new feature from the roadmap, complete **all** of the following steps:
+
+#### Step 1 — Competitor Landscape Scan
+
+Identify how the following major TI platforms implement the same feature (or whether they do at all):
+
+| Platform | Tier | Check Against |
+|----------|------|---------------|
+| OpenCTI | Open-source | Feature parity, UX, data model |
+| MISP | Open-source | Community approach, sharing model |
+| Recorded Future | Enterprise ($$$) | Depth, AI capabilities, automation |
+| Mandiant (Google TI) | Enterprise ($$$) | Intelligence quality, integrations |
+| CrowdStrike Falcon Intel | Enterprise ($$$) | Real-time capabilities, coverage |
+| ThreatConnect | Mid-market | Workflow, orchestration, playbooks |
+| Anomali ThreatStream | Mid-market | Feed aggregation, enrichment depth |
+
+#### Step 2 — Identify 3-6 USPs
+
+For each new feature, propose **at minimum 3 unique selling points** that make IntelWatch's implementation distinctly better. USPs must fall into at least 2 of these categories:
+
+| USP Category | Description | Example |
+|--------------|-------------|---------|
+| **AI/Automation** | Use AI or algorithms to automate what competitors require manual effort for | Auto-mapping ATT&CK techniques via NLP instead of manual tagging |
+| **Cross-Data Intelligence** | Connect data across features in ways competitors silo | Graph relationships auto-discovered from shared IOCs across feeds |
+| **Real-Time / Speed** | Faster detection, shorter time-to-insight | Live streaming feed with sub-minute ingestion vs. hourly batch |
+| **Zero-Config Value** | Provide value out-of-the-box that competitors require setup for | Auto-scoring with intelligent defaults vs. manual rule configuration |
+| **Depth Beyond Surface** | Go deeper than the standard implementation | Temporal playback of graph evolution vs. static relationship view |
+| **Free vs. Paid Parity** | Offer capabilities that competitors gate behind paid tiers | Campaign auto-clustering (Louvain) vs. enterprise-only analytics |
+
+#### Step 3 — Document USPs in Roadmap
+
+Add the approved USPs as bullet points under the feature's section in `docs/ROADMAP.md` under a `**USP Features (Differentiators):**` heading, as done for Phase 1.1 and 1.2.
+
+#### Step 4 — Confirm Before Coding
+
+Present the USP analysis to the user for approval before any implementation begins. The user may:
+- Approve all proposed USPs
+- Add additional USPs
+- Remove USPs that are out of scope for current phase
+- Reprioritize which USPs to implement now vs. later
+
+### USP Quality Standards
+
+Each proposed USP must meet **all** of these criteria:
+
+- [ ] **Specific** — not vague ("better UI" is not a USP; "AI-powered alert noise reduction with confidence scoring" is)
+- [ ] **Implementable** — can be built with current tech stack and free/open-source tools
+- [ ] **Demonstrable** — can be shown in a demo or screenshot (not just backend logic)
+- [ ] **Defensible** — genuinely uncommon or absent in competitor platforms at this price point (free/open-source)
+- [ ] **Value-Adding** — directly helps a SOC analyst, threat hunter, or security manager do their job faster/better
+
+### Implementation Priority
+
+When a feature has multiple approved USPs, implement them in this order:
+
+1. **Core feature** — standard functionality (table stakes)
+2. **High-impact USPs** — features that are visually impressive and easy to demo
+3. **AI/Automation USPs** — features that reduce manual analyst work
+4. **Depth USPs** — advanced capabilities that reward power users
+
+### Tracking Record
+
+| Phase | Feature | USPs Added | Status |
+|-------|---------|------------|--------|
+| 1.1 | MITRE ATT&CK Integration | Auto-mapping via NLP, technique gap analysis | ✅ Done |
+| 1.2 | Relationship Graph | AI discovery, attack chain reconstruction, temporal playback, campaign clustering | ✅ Done |
+
+> **This section must be updated** each time a new feature completes implementation.
+
+---
+
+## �🆕 Feature Implementation Standard (MANDATORY)
 
 ### 🚫 Never Do
 
