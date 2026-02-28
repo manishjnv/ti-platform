@@ -1,7 +1,15 @@
-"""One-time script to reindex all PostgreSQL intel items into OpenSearch."""
+"""One-time script to reindex all PostgreSQL intel items into OpenSearch.
+
+Run inside the API container:
+  docker cp reindex.py ti-platform-api-1:/app/api/reindex.py
+  docker exec ti-platform-api-1 python /app/api/reindex.py
+"""
+import sys, os
+sys.path.insert(0, os.path.dirname(__file__))
+
 import asyncio
 from app.core.opensearch import ensure_index, bulk_index_items, opensearch_client, INDEX_NAME
-from app.core.database import async_engine
+from app.core.database import engine
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
@@ -10,7 +18,7 @@ async def reindex():
     ensure_index()
     print("Index ready")
 
-    async with AsyncSession(async_engine) as db:
+    async with AsyncSession(engine) as db:
         result = await db.execute(text("SELECT COUNT(*) FROM intel_items"))
         total = result.scalar()
         print(f"Total items: {total}")
