@@ -1,9 +1,9 @@
 import asyncio, json
-from app.core.database import async_session
+from app.core.database import async_session_factory
 from app.services.graph import get_graph_stats, get_entity_graph, get_related_intel
 
 async def test():
-    async with async_session() as db:
+    async with async_session_factory() as db:
         # Test 1: Stats
         stats = await get_graph_stats(db)
         print("=== STATS ===")
