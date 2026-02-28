@@ -497,6 +497,38 @@ def _extract_ioc_values(item) -> list[tuple[str, str]]:
     return results
 
 
+# ─── Notification Evaluation ──────────────────────────────
+
+def evaluate_notification_rules(lookback_minutes: int = 10) -> dict:
+    """Evaluate all active notification rules against recent data.
+
+    Checks threshold rules (severity, risk, KEV), feed health, and
+    cross-feed correlation. Creates in-app notifications for matches.
+    Also ensures system default rules exist for all users.
+    """
+    from app.services.notifications import (
+        ensure_system_rules,
+        evaluate_notification_rules as _evaluate,
+    )
+
+    logger.info("notification_eval_start", lookback_minutes=lookback_minutes)
+    session = SyncSession()
+    try:
+        # Ensure every user has system rules (idempotent)
+        ensure_system_rules(session)
+
+        # Run rule evaluation
+        stats = _evaluate(session, lookback_minutes=lookback_minutes)
+        logger.info("notification_eval_complete", **stats)
+        return stats
+    except Exception as e:
+        logger.error("notification_eval_error", error=str(e))
+        session.rollback()
+        return {"error": str(e)}
+    finally:
+        session.close()
+
+
 # ─── Helpers ──────────────────────────────────────────────
 
 def _get_connector(feed_name: str):

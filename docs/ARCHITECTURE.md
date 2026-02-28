@@ -156,6 +156,8 @@ Scheduler ──► Redis (enqueues jobs only)
 | `attack_techniques` | Regular table | MITRE ATT&CK techniques (synced from STIX) |
 | `intel_attack_links` | Junction | Many-to-many intel↔technique mappings (auto/manual) |
 | `relationships` | Regular table | Auto-discovered graph edges (shared IOC/CVE/technique) |
+| `notification_rules` | Regular table | User-defined + system-default alert rules (threshold, feed_error, correlation) |
+| `notifications` | Regular table | In-app notifications with severity, category, entity linking, and metadata |
 | `mv_severity_distribution` | Materialized view | Pre-computed 30-day severity stats |
 | `mv_top_risks` | Materialized view | Pre-computed top-100 high-risk items |
 
@@ -381,6 +383,8 @@ class BaseFeedConnector(ABC):
 | ATT&CK Sync | 6 hrs | Low (refresh STIX data) |
 | ATT&CK Mapping | 10 min | Low (auto-map intel→techniques) |
 | Relationship Builder | 15 min | Low (discover shared IOC/CVE/technique edges) |
+| IOC Extraction | 10 min | Low (extract IOCs from intel items) |
+| Notification Eval | 5 min | Low (evaluate rules, create in-app alerts) |
 
 ---
 

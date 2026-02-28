@@ -159,6 +159,16 @@ def setup_schedules():
         meta={"task": "ioc_extraction"},
     )
 
+    # ─── Notification Rule Evaluation — every 5 minutes ──
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc) + timedelta(minutes=2),
+        func="worker.tasks.evaluate_notification_rules",
+        kwargs={"lookback_minutes": 10},
+        interval=timedelta(minutes=5).total_seconds(),
+        queue_name="low",
+        meta={"task": "notification_eval"},
+    )
+
     print(f"Scheduled {len(list(scheduler.get_jobs()))} jobs")
 
 

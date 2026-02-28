@@ -203,3 +203,42 @@ class Relationship(Base):
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     meta: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ─── Notification System ─────────────────────────────────
+
+class NotificationRule(Base):
+    __tablename__ = "notification_rules"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    rule_type: Mapped[str] = mapped_column(String(50), nullable=False, default="threshold")
+    conditions: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    channels: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=lambda: ["in_app"])
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    cooldown_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=15)
+    last_triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    trigger_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    rule_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    message: Mapped[str | None] = mapped_column(Text)
+    severity: Mapped[str] = mapped_column(String(20), nullable=False, default="info")
+    category: Mapped[str] = mapped_column(String(50), nullable=False, default="alert")
+    entity_type: Mapped[str | None] = mapped_column(String(30))
+    entity_id: Mapped[str | None] = mapped_column(Text)
+    metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    is_read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

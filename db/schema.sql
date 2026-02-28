@@ -271,6 +271,59 @@ CREATE INDEX idx_rel_confidence ON relationships(confidence DESC);
 CREATE UNIQUE INDEX idx_rel_unique_edge ON relationships(source_id, source_type, target_id, target_type, relationship_type);
 
 -- =============================================
+-- Notification Rules
+-- =============================================
+CREATE TABLE notification_rules (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(150) NOT NULL,
+    description TEXT,
+    rule_type VARCHAR(50) NOT NULL DEFAULT 'threshold',  -- threshold | keyword | feed_error | risk_change | correlation
+    conditions JSONB NOT NULL DEFAULT '{}',
+    -- Example conditions:
+    -- {"severity": ["critical","high"], "min_risk_score": 80}
+    -- {"cve_ids": ["CVE-2024-1234"], "match_mode": "any"}
+    -- {"feed_names": ["nvd","cisa_kev"], "event": "error"}
+    -- {"risk_change_min": 20}
+    channels TEXT[] NOT NULL DEFAULT '{in_app}',  -- in_app, browser_push, webhook
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    is_system BOOLEAN NOT NULL DEFAULT FALSE,   -- system-default rules (non-deletable)
+    cooldown_minutes INT NOT NULL DEFAULT 15,   -- mins before same rule can fire again
+    last_triggered_at TIMESTAMPTZ,
+    trigger_count INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_nr_user ON notification_rules(user_id);
+CREATE INDEX idx_nr_active ON notification_rules(is_active) WHERE is_active = TRUE;
+CREATE INDEX idx_nr_type ON notification_rules(rule_type);
+
+-- =============================================
+-- Notifications
+-- =============================================
+CREATE TABLE notifications (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    rule_id UUID REFERENCES notification_rules(id) ON DELETE SET NULL,
+    title VARCHAR(300) NOT NULL,
+    message TEXT,
+    severity VARCHAR(20) NOT NULL DEFAULT 'info',     -- critical, high, medium, low, info
+    category VARCHAR(50) NOT NULL DEFAULT 'alert',    -- alert, feed_error, risk_change, correlation, system
+    entity_type VARCHAR(30),                          -- intel, ioc, feed, cve
+    entity_id TEXT,                                   -- UUID or identifier of related entity
+    metadata JSONB NOT NULL DEFAULT '{}',             -- extra context (risk scores, feed names, CVEs, etc.)
+    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+    read_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_notif_user ON notifications(user_id, created_at DESC);
+CREATE INDEX idx_notif_unread ON notifications(user_id, is_read) WHERE is_read = FALSE;
+CREATE INDEX idx_notif_category ON notifications(category, created_at DESC);
+CREATE INDEX idx_notif_entity ON notifications(entity_type, entity_id) WHERE entity_id IS NOT NULL;
+
+-- =============================================
 -- Materialized Views for Dashboard
 -- =============================================
 CREATE MATERIALIZED VIEW mv_severity_distribution AS

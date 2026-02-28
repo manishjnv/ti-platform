@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { IntelItem, DashboardData, User, SearchResponse, IntelListResponse, SearchFilters } from "@/types";
+import type { IntelItem, DashboardData, User, SearchResponse, IntelListResponse, SearchFilters, Notification, NotificationListResponse } from "@/types";
 import * as api from "@/lib/api";
 
 interface AppState {
@@ -48,6 +48,15 @@ interface AppState {
   // UI
   sidebarOpen: boolean;
   toggleSidebar: () => void;
+
+  // Notifications
+  notifications: Notification[];
+  unreadCount: number;
+  notificationsLoading: boolean;
+  fetchNotifications: (params?: { unread_only?: boolean; limit?: number }) => Promise<void>;
+  fetchUnreadCount: () => Promise<void>;
+  markRead: (ids: string[]) => Promise<void>;
+  markAllRead: () => Promise<void>;
 
   // Error
   error: string | null;
@@ -203,6 +212,56 @@ export const useAppStore = create<AppState>((set, get) => ({
   // UI
   sidebarOpen: true,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+
+  // Notifications
+  notifications: [],
+  unreadCount: 0,
+  notificationsLoading: false,
+  fetchNotifications: async (params) => {
+    set({ notificationsLoading: true });
+    try {
+      const data = await api.getNotifications(params);
+      set({
+        notifications: data.notifications,
+        unreadCount: data.unread_count,
+        notificationsLoading: false,
+      });
+    } catch (e: any) {
+      set({ notificationsLoading: false });
+    }
+  },
+  fetchUnreadCount: async () => {
+    try {
+      const data = await api.getUnreadCount();
+      set({ unreadCount: data.unread_count });
+    } catch {
+      // silent
+    }
+  },
+  markRead: async (ids) => {
+    try {
+      await api.markNotificationsRead(ids);
+      set((s) => ({
+        notifications: s.notifications.map((n) =>
+          ids.includes(n.id) ? { ...n, is_read: true } : n
+        ),
+        unreadCount: Math.max(0, s.unreadCount - ids.length),
+      }));
+    } catch {
+      // silent
+    }
+  },
+  markAllRead: async () => {
+    try {
+      await api.markAllNotificationsRead();
+      set((s) => ({
+        notifications: s.notifications.map((n) => ({ ...n, is_read: true })),
+        unreadCount: 0,
+      }));
+    } catch {
+      // silent
+    }
+  },
 
   // Error
   error: null,

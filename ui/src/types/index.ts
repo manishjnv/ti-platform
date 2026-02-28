@@ -202,3 +202,60 @@ export interface GraphStatsResponse {
   by_type: Record<string, number>;
   avg_confidence: number;
 }
+
+// ─── Notifications ──────────────────────────────────────
+export interface Notification {
+  id: string;
+  user_id: string;
+  rule_id: string | null;
+  title: string;
+  message: string | null;
+  severity: Severity;
+  category: 'alert' | 'feed_error' | 'risk_change' | 'correlation' | 'system';
+  entity_type: string | null;
+  entity_id: string | null;
+  metadata: Record<string, unknown>;
+  is_read: boolean;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface NotificationListResponse {
+  notifications: Notification[];
+  total: number;
+  unread_count: number;
+}
+
+export interface NotificationRule {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  rule_type: 'threshold' | 'keyword' | 'feed_error' | 'risk_change' | 'correlation';
+  conditions: Record<string, unknown>;
+  channels: string[];
+  is_active: boolean;
+  is_system: boolean;
+  cooldown_minutes: number;
+  last_triggered_at: string | null;
+  trigger_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NotificationRuleCreate {
+  name: string;
+  description?: string;
+  rule_type?: string;
+  conditions?: Record<string, unknown>;
+  channels?: string[];
+  is_active?: boolean;
+  cooldown_minutes?: number;
+}
+
+export interface NotificationStats {
+  unread_count: number;
+  last_24h_total: number;
+  by_category: Record<string, number>;
+  by_severity: Record<string, number>;
+}

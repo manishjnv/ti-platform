@@ -19,6 +19,7 @@ import {
   Zap,
   BarChart3,
   Activity,
+  Bell,
 } from "lucide-react";
 import {
   BarChart,
@@ -51,13 +52,15 @@ const FEED_TYPE_COLORS: Record<string, string> = {
 };
 
 export default function DashboardPage() {
-  const { dashboard, dashboardLoading, fetchDashboard } = useAppStore();
+  const { dashboard, dashboardLoading, fetchDashboard, unreadCount, fetchUnreadCount } = useAppStore();
 
   useEffect(() => {
     fetchDashboard();
+    fetchUnreadCount();
     const interval = setInterval(fetchDashboard, 60000);
-    return () => clearInterval(interval);
-  }, [fetchDashboard]);
+    const notifInterval = setInterval(fetchUnreadCount, 30000);
+    return () => { clearInterval(interval); clearInterval(notifInterval); };
+  }, [fetchDashboard, fetchUnreadCount]);
 
   // Severity distribution for donut chart
   const sevDonut = useMemo(() => {
@@ -187,7 +190,7 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI Stats Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <StatCard
           title="Total Intel"
           value={totalItems}
@@ -214,6 +217,13 @@ export default function DashboardPage() {
           subtitle="Known Exploited Vulns"
           icon={<AlertTriangle className="h-5 w-5" />}
           variant="danger"
+        />
+        <StatCard
+          title="Alerts"
+          value={unreadCount}
+          subtitle="Unread notifications"
+          icon={<Bell className="h-5 w-5" />}
+          variant={unreadCount > 0 ? "warning" : "success"}
         />
       </div>
 

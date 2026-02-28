@@ -169,3 +169,81 @@ export async function getRelatedIntel(itemId: string, limit = 20) {
 export async function getGraphStats() {
   return fetcher<import("@/types").GraphStatsResponse>("/graph/stats");
 }
+
+// ─── Notifications ──────────────────────────────────────
+export async function getNotifications(params: {
+  unread_only?: boolean;
+  category?: string;
+  limit?: number;
+  offset?: number;
+} = {}) {
+  const query = new URLSearchParams();
+  if (params.unread_only) query.set("unread_only", "true");
+  if (params.category) query.set("category", params.category);
+  if (params.limit) query.set("limit", String(params.limit));
+  if (params.offset) query.set("offset", String(params.offset));
+  return fetcher<import("@/types").NotificationListResponse>(`/notifications?${query}`);
+}
+
+export async function getUnreadCount() {
+  return fetcher<{ unread_count: number }>("/notifications/unread-count");
+}
+
+export async function getNotificationStats() {
+  return fetcher<import("@/types").NotificationStats>("/notifications/stats");
+}
+
+export async function markNotificationsRead(notificationIds: string[]) {
+  return fetcher<{ marked: number }>("/notifications/mark-read", {
+    method: "POST",
+    body: JSON.stringify({ notification_ids: notificationIds }),
+  });
+}
+
+export async function markAllNotificationsRead() {
+  return fetcher<{ marked: number }>("/notifications/mark-all-read", {
+    method: "POST",
+  });
+}
+
+export async function deleteNotification(id: string) {
+  return fetcher<{ deleted: boolean }>(`/notifications/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function clearAllNotifications() {
+  return fetcher<{ cleared: number }>("/notifications", {
+    method: "DELETE",
+  });
+}
+
+export async function getNotificationRules() {
+  return fetcher<import("@/types").NotificationRule[]>("/notifications/rules");
+}
+
+export async function createNotificationRule(data: import("@/types").NotificationRuleCreate) {
+  return fetcher<import("@/types").NotificationRule>("/notifications/rules", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateNotificationRule(id: string, data: Partial<import("@/types").NotificationRuleCreate>) {
+  return fetcher<import("@/types").NotificationRule>(`/notifications/rules/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteNotificationRule(id: string) {
+  return fetcher<{ deleted: boolean }>(`/notifications/rules/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function toggleNotificationRule(id: string) {
+  return fetcher<import("@/types").NotificationRule>(`/notifications/rules/${id}/toggle`, {
+    method: "POST",
+  });
+}

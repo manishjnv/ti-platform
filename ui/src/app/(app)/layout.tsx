@@ -5,9 +5,9 @@ import { useAppStore } from "@/store";
 import { AuthGuard } from "@/components/AuthGuard";
 import { Sidebar } from "@/components/Sidebar";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { NotificationBell } from "@/components/NotificationBell";
 import {
   Search,
-  Bell,
   ChevronDown,
   Shield,
   LogOut,
@@ -69,10 +69,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </button>
 
             {/* Notifications */}
-            <button className="p-1.5 rounded-md hover:bg-muted/40 transition-colors text-muted-foreground relative">
-              <Bell className="h-4 w-4" />
-              <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-red-500 rounded-full" />
-            </button>
+            <NotificationBell />
 
             {/* User */}
             <div className="relative">

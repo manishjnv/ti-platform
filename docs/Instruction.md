@@ -161,6 +161,7 @@ When a feature has multiple approved USPs, implement them in this order:
 |-------|---------|------------|--------|
 | 1.1 | MITRE ATT&CK Integration | Auto-mapping via NLP, technique gap analysis | ✅ Done |
 | 1.2 | Relationship Graph | AI discovery, attack chain reconstruction, temporal playback, campaign clustering | ✅ Done |
+| 1.3 | Notifications & Alerting | Zero-config smart defaults, cross-feed correlation, feed health watchdog, severity intelligence, alert noise reduction | ✅ Done |
 
 > **This section must be updated** each time a new feature completes implementation.
 

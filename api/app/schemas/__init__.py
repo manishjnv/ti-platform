@@ -343,3 +343,78 @@ class HealthResponse(BaseModel):
     redis: bool
     opensearch: bool
     environment: str
+
+
+# ─── Notifications ───────────────────────────────────────
+class NotificationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    rule_id: uuid.UUID | None = None
+    title: str
+    message: str | None = None
+    severity: str
+    category: str
+    entity_type: str | None = None
+    entity_id: str | None = None
+    metadata: dict = Field(default_factory=dict)
+    is_read: bool
+    read_at: datetime | None = None
+    created_at: datetime
+
+
+class NotificationListResponse(BaseModel):
+    notifications: list[NotificationResponse]
+    total: int
+    unread_count: int
+
+
+class NotificationRuleResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    name: str
+    description: str | None = None
+    rule_type: str
+    conditions: dict
+    channels: list[str]
+    is_active: bool
+    is_system: bool
+    cooldown_minutes: int
+    last_triggered_at: datetime | None = None
+    trigger_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class NotificationRuleCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=150)
+    description: str | None = None
+    rule_type: str = "threshold"
+    conditions: dict = Field(default_factory=dict)
+    channels: list[str] = Field(default_factory=lambda: ["in_app"])
+    is_active: bool = True
+    cooldown_minutes: int = Field(default=15, ge=1, le=1440)
+
+
+class NotificationRuleUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    rule_type: str | None = None
+    conditions: dict | None = None
+    channels: list[str] | None = None
+    is_active: bool | None = None
+    cooldown_minutes: int | None = None
+
+
+class NotificationMarkRead(BaseModel):
+    notification_ids: list[uuid.UUID]
+
+
+class NotificationStatsResponse(BaseModel):
+    unread_count: int
+    last_24h_total: int
+    by_category: dict[str, int]
+    by_severity: dict[str, int]

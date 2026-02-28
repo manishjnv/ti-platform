@@ -76,21 +76,31 @@ CISA KEV, NVD, URLhaus, AbuseIPDB, AlienVault OTX, VirusTotal, Shodan
   - **Temporal Playback** — animate the graph over time showing when relationships formed day-by-day as intel was ingested. Watch campaigns evolve visually.
   - **Campaign Auto-Clustering** — graph community detection (Louvain algorithm) automatically groups IOCs/intel into probable campaigns based on shared infrastructure, timing, technique overlap.
 
-### 1.3 Notifications & Alerting
-- **Module:** `api/app/services/notifications.py` — notification engine with rule evaluation
-- **Database:** New `notification_rules` table (id, user_id, name, conditions JSON, channels, is_active)
-- **Database:** New `notifications` table (id, user_id, rule_id, title, message, severity, read, created_at)
-- **Page update:** Settings → Notifications tab — create/manage alert rules
-- **UI Component:** `NotificationBell.tsx` — real-time notification indicator in header (replace static bell)
+### 1.3 Notifications & Alerting ✅ DONE
+- **Module:** `api/app/services/notifications.py` — notification engine with rule evaluation ✅
+- **Database:** New `notification_rules` table (id, user_id, name, conditions JSON, channels, is_active, cooldown, trigger tracking) ✅
+- **Database:** New `notifications` table (id, user_id, rule_id, title, message, severity, category, entity_type, entity_id, metadata, read, created_at) ✅
+- **Routes:** `api/app/routes/notifications.py` — full CRUD for rules + notifications (list, mark-read, delete, stats) ✅
+- **Page update:** Settings → Notifications tab — live rule management with create/edit/toggle/delete ✅
+- **UI Component:** `NotificationBell.tsx` — real-time notification indicator in header with dropdown (replaced static bell) ✅
+- **Worker Task:** `evaluate_notification_rules` — scheduled every 5 minutes ✅
+- **Cross-Feature Enrichment:** Dashboard "Alerts" stat card showing unread notification count ✅
 - **Notification triggers:**
-  - New critical/high severity intel item ingested
-  - New CISA KEV entry detected
-  - Specific CVE ID match (watchlist)
-  - Risk score exceeds threshold
-  - Feed connector error/stale
+  - New critical/high severity intel item ingested ✅
+  - New CISA KEV entry detected ✅
+  - Specific CVE ID match (watchlist) ✅
+  - Risk score exceeds threshold ✅
+  - Feed connector error/stale ✅
+  - Cross-feed CVE correlation ✅
 - **Channels (start with):**
-  - In-app notifications (database-backed)
-  - Browser push notifications (Web Push API)
+  - In-app notifications (database-backed) ✅
+  - Browser push notifications (Web Push API) *(deferred to future enhancement)*
+- **USP Features (Differentiators):**
+  - **Zero-Config Smart Defaults** — Pre-seeded system rules for critical/high severity, KEV, feed failures, and risk spikes. Alerts work immediately on first login with no configuration required (competitors require manual rule setup).
+  - **Cross-Feed Correlation Alerts** — Automatically detects when the same CVE appears across multiple feeds within a time window and generates a high-confidence correlated alert. No open-source TI platform does cross-feed correlation at the notification layer.
+  - **Feed Health Watchdog** — Real-time feed stale/error monitoring with missed-item awareness. Notifies when a feed fails or goes stale, including details about what was missed. Most platforms only alert on errors, not staleness.
+  - **Severity Intelligence** — Notification severity is computed from multiple signals (risk score, KEV status, raw severity, ATT&CK mapping count) rather than just echoing the source severity label. Produces more accurate alert prioritization.
+  - **Alert Noise Reduction** — Batch notifications with intelligent grouping. When multiple items match a single rule in one evaluation cycle, they are combined into a single grouped notification with top-5 ranked items. Reduces analyst alert fatigue.
 
 ### 1.4 Report Generation
 - **Module:** `api/app/services/reports.py` — report builder with templating

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -13,6 +13,7 @@ import {
   Globe,
   Save,
   Check,
+  Trash2,
 } from "lucide-react";
 
 interface SettingSection {
@@ -265,40 +266,292 @@ function SecuritySettings() {
 }
 
 function NotificationSettings() {
+  const [rules, setRules] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newRule, setNewRule] = useState({
+    name: "",
+    description: "",
+    rule_type: "threshold",
+    conditions: {} as Record<string, any>,
+    cooldown_minutes: 15,
+  });
+
+  useEffect(() => {
+    loadRules();
+  }, []);
+
+  const loadRules = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/v1/notifications/rules", { credentials: "include" });
+      if (res.ok) {
+        setRules(await res.json());
+      }
+    } catch {
+      // silent
+    }
+    setLoading(false);
+  };
+
+  const handleToggle = async (ruleId: string) => {
+    try {
+      await fetch(`/api/v1/notifications/rules/${ruleId}/toggle`, {
+        method: "POST",
+        credentials: "include",
+      });
+      loadRules();
+    } catch {
+      // silent
+    }
+  };
+
+  const handleDelete = async (ruleId: string) => {
+    try {
+      await fetch(`/api/v1/notifications/rules/${ruleId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      loadRules();
+    } catch {
+      // silent
+    }
+  };
+
+  const handleCreate = async () => {
+    if (!newRule.name.trim()) return;
+    try {
+      await fetch("/api/v1/notifications/rules", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newRule),
+      });
+      setShowCreate(false);
+      setNewRule({ name: "", description: "", rule_type: "threshold", conditions: {}, cooldown_minutes: 15 });
+      loadRules();
+    } catch {
+      // silent
+    }
+  };
+
+  const RULE_TYPE_LABELS: Record<string, string> = {
+    threshold: "Threshold",
+    feed_error: "Feed Health",
+    correlation: "Cross-Feed",
+    keyword: "Keyword",
+    risk_change: "Risk Change",
+  };
+
   return (
     <Card>
       <CardHeader className="pb-2 pt-4 px-5">
-        <CardTitle className="text-sm font-semibold">Notification Settings</CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold">Notification Rules</CardTitle>
+          <button
+            onClick={() => setShowCreate(!showCreate)}
+            className="text-[10px] font-medium px-2.5 py-1.5 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+          >
+            {showCreate ? "Cancel" : "+ New Rule"}
+          </button>
+        </div>
       </CardHeader>
       <CardContent className="px-5 pb-4">
-        <SettingField
-          label="Critical Alerts"
-          description="Get notified for critical severity items"
-        >
-          <ToggleSwitch defaultChecked />
-        </SettingField>
-        <SettingField
-          label="Feed Failures"
-          description="Alert when a feed connector fails"
-        >
-          <ToggleSwitch defaultChecked />
-        </SettingField>
-        <SettingField
-          label="Webhook URL"
-          description="Send notifications to an external webhook"
-        >
-          <input
-            type="text"
-            placeholder="https://..."
-            className="w-56 h-8 px-3 rounded-md bg-muted/40 border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
-          />
-        </SettingField>
-        <SettingField
-          label="Email Digest"
-          description="Daily summary email"
-        >
-          <ToggleSwitch />
-        </SettingField>
+        {/* Create form */}
+        {showCreate && (
+          <div className="p-3 rounded-lg bg-muted/20 border border-border/30 mb-4 space-y-3">
+            <input
+              type="text"
+              placeholder="Rule name"
+              value={newRule.name}
+              onChange={(e) => setNewRule({ ...newRule, name: e.target.value })}
+              className="w-full h-8 px-3 rounded-md bg-muted/40 border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+            <input
+              type="text"
+              placeholder="Description (optional)"
+              value={newRule.description}
+              onChange={(e) => setNewRule({ ...newRule, description: e.target.value })}
+              className="w-full h-8 px-3 rounded-md bg-muted/40 border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+            <div className="flex gap-2">
+              <select
+                value={newRule.rule_type}
+                onChange={(e) => setNewRule({ ...newRule, rule_type: e.target.value })}
+                className="h-8 px-3 rounded-md bg-muted/40 border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="threshold">Threshold</option>
+                <option value="feed_error">Feed Health</option>
+                <option value="correlation">Cross-Feed Correlation</option>
+              </select>
+              <input
+                type="number"
+                placeholder="Cooldown (min)"
+                value={newRule.cooldown_minutes}
+                onChange={(e) => setNewRule({ ...newRule, cooldown_minutes: parseInt(e.target.value) || 15 })}
+                className="w-28 h-8 px-3 rounded-md bg-muted/40 border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+
+            {/* Condition builder for threshold rules */}
+            {newRule.rule_type === "threshold" && (
+              <div className="space-y-2">
+                <p className="text-[10px] text-muted-foreground font-medium">Conditions</p>
+                <div className="flex flex-wrap gap-2">
+                  <label className="flex items-center gap-1.5 text-[10px]">
+                    <input
+                      type="checkbox"
+                      className="rounded border-border"
+                      checked={!!(newRule.conditions as any).severity?.includes("critical")}
+                      onChange={(e) => {
+                        const sevs = new Set((newRule.conditions as any).severity || []);
+                        e.target.checked ? sevs.add("critical") : sevs.delete("critical");
+                        setNewRule({ ...newRule, conditions: { ...newRule.conditions, severity: [...sevs] } });
+                      }}
+                    />
+                    Critical
+                  </label>
+                  <label className="flex items-center gap-1.5 text-[10px]">
+                    <input
+                      type="checkbox"
+                      className="rounded border-border"
+                      checked={!!(newRule.conditions as any).severity?.includes("high")}
+                      onChange={(e) => {
+                        const sevs = new Set((newRule.conditions as any).severity || []);
+                        e.target.checked ? sevs.add("high") : sevs.delete("high");
+                        setNewRule({ ...newRule, conditions: { ...newRule.conditions, severity: [...sevs] } });
+                      }}
+                    />
+                    High
+                  </label>
+                  <label className="flex items-center gap-1.5 text-[10px]">
+                    <input
+                      type="checkbox"
+                      className="rounded border-border"
+                      checked={!!(newRule.conditions as any).is_kev}
+                      onChange={(e) => {
+                        setNewRule({ ...newRule, conditions: { ...newRule.conditions, is_kev: e.target.checked || undefined } });
+                      }}
+                    />
+                    KEV only
+                  </label>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    placeholder="Min risk score"
+                    value={(newRule.conditions as any).min_risk_score || ""}
+                    onChange={(e) => {
+                      const val = e.target.value ? parseInt(e.target.value) : undefined;
+                      setNewRule({ ...newRule, conditions: { ...newRule.conditions, min_risk_score: val } });
+                    }}
+                    className="w-32 h-7 px-2 rounded-md bg-muted/40 border border-border/50 text-[10px] focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <input
+                    type="text"
+                    placeholder="CVE IDs (comma-separated)"
+                    value={((newRule.conditions as any).cve_ids || []).join(", ")}
+                    onChange={(e) => {
+                      const cves = e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean);
+                      setNewRule({ ...newRule, conditions: { ...newRule.conditions, cve_ids: cves.length ? cves : undefined } });
+                    }}
+                    className="flex-1 h-7 px-2 rounded-md bg-muted/40 border border-border/50 text-[10px] focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={handleCreate}
+              disabled={!newRule.name.trim()}
+              className="h-8 px-4 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+              Create Rule
+            </button>
+          </div>
+        )}
+
+        {/* Rules list */}
+        {loading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-14 rounded-lg bg-muted/20 animate-pulse" />
+            ))}
+          </div>
+        ) : rules.length === 0 ? (
+          <p className="text-xs text-muted-foreground py-6 text-center">
+            No notification rules configured. System defaults will be created automatically.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {rules.map((rule: any) => (
+              <div
+                key={rule.id}
+                className="flex items-center justify-between p-3 rounded-lg bg-muted/10 border border-border/20 hover:border-border/40 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-medium truncate">{rule.name}</p>
+                    {rule.is_system && (
+                      <Badge variant="outline" className="text-[8px] px-1 py-0">
+                        System
+                      </Badge>
+                    )}
+                    <Badge
+                      variant="outline"
+                      className="text-[8px] px-1 py-0"
+                      style={{
+                        borderColor: rule.is_active ? "#22c55e" : "#6b7280",
+                        color: rule.is_active ? "#22c55e" : "#6b7280",
+                      }}
+                    >
+                      {rule.is_active ? "Active" : "Paused"}
+                    </Badge>
+                    <span className="text-[9px] text-muted-foreground/50">
+                      {RULE_TYPE_LABELS[rule.rule_type] || rule.rule_type}
+                    </span>
+                  </div>
+                  {rule.description && (
+                    <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
+                      {rule.description}
+                    </p>
+                  )}
+                  <div className="flex items-center gap-3 mt-1">
+                    <span className="text-[9px] text-muted-foreground/40">
+                      Triggered {rule.trigger_count}x
+                    </span>
+                    <span className="text-[9px] text-muted-foreground/40">
+                      Cooldown: {rule.cooldown_minutes}m
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0 ml-3">
+                  <button
+                    onClick={() => handleToggle(rule.id)}
+                    className={`w-9 h-5 rounded-full transition-colors relative ${
+                      rule.is_active ? "bg-primary" : "bg-muted"
+                    }`}
+                  >
+                    <div
+                      className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                        rule.is_active ? "translate-x-4" : "translate-x-0.5"
+                      }`}
+                    />
+                  </button>
+                  {!rule.is_system && (
+                    <button
+                      onClick={() => handleDelete(rule.id)}
+                      className="p-1.5 rounded hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
+                      title="Delete rule"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
