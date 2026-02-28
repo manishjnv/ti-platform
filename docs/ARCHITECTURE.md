@@ -311,7 +311,7 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 | `POST` | `/api/v1/reports/{id}/items` | Analyst | `routes/reports.py` | `services/reports.py` |
 | `DELETE` | `/api/v1/reports/{id}/items/{item_id}` | Analyst | `routes/reports.py` | `services/reports.py` |
 | `POST` | `/api/v1/reports/{id}/ai-summary` | Analyst | `routes/reports.py` | `services/reports.py` |
-| `GET` | `/api/v1/reports/{id}/export` | Viewer | `routes/reports.py` | `services/reports.py` |
+| `GET` | `/api/v1/reports/{id}/export` | Viewer | `routes/reports.py` | `services/reports.py` | `?format=markdown\|pdf\|stix\|html\|csv` |
 
 ---
 
@@ -605,8 +605,8 @@ GitHub Actions
 
 | Date | Change |
 |------|--------|
-| 2026-02-28 | Full audit: accurate endpoint map (46 endpoints), complete index inventory (41 indexes), updated ER diagram with notifications + reports tables, corrected worker schedule (14 jobs), accurate RBAC roles, updated codebase metrics (~19,315 LOC / 122 files) |
-| 2026-02-28 | Phase 1.4 Report Generation: reports + report_items tables, 11 report endpoints, 3 UI pages, templates, AI summary, markdown export |
+| 2026-02-28 | Multi-format export: PDF (reportlab + TLP watermark), STIX 2.1 Bundle, HTML (dark-theme), CSV; UI export dropdown with 5 format options; updated codebase metrics |
+| 2026-02-28 | Phase 1.4 Report Generation: reports + report_items tables, 11 report endpoints, 3 UI pages, templates, AI summary, multi-format export (PDF, STIX 2.1, HTML, CSV, Markdown) |
 | 2026-02-28 | Phase 1.3 Notifications & Alerting: notification_rules + notifications tables, 12 notification endpoints, NotificationBell component, worker eval task |
 | 2026-02-28 | Post-audit fixes: OpenSearch dedup (834K→3,944), ATT&CK keyword precision, skeleton loaders, ErrorBoundary, Tooltip system |
 | 2026-02-28 | Phase 1.2 Relationship Graph; added Codebase Metrics section |
