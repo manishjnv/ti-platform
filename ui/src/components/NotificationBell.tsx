@@ -445,11 +445,90 @@ function MetadataBadges({ notification: n }: { notification: Notification }) {
     }
   }
 
+  // Feed type (single alert)
+  if (meta.feed_type && !meta.feed_types) {
+    badges.push(
+      <span key="ft" className="text-[9px] px-1.5 py-0.5 rounded-sm bg-emerald-500/10 text-emerald-400 capitalize">
+        {String(meta.feed_type)}
+      </span>
+    );
+  }
+
   // Match count (batch)
   if (meta.match_count != null) {
     badges.push(
       <span key="count" className="text-[9px] px-1.5 py-0.5 rounded-sm bg-muted/30 text-muted-foreground">
         {Number(meta.match_count)} items
+      </span>
+    );
+  }
+
+  // Severity breakdown (batch)
+  const sevBreakdown = meta.severity_breakdown as Record<string, number> | undefined;
+  if (sevBreakdown && typeof sevBreakdown === "object") {
+    const sevColors: Record<string, string> = {
+      critical: "text-red-400",
+      high: "text-orange-400",
+      medium: "text-yellow-400",
+      low: "text-blue-400",
+    };
+    const parts = Object.entries(sevBreakdown)
+      .filter(([, c]) => c > 0)
+      .sort(([a], [b]) => {
+        const order = ["critical", "high", "medium", "low", "info"];
+        return order.indexOf(a) - order.indexOf(b);
+      });
+    if (parts.length > 0) {
+      badges.push(
+        <span key="sev-bd" className="text-[9px] px-1.5 py-0.5 rounded-sm bg-muted/20">
+          {parts.map(([sev, count], i) => (
+            <span key={sev}>
+              {i > 0 && <span className="text-muted-foreground/30"> · </span>}
+              <span className={sevColors[sev] || "text-gray-400"}>{count}</span>
+              <span className="text-muted-foreground/50 ml-0.5 capitalize">{sev}</span>
+            </span>
+          ))}
+        </span>
+      );
+    }
+  }
+
+  // Sources (batch)
+  const sources = meta.sources as string[] | undefined;
+  if (sources && sources.length > 0) {
+    badges.push(
+      <span key="srcs" className="text-[9px] px-1.5 py-0.5 rounded-sm bg-primary/10 text-primary/70">
+        {sources.slice(0, 3).join(" · ")}{sources.length > 3 ? ` +${sources.length - 3}` : ""}
+      </span>
+    );
+  }
+
+  // Feed types (batch)
+  const feedTypes = meta.feed_types as string[] | undefined;
+  if (feedTypes && feedTypes.length > 0) {
+    badges.push(
+      <span key="fts" className="text-[9px] px-1.5 py-0.5 rounded-sm bg-emerald-500/10 text-emerald-400 capitalize">
+        {feedTypes.join(" · ")}
+      </span>
+    );
+  }
+
+  // KEV count (batch)
+  const kevCount = meta.kev_count as number | undefined;
+  if (kevCount != null && kevCount > 0) {
+    badges.push(
+      <span key="kevn" className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm bg-red-500/15 text-red-400">
+        ⚡ {kevCount} KEV
+      </span>
+    );
+  }
+
+  // Total CVE count (batch)
+  const totalCves = meta.total_cve_count as number | undefined;
+  if (totalCves != null && totalCves > 0) {
+    badges.push(
+      <span key="cve-total" className="text-[9px] px-1.5 py-0.5 rounded-sm bg-violet-500/10 text-violet-400 font-mono">
+        {totalCves} CVE{totalCves > 1 ? "s" : ""}
       </span>
     );
   }
@@ -462,6 +541,15 @@ function MetadataBadges({ notification: n }: { notification: Notification }) {
         isFailed ? "bg-red-500/10 text-red-400" : "bg-yellow-500/10 text-yellow-400"
       )}>
         {String(meta.status).toUpperCase()}
+      </span>
+    );
+  }
+
+  // Items fetched (feed_error)
+  if (meta.items_fetched != null && n.category === "feed_error") {
+    badges.push(
+      <span key="fetched" className="text-[9px] px-1.5 py-0.5 rounded-sm bg-muted/20 text-muted-foreground">
+        {Number(meta.items_fetched)} fetched
       </span>
     );
   }

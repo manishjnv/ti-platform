@@ -504,6 +504,7 @@ def _eval_threshold_rule(
             "feed_type": item.feed_type,
             "is_kev": item.is_kev,
             "cve_ids": item.cve_ids or [],
+            "item_severity": item.severity,
             **parsed_fields,
         }
         _create_notification(
@@ -535,15 +536,46 @@ def _eval_threshold_rule(
             category="alert",
             entity_type="intel",
             entity_id=str(top[0].id),
-            metadata={
-                "match_count": len(matching_items),
-                "top_risk_score": max_sev.risk_score,
-                "rule_name": rule.name,
-            },
+            metadata=_build_batch_metadata(matching_items, max_sev, rule),
         )
         created = 1
 
     return created
+
+
+def _build_batch_metadata(
+    items: list[IntelItem],
+    max_sev_item: IntelItem,
+    rule: NotificationRule,
+) -> dict[str, Any]:
+    """Build rich metadata for batch (multi-match) notifications."""
+    from collections import Counter
+
+    sev_counts = Counter(i.severity for i in items)
+    source_counts = Counter(i.source_name for i in items)
+    feed_type_counts = Counter(i.feed_type for i in items)
+    kev_count = sum(1 for i in items if i.is_kev)
+    all_cves: list[str] = []
+    for i in items:
+        all_cves.extend(i.cve_ids or [])
+    unique_cves = sorted(set(all_cves))
+
+    return {
+        "match_count": len(items),
+        "top_risk_score": max_sev_item.risk_score,
+        "rule_name": rule.name,
+        # Severity breakdown: {"critical": 5, "high": 16}
+        "severity_breakdown": dict(sev_counts),
+        # Top sources: ["URLhaus", "NVD"]
+        "sources": [s for s, _ in source_counts.most_common(5)],
+        # Feed types: ["ioc", "vulnerability"]
+        "feed_types": [ft for ft, _ in feed_type_counts.most_common(5)],
+        # KEV count
+        "kev_count": kev_count,
+        # Unique CVEs (max 10)
+        "cve_ids": unique_cves[:10],
+        "total_cve_count": len(unique_cves),
+    }
 
 
 def _eval_feed_error_rule(
