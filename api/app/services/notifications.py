@@ -518,6 +518,7 @@ def _eval_threshold_rule(
             entity_type="intel",
             entity_id=str(item.id),
             metadata=meta,
+            rule=rule,
         )
         created = 1
     elif len(matching_items) > 1:
@@ -537,6 +538,7 @@ def _eval_threshold_rule(
             entity_type="intel",
             entity_id=str(top[0].id),
             metadata=_build_batch_metadata(matching_items, max_sev, rule),
+            rule=rule,
         )
         created = 1
 
@@ -626,6 +628,7 @@ def _eval_feed_error_rule(
                     "error_message": feed.error_message,
                     "items_fetched": feed.items_fetched,
                 },
+                rule=rule,
             )
             created += 1
 
@@ -673,6 +676,7 @@ def _eval_correlation_rule(
                     "max_risk_score": max_risk,
                     "item_count": len(items),
                 },
+                rule=rule,
             )
             created += 1
 
@@ -691,8 +695,9 @@ def _create_notification(
     entity_type: str | None = None,
     entity_id: str | None = None,
     metadata: dict | None = None,
+    rule: "NotificationRule | None" = None,
 ) -> Notification:
-    """Create a notification record."""
+    """Create a notification record and deliver to external channels."""
     notif = Notification(
         user_id=user_id,
         rule_id=rule_id,
@@ -705,6 +710,29 @@ def _create_notification(
         meta=metadata or {},
     )
     session.add(notif)
+
+    # Deliver to external channels (webhook, slack) if configured on the rule
+    if rule and hasattr(rule, "channels") and rule.channels:
+        external = [ch for ch in rule.channels if ch != "in_app"]
+        if external:
+            try:
+                from app.services.webhook import deliver_to_channels_sync
+
+                notif_data = {
+                    "title": title,
+                    "message": message or "",
+                    "severity": severity,
+                    "category": category,
+                    "entity_type": entity_type,
+                    "entity_id": entity_id,
+                    "metadata": metadata or {},
+                }
+                deliver_to_channels_sync(
+                    rule.channels, notif_data, rule.conditions
+                )
+            except Exception as e:
+                logger.error("channel_delivery_error", error=str(e))
+
     return notif
 
 

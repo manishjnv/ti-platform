@@ -372,11 +372,14 @@ function NotificationSettings() {
   const [rules, setRules] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [webhookTestResult, setWebhookTestResult] = useState<{ success?: boolean; error?: string } | null>(null);
+  const [testingWebhook, setTestingWebhook] = useState(false);
   const [newRule, setNewRule] = useState({
     name: "",
     description: "",
     rule_type: "threshold",
     conditions: {} as Record<string, any>,
+    channels: ["in_app"] as string[],
     cooldown_minutes: 15,
   });
 
@@ -431,7 +434,7 @@ function NotificationSettings() {
         body: JSON.stringify(newRule),
       });
       setShowCreate(false);
-      setNewRule({ name: "", description: "", rule_type: "threshold", conditions: {}, cooldown_minutes: 15 });
+      setNewRule({ name: "", description: "", rule_type: "threshold", conditions: {}, channels: ["in_app"], cooldown_minutes: 15 });
       loadRules();
     } catch {
       // silent
@@ -604,6 +607,99 @@ function NotificationSettings() {
               </div>
             )}
 
+            {/* Delivery channels */}
+            <div className="space-y-2 pt-1 border-t border-border/20">
+              <p className="text-[10px] text-muted-foreground font-medium">Delivery Channels</p>
+              <div className="flex flex-wrap gap-3">
+                <label className="flex items-center gap-1.5 text-[10px]">
+                  <input type="checkbox" className="rounded border-border" checked disabled />
+                  In-App (always)
+                </label>
+                <label className="flex items-center gap-1.5 text-[10px]">
+                  <input
+                    type="checkbox"
+                    className="rounded border-border"
+                    checked={newRule.channels.includes("webhook")}
+                    onChange={(e) => {
+                      const ch = e.target.checked
+                        ? [...newRule.channels, "webhook"]
+                        : newRule.channels.filter((c) => c !== "webhook");
+                      setNewRule({ ...newRule, channels: ch });
+                    }}
+                  />
+                  Webhook
+                </label>
+                <label className="flex items-center gap-1.5 text-[10px]">
+                  <input
+                    type="checkbox"
+                    className="rounded border-border"
+                    checked={newRule.channels.includes("slack")}
+                    onChange={(e) => {
+                      const ch = e.target.checked
+                        ? [...newRule.channels, "slack"]
+                        : newRule.channels.filter((c) => c !== "slack");
+                      setNewRule({ ...newRule, channels: ch });
+                    }}
+                  />
+                  Slack
+                </label>
+              </div>
+
+              {/* Webhook URL config */}
+              {(newRule.channels.includes("webhook") || newRule.channels.includes("slack")) && (
+                <div className="space-y-2">
+                  <input
+                    type="url"
+                    placeholder="Webhook URL (https://...)"
+                    value={(newRule.conditions as any).webhook_url || ""}
+                    onChange={(e) =>
+                      setNewRule({ ...newRule, conditions: { ...newRule.conditions, webhook_url: e.target.value || undefined } })
+                    }
+                    className="w-full h-7 px-2 rounded-md bg-muted/40 border border-border/50 text-[10px] focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <input
+                    type="text"
+                    placeholder="HMAC Secret (optional, for signature verification)"
+                    value={(newRule.conditions as any).webhook_secret || ""}
+                    onChange={(e) =>
+                      setNewRule({ ...newRule, conditions: { ...newRule.conditions, webhook_secret: e.target.value || undefined } })
+                    }
+                    className="w-full h-7 px-2 rounded-md bg-muted/40 border border-border/50 text-[10px] focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <button
+                    type="button"
+                    disabled={!(newRule.conditions as any).webhook_url || testingWebhook}
+                    onClick={async () => {
+                      setTestingWebhook(true);
+                      setWebhookTestResult(null);
+                      try {
+                        const url = (newRule.conditions as any).webhook_url;
+                        const secret = (newRule.conditions as any).webhook_secret || "";
+                        const res = await fetch(
+                          `/api/v1/notifications/webhook-test?url=${encodeURIComponent(url)}${secret ? `&secret=${encodeURIComponent(secret)}` : ""}`,
+                          { method: "POST", credentials: "include" }
+                        );
+                        const data = await res.json();
+                        setWebhookTestResult(data);
+                      } catch {
+                        setWebhookTestResult({ success: false, error: "Request failed" });
+                      }
+                      setTestingWebhook(false);
+                    }}
+                    className="h-7 px-3 rounded-md bg-blue-600/20 text-blue-400 text-[10px] font-medium hover:bg-blue-600/30 transition-colors disabled:opacity-50"
+                  >
+                    {testingWebhook ? "Testing..." : "Test Webhook"}
+                  </button>
+                  {webhookTestResult && (
+                    <div className={`text-[10px] flex items-center gap-1 ${webhookTestResult.success ? "text-emerald-400" : "text-red-400"}`}>
+                      {webhookTestResult.success ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+                      {webhookTestResult.success ? `Webhook delivered (${(webhookTestResult as any).status_code})` : `Failed: ${webhookTestResult.error || "Error"}`}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <button
               onClick={handleCreate}
               disabled={!newRule.name.trim()}
@@ -666,6 +762,11 @@ function NotificationSettings() {
                     <span className="text-[9px] text-muted-foreground/40">
                       Cooldown: {rule.cooldown_minutes}m
                     </span>
+                    {rule.channels?.filter((c: string) => c !== "in_app").map((ch: string) => (
+                      <Badge key={ch} variant="outline" className="text-[8px] px-1 py-0 border-blue-500/40 text-blue-400">
+                        {ch}
+                      </Badge>
+                    ))}
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0 ml-3">

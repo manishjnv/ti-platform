@@ -22,6 +22,7 @@ import {
   Crosshair,
   Share2,
   FileText,
+  Bell,
 } from "lucide-react";
 
 const NAV_SECTIONS = [
@@ -54,6 +55,7 @@ const NAV_SECTIONS = [
     label: "System",
     items: [
       { href: "/feeds", label: "Feed Status", icon: Radio },
+      { href: "/notifications", label: "Notifications", icon: Bell },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
   },

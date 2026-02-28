@@ -198,3 +198,28 @@ async def toggle_rule(
     if not rule:
         raise HTTPException(404, "Rule not found")
     return NotificationRuleResponse.model_validate(rule)
+
+
+# ─── Webhook Test Endpoint ───────────────────────────────
+
+
+@router.post("/webhook-test")
+async def test_webhook(
+    user: Annotated[User, Depends(require_viewer)],
+    url: str = Query(..., description="Webhook URL to test"),
+    secret: str | None = Query(None, description="Optional HMAC secret"),
+):
+    """Send a test notification to a webhook URL to verify connectivity."""
+    from app.services.webhook import deliver_webhook_async
+
+    test_notif = {
+        "title": "IntelWatch Test Notification",
+        "message": "This is a test notification from IntelWatch to verify your webhook configuration.",
+        "severity": "info",
+        "category": "test",
+        "entity_type": None,
+        "entity_id": None,
+        "metadata": {"test": True},
+    }
+    result = await deliver_webhook_async(url, test_notif, secret=secret)
+    return result
