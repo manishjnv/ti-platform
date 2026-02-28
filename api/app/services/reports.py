@@ -26,6 +26,7 @@ from app.models.models import (
 )
 from app.services.ai import chat_completion as ai_chat
 from app.services.ai import generate_summary as ai_generate_summary
+from app.services.research import gather_research, format_research_context
 
 logger = get_logger(__name__)
 
@@ -38,8 +39,13 @@ REPORT_TEMPLATES: dict[str, dict] = {
         "description": "Structured incident response report",
         "sections": [
             {"key": "executive_summary", "title": "Executive Summary", "hint": "High-level overview of the incident"},
-            {"key": "timeline", "title": "Timeline of Events", "hint": "Chronological account of the incident"},
+            {"key": "timeline", "title": "Timeline of Events", "hint": "Chronological account — discovery, escalation, containment, resolution"},
+            {"key": "confirmation", "title": "Confirmation Status", "hint": "Whether the threat is confirmed, suspected, or unverified — include evidence"},
             {"key": "impact", "title": "Impact Assessment", "hint": "Systems, data, and business impact"},
+            {"key": "exploitability", "title": "Exploitability Assessment", "hint": "How easily the vulnerability can be exploited — CVSS exploitability metrics, attack complexity"},
+            {"key": "poc_availability", "title": "PoC / Exploit Availability", "hint": "Known proof-of-concept code, exploit kits, or active exploitation in the wild"},
+            {"key": "impacted_technology", "title": "Impacted Technologies", "hint": "Affected products, vendors, versions, platforms, and configurations"},
+            {"key": "affected_organizations", "title": "Affected Organizations & Sectors", "hint": "Industries, sectors, or specific organizations targeted or impacted"},
             {"key": "indicators", "title": "Indicators of Compromise", "hint": "IOCs observed during incident"},
             {"key": "response", "title": "Response Actions", "hint": "Containment and remediation steps taken"},
             {"key": "recommendations", "title": "Recommendations", "hint": "Short and long-term security improvements"},
@@ -51,9 +57,14 @@ REPORT_TEMPLATES: dict[str, dict] = {
         "sections": [
             {"key": "executive_summary", "title": "Executive Summary", "hint": "Brief overview of the threat"},
             {"key": "threat_overview", "title": "Threat Overview", "hint": "Detailed description of the threat actor/campaign"},
+            {"key": "timeline", "title": "Timeline", "hint": "Key dates — first seen, disclosure, patch release, active exploitation"},
+            {"key": "confirmation", "title": "Confirmation Status", "hint": "Verified vs. suspected threat — confidence level and sources"},
+            {"key": "exploitability", "title": "Exploitability Assessment", "hint": "Attack vector, complexity, privileges required, CVSS exploitability score"},
+            {"key": "poc_availability", "title": "PoC / Exploit Availability", "hint": "Public PoC code, Metasploit modules, exploit-db entries, active exploitation"},
+            {"key": "impacted_technology", "title": "Impacted Technologies", "hint": "Affected vendors, products, versions, OS, firmware, cloud services"},
+            {"key": "affected_organizations", "title": "Affected Organizations & Sectors", "hint": "Targeted industries, geographies, and known victims"},
             {"key": "ttps", "title": "Tactics, Techniques & Procedures", "hint": "MITRE ATT&CK mapping"},
             {"key": "indicators", "title": "Indicators of Compromise", "hint": "IOCs associated with this threat"},
-            {"key": "affected_systems", "title": "Affected Systems", "hint": "Products, versions, and platforms"},
             {"key": "mitigations", "title": "Mitigations", "hint": "Defensive measures and detection rules"},
         ],
     },
@@ -63,7 +74,9 @@ REPORT_TEMPLATES: dict[str, dict] = {
         "sections": [
             {"key": "executive_summary", "title": "Executive Summary", "hint": "Week at a glance"},
             {"key": "key_threats", "title": "Key Threats This Week", "hint": "Most significant threats observed"},
-            {"key": "vulnerability_highlights", "title": "Vulnerability Highlights", "hint": "Notable CVEs and patches"},
+            {"key": "vulnerability_highlights", "title": "Vulnerability Highlights", "hint": "Notable CVEs, exploitability, and patches"},
+            {"key": "exploitability", "title": "Exploitability & PoC Watch", "hint": "Newly exploitable CVEs, PoCs released, active exploitation trends"},
+            {"key": "impacted_technology", "title": "Impacted Technologies", "hint": "Products and platforms requiring urgent attention this week"},
             {"key": "statistics", "title": "Statistics & Trends", "hint": "Ingestion and risk metrics"},
             {"key": "recommendations", "title": "Recommendations", "hint": "Priority actions for the coming week"},
         ],
@@ -73,7 +86,10 @@ REPORT_TEMPLATES: dict[str, dict] = {
         "description": "IOC sharing bulletin for distribution",
         "sections": [
             {"key": "executive_summary", "title": "Summary", "hint": "Brief context for these IOCs"},
+            {"key": "confirmation", "title": "Confirmation Status", "hint": "Confidence level of the IOCs — verified, community-sourced, or unconfirmed"},
             {"key": "ioc_table", "title": "IOC Table", "hint": "Structured IOC listing"},
+            {"key": "impacted_technology", "title": "Impacted Technologies", "hint": "Products and platforms these IOCs target"},
+            {"key": "affected_organizations", "title": "Targeted Sectors & Organizations", "hint": "Industries and regions targeted by these IOCs"},
             {"key": "context", "title": "Context & Attribution", "hint": "Related campaigns or threat actors"},
             {"key": "detection", "title": "Detection Guidance", "hint": "SIEM rules, YARA signatures, etc."},
         ],
@@ -84,6 +100,8 @@ REPORT_TEMPLATES: dict[str, dict] = {
         "sections": [
             {"key": "executive_summary", "title": "Executive Summary", "hint": "Overview"},
             {"key": "body", "title": "Report Body", "hint": "Main content"},
+            {"key": "exploitability", "title": "Exploitability & Risk", "hint": "Exploitability details and risk assessment"},
+            {"key": "impacted_technology", "title": "Impacted Technologies", "hint": "Affected products, vendors, and versions"},
             {"key": "conclusion", "title": "Conclusion", "hint": "Summary and next steps"},
         ],
     },
@@ -389,7 +407,12 @@ async def generate_ai_sections(
     report_id: uuid.UUID,
     include_linked_items: bool = True,
 ) -> dict | None:
-    """AI-generate content for ALL sections of a report.
+    """AI-generate content for ALL sections with live web research.
+
+    Steps:
+      1. Gather live intelligence from OpenSearch, NVD, OTX, and web search
+      2. Build rich context from research + linked items
+      3. Send to AI for professional, fact-based section generation
 
     Returns dict with 'summary' and 'sections' keys, or None if AI unavailable.
     """
@@ -403,14 +426,49 @@ async def generate_ai_sections(
     if not sections:
         return None
 
-    # Build context from linked items
+    # ── Phase 0: Merge missing template sections into existing report ──
+    template_key = report.template or report.report_type or "custom"
+    template = REPORT_TEMPLATES.get(template_key, REPORT_TEMPLATES.get("custom", {}))
+    if template:
+        existing_keys = {s["key"] for s in sections}
+        for tmpl_section in template.get("sections", []):
+            if tmpl_section["key"] not in existing_keys:
+                sections.append({
+                    "key": tmpl_section["key"],
+                    "title": tmpl_section["title"],
+                    "hint": tmpl_section.get("hint", ""),
+                    "body": "",
+                })
+        # Persist the merged sections so the report has them even if AI fails
+        report.content = {**report.content, "sections": sections}
+
+    # ── Phase 1: Live Web Research ────────────────────────
+    research_context = ""
+    try:
+        research = await gather_research(report.title)
+        research_context = format_research_context(research)
+        logger.info(
+            "research_gathered",
+            report_id=str(report_id),
+            local=len(research.get("local_intel", [])),
+            nvd=len(research.get("nvd_cves", [])),
+            web=len(research.get("web_results", [])),
+            otx=len(research.get("otx_pulses", [])),
+        )
+    except Exception as e:
+        logger.warning("research_failed", report_id=str(report_id), error=str(e))
+        research_context = "(Live research unavailable — generate from available context)"
+
+    # ── Phase 2: Build context from linked items ──────────
     context_parts = [f"Report Title: {report.title}"]
     context_parts.append(f"Report Type: {report.report_type}")
     context_parts.append(f"Severity: {report.severity}")
+    if report.tags:
+        context_parts.append(f"Tags: {', '.join(report.tags)}")
     if report.summary:
         context_parts.append(f"Current Summary: {report.summary}")
 
-    # Existing section content
+    # Existing section content (preserve if user wrote it)
     for section in sections:
         body = section.get("body", "").strip()
         if body:
@@ -434,45 +492,56 @@ async def generate_ai_sections(
                 intel_parts.append("; ".join(parts))
 
         if intel_parts:
-            context_parts.append(f"Linked Intelligence Items:\n" + "\n".join(f"- {p}" for p in intel_parts[:15]))
+            context_parts.append("Linked Intelligence Items:\n" + "\n".join(f"- {p}" for p in intel_parts[:15]))
 
     context = "\n".join(context_parts)
 
-    # Build the section list for the AI
+    # ── Phase 3: Build AI prompt with research ────────────
     section_keys = [{"key": s["key"], "title": s["title"], "hint": s.get("hint", "")} for s in sections]
     section_list = "\n".join(f'- "{s["title"]}" (key: {s["key"]}): {s["hint"]}' for s in section_keys)
 
     system_prompt = (
-        "You are a cybersecurity threat intelligence analyst. You must generate professional "
-        "content for a threat intelligence report. You will be given the report context and a "
-        "list of sections to fill.\n\n"
+        "You are a senior cybersecurity threat intelligence analyst tasked with generating "
+        "a professional, data-driven threat intelligence report. You have been provided with "
+        "LIVE RESEARCH DATA gathered from multiple sources (NVD, OpenSearch, web search, OTX). "
+        "USE THIS RESEARCH DATA to write factual, specific, evidence-based content.\n\n"
         "IMPORTANT: Respond ONLY with valid JSON — no markdown, no code fences, no extra text.\n"
         "The JSON must be an object with:\n"
         '  "summary": "<executive summary, 3-5 sentences for C-level briefing>",\n'
         '  "sections": { "<section_key>": "<section content, 2-4 paragraphs>" }\n\n'
-        "Guidelines:\n"
-        "- Write in professional, direct language\n"
-        "- Each section should be 2-4 paragraphs, specific and actionable\n"
-        "- Use the linked intelligence items to enrich the content\n"
-        "- If no specific data is available for a section, provide general best-practice guidance\n"
+        "SECTION-SPECIFIC GUIDELINES:\n"
+        "- Timeline: Use actual dates from research data. Format as bullet points with dates.\n"
+        "- Confirmation Status: State whether the threat is Confirmed/Suspected/Unverified with evidence.\n"
+        "- Exploitability: Reference CVSS scores, attack vectors, complexity from NVD data.\n"
+        "- PoC / Exploit Availability: Cite specific PoC sources, exploit-db, GitHub, Metasploit if found.\n"
+        "- Impacted Technologies: List specific vendors, products, versions from NVD/research data.\n"
+        "- Affected Organizations: Name sectors, industries, geographies from OTX/web data.\n\n"
+        "GENERAL GUIDELINES:\n"
+        "- Write in professional, direct language — no filler\n"
+        "- Each section should be 2-4 paragraphs with specific, actionable intelligence\n"
+        "- Cite sources where possible (e.g., 'According to NVD...', 'OTX pulse indicates...')\n"
+        "- Include actual CVE IDs, CVSS scores, dates, product names from the research\n"
+        "- If research data lacks info for a section, note it as 'No data available' and provide guidance\n"
         "- Do NOT include JSON code fences or any wrapper — raw JSON only"
     )
 
     user_prompt = (
         f"Generate content for all sections of this threat intelligence report.\n\n"
-        f"CONTEXT:\n{context}\n\n"
+        f"REPORT CONTEXT:\n{context}\n\n"
+        f"LIVE RESEARCH DATA:\n{research_context}\n\n"
         f"SECTIONS TO FILL:\n{section_list}\n\n"
+        f"Use the research data above to write factual, evidence-based content for each section. "
         f"Respond with JSON containing 'summary' and 'sections' keys."
     )
 
-    raw = await ai_chat(system_prompt, user_prompt, max_tokens=2000, temperature=0.3)
+    # Use higher token limit to accommodate the richer content
+    raw = await ai_chat(system_prompt, user_prompt, max_tokens=3500, temperature=0.25)
     if not raw:
         return None
 
     # Parse JSON — strip markdown fences if the model wraps it
     cleaned = raw.strip()
     if cleaned.startswith("```"):
-        # Remove ```json ... ``` wrapper
         lines = cleaned.split("\n")
         lines = [l for l in lines if not l.strip().startswith("```")]
         cleaned = "\n".join(lines)

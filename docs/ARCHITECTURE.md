@@ -312,6 +312,7 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 | `POST` | `/api/v1/reports/{id}/items` | Analyst | `routes/reports.py` | `services/reports.py` |
 | `DELETE` | `/api/v1/reports/{id}/items/{item_id}` | Analyst | `routes/reports.py` | `services/reports.py` |
 | `POST` | `/api/v1/reports/{id}/ai-summary` | Analyst | `routes/reports.py` | `services/reports.py` |
+| `POST` | `/api/v1/reports/{id}/ai-generate` | Analyst | `routes/reports.py` | `services/reports.py`, `services/research.py` |
 | `GET` | `/api/v1/reports/{id}/export?format=` | Viewer | `routes/reports.py` | `services/reports.py` |
 
 ---
@@ -599,6 +600,7 @@ GitHub Actions
 | 2026-02-28 | Phase 1.3 — Notifications & Alerting (rules, bell, 12 endpoints) | ~17,500 |
 | 2026-02-28 | Phase 1.4 — Report Generation (templates, AI summary, export) | ~18,800 |
 | 2026-02-28 | Phase 1.5 — VirusTotal & Shodan Connectors | ~19,315 |
+| 2026-03-01 | Phase 1.6 — AI Web Research & Enhanced Report Sections | ~19,800 |
 
 ---
 
@@ -606,6 +608,7 @@ GitHub Actions
 
 | Date | Change |
 | ---- | ------ |
+| 2026-03-01 | Phase 1.6 AI Web Research: `services/research.py` (NVD, OTX, DuckDuckGo, OpenSearch live research), enhanced templates (11 sections: timeline, confirmation, exploitability, PoC availability, impacted tech, affected orgs), `generate_ai_sections` now research-backed |
 | 2026-02-28 | Multi-format export: PDF (reportlab + TLP watermark), STIX 2.1 Bundle, HTML (dark-theme), CSV; UI export dropdown with 5 format options; updated codebase metrics |
 | 2026-02-28 | Phase 1.4 Report Generation: reports + report_items tables, 11 report endpoints, 3 UI pages, templates, AI summary, multi-format export (PDF, STIX 2.1, HTML, CSV, Markdown) |
 | 2026-02-28 | Phase 1.3 Notifications & Alerting: notification_rules + notifications tables, 12 notification endpoints, NotificationBell component, worker eval task |
