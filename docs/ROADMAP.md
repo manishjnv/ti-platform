@@ -686,5 +686,157 @@ System
 
 ---
 
+## Phase 7 — Monetization, Premium Feeds & Cloud Scale
+
+**Goal:** Transition from free/open feeds to paid premium intel sources as revenue allows, and migrate infrastructure from single VPS to a scalable, resilient cloud platform. Triggered by: **first paying customer.**
+
+### 7.1 Premium Intel Feed Subscriptions
+- **Trigger:** First customer revenue covers feed costs (~$200-500/mo to start)
+- **Module update:** `api/app/services/feeds/` — upgrade existing connectors + add paid sources
+- **Feeds to upgrade (free → paid tier):**
+
+| Feed | Free Tier (Current) | Paid Tier | Cost | Value Add |
+|------|---------------------|-----------|------|-----------|
+| VirusTotal | 500 req/day, public API | VT Enterprise / VT Intelligence | ~$600/yr | Full threat hunting, retrohunt, livehunt, YARA scanning |
+| Shodan | CVEDB (no auth) | Shodan Enterprise API | ~$360/yr | Real-time CVE alerts, network monitoring, 100M+ records |
+| AbuseIPDB | 1k checks/day | Premium (100k checks/day) | ~$200/yr | Bulk checking, subnet reports, confidence scoring |
+| MaxMind GeoIP | GeoLite2 (free) | GeoIP2 Precision | ~$240/yr | City-level accuracy, ISP/org data, connection type |
+
+- **New premium feeds to add:**
+
+| Feed | Provider | Cost | Capability |
+|------|----------|------|------------|
+| Recorded Future | Recorded Future | ~$10k/yr (startup tier) | Premium threat intel, IP risk scores, vulnerability intelligence |
+| GreyNoise | GreyNoise | ~$1.2k/yr | Mass scanner identification, noise vs. targeted attacks |
+| Pulsedive | Pulsedive | ~$600/yr | Community + premium threat indicators, risk scoring |
+| IntelX | Intelligence X | ~$2k/yr | Dark web, paste, leak search engine API |
+| SpamHaus | Spamhaus | ~$500/yr | DNS blocklists, botnet C2 feeds, DROP/EDROP |
+| PhishTank | PhishTank (Cisco) | Free/Premium | Community-verified phishing URLs |
+| Abuse.ch (ThreatFox) | abuse.ch | Free | IOCs from malware analysis (complement URLhaus) |
+| Binary Defense | Binary Defense | ~$1.2k/yr | Artillery threat intel, banlist, honeypot data |
+| CrowdSec | CrowdSec | Free/Premium | Community-driven IP reputation, crowdsourced blocklists |
+| CIRCL MISP feeds | CIRCL | Free | OSINT MISP events, malware hashes, botnet trackers |
+
+- **Feed priority tiers:**
+  - **Tier 0 (keep free):** MITRE ATT&CK, NVD, CISA KEV, abuse.ch (URLhaus + ThreatFox), CIRCL, CrowdSec, OTX
+  - **Tier 1 (first $500/mo revenue):** Upgrade VT, Shodan, AbuseIPDB to paid; add GreyNoise + Pulsedive
+  - **Tier 2 (first $2k/mo revenue):** Add IntelX, SpamHaus, Binary Defense; upgrade GeoIP
+  - **Tier 3 ($5k+/mo revenue):** Add Recorded Future or equivalent premium feed; enterprise VT
+
+### 7.2 Customer API Access & Usage-Based Billing
+- **Module:** `api/app/services/billing.py` — usage metering and subscription management
+- **Module:** `api/app/middleware/rate_limit.py` — per-customer API rate limiting and quota enforcement
+- **Database:** New `subscriptions` table (id, org_id, plan, status, started_at, expires_at, stripe_id)
+- **Database:** New `api_usage_log` table (id, org_id, api_key_id, endpoint, timestamp, response_time, status_code)
+- **Database:** New `plans` table (id, name, price_monthly, price_annual, api_calls_limit, intel_items_limit, users_limit, features JSON)
+- **Features:**
+  - **Plan tiers:**
+    - **Community (free):** 1 user, 1k API calls/day, 7 free feeds, 30-day retention
+    - **Starter ($49/mo):** 5 users, 10k API calls/day, Tier 0+1 feeds, 90-day retention, email alerts
+    - **Professional ($199/mo):** 25 users, 100k API calls/day, all feeds, 1-year retention, dark web monitor, AI copilot
+    - **Enterprise ($499+/mo):** Unlimited users, unlimited API, all feeds, unlimited retention, brand takedown, compliance, dedicated support
+  - **Stripe integration** — subscription checkout, invoicing, usage-based overages
+  - **Usage dashboard** — real-time API call tracking, quota visualization, cost projection
+  - **Metered billing** — charge per excess API call or per premium enrichment lookup
+- **Page:** Settings → "Subscription" — plan selection, billing history, usage stats
+- **API:** Rate limit headers (`X-RateLimit-Remaining`, `X-RateLimit-Reset`) on all responses
+
+### 7.3 Infrastructure Migration — Single VPS → Cloud Platform
+- **Goal:** Move from single Hostinger KVM 2 VPS ($15/mo) to scalable cloud infrastructure when first customers demand reliability (99.9% uptime SLA)
+- **Migration phases:**
+
+#### Stage 1: Enhanced VPS ($15-50/mo) — 1-10 customers
+- Current: Hostinger KVM 2 (4 vCPU, 8GB RAM, 100GB SSD) — $15/mo
+- Upgrade: Hostinger KVM 4 or Hetzner CX41 (8 vCPU, 16GB RAM, 200GB SSD) — $30-50/mo
+- Add: automated backups (daily DB dump to S3/Backblaze B2), health monitoring (UptimeRobot/Healthchecks.io)
+- Add: Docker Compose with resource limits, restart policies, log rotation
+- Add: Let's Encrypt SSL + Cloudflare CDN for static assets
+
+#### Stage 2: Container Platform ($100-300/mo) — 10-50 customers
+- **Option A: Railway.app / Render** — managed container hosting
+  - Deploy each service (API, UI, worker, scheduler) as separate Railway service
+  - Managed PostgreSQL + Redis add-ons
+  - Auto-scaling, zero-downtime deploys, built-in CI/CD
+  - Cost: ~$100-200/mo for moderate workloads
+  - Pros: simplest migration from Docker Compose, minimal ops overhead
+
+- **Option B: Hetzner Cloud + k3s**
+  - 3-node k3s cluster (each 4 vCPU, 8GB) — ~$45/mo total
+  - Hetzner managed load balancer — $5/mo
+  - Hetzner managed volumes for DB persistence
+  - Self-managed but extremely cost-effective
+  - Pros: 10x cheaper than AWS/GCP at same specs, EU data residency option
+
+- **Option C: DigitalOcean App Platform**
+  - Container-native PaaS with managed databases
+  - PostgreSQL managed cluster ($30/mo starter)
+  - Redis managed ($15/mo)
+  - App containers with auto-scaling
+  - Cost: ~$150-250/mo
+  - Pros: good middle ground, managed DBs reduce ops
+
+#### Stage 3: Full Cloud ($300-1k/mo) — 50-200 customers
+- **Recommended: AWS (or GCP) with managed services**
+  - **Compute:** ECS Fargate (API, worker, scheduler) — serverless containers, pay per vCPU-second
+  - **Database:** RDS PostgreSQL (with TimescaleDB extension) — Multi-AZ for HA
+  - **Search:** Amazon OpenSearch Service (managed) or self-hosted on EC2
+  - **Cache:** ElastiCache Redis
+  - **CDN:** CloudFront for UI static assets
+  - **Storage:** S3 for report exports, evidence files, backups
+  - **Monitoring:** CloudWatch + PagerDuty for alerting
+  - **CI/CD:** GitHub Actions → ECR → ECS rolling deploy
+  - **Cost estimate:** $300-600/mo (reserved instances)
+  - **Note:** If EU data residency needed, use Hetzner/OVH or AWS eu-central-1
+
+#### Stage 4: Multi-Region ($1k+/mo) — 200+ customers
+- Multi-region deployment (US-East, EU-West, APAC)
+- Read replicas for PostgreSQL
+- OpenSearch cross-cluster replication
+- Global CDN for UI
+- Regional API endpoints with geo-routing
+- Disaster recovery: RPO < 1h, RTO < 15min
+
+- **Decision matrix:**
+
+| Criteria | VPS (current) | Railway/Render | Hetzner k3s | AWS/GCP |
+|----------|---------------|----------------|-------------|---------|
+| Monthly cost | $15 | $100-200 | $50-100 | $300-600 |
+| Max customers | ~10 | ~100 | ~200 | Unlimited |
+| Ops overhead | Medium | Low | High | Medium |
+| Auto-scaling | No | Yes | Manual | Yes |
+| Uptime SLA | ~99% | 99.9% | 99.5% | 99.99% |
+| DB management | Self | Managed | Self | Managed |
+| Migration effort | — | Low | Medium | High |
+| Data residency | Fixed | US/EU | EU | Any |
+
+### 7.4 Multi-Tenancy Architecture
+- **Module:** `api/app/middleware/tenant.py` — tenant isolation middleware
+- **Database:** Add `org_id` column to: `intel_items`, `iocs`, `intel_ioc_links`, `cases`, `reports`, `notification_rules`, `watchlists`, `detection_rules`
+- **Features:**
+  - **Row-level security** — PostgreSQL RLS policies ensuring tenants only see their own data
+  - **Shared feed data** — global intel/IOC data shared read-only; per-org enrichments, notes, cases are isolated
+  - **Tenant-aware caching** — Redis key prefixing with `org:{id}:`
+  - **Admin super-tenant** — platform admin can view all orgs, manage subscriptions, monitor health
+  - **Tenant provisioning** — auto-create org schema/namespace on signup
+  - **Data export** — per-tenant data export for compliance/portability (GDPR right to data portability)
+- **Migration:** Backfill `org_id` on existing data as "default" org, then enforce on new records
+
+### 7.5 High Availability & Observability
+- **Module:** `api/app/core/telemetry.py` — OpenTelemetry instrumentation
+- **Features:**
+  - **Health checks** — deep health endpoints checking DB, Redis, OpenSearch, worker queue depth
+  - **Metrics** — Prometheus-compatible metrics endpoint: request latency, error rates, queue depth, feed freshness, cache hit ratio
+  - **Distributed tracing** — OpenTelemetry traces across API → worker → DB
+  - **Structured logging** — JSON logs with correlation IDs, shipped to Loki/CloudWatch
+  - **Alerting** — PagerDuty/OpsGenie integration for: service down, feed stale > 2h, error rate > 5%, disk > 80%
+  - **Status page** — public status page (Instatus/Cachet) showing service health
+  - **Disaster recovery:**
+    - Automated daily DB backups to S3 (30-day retention)
+    - Point-in-time recovery via WAL archiving
+    - Documented runbook for failover procedures
+    - Tested monthly DR drill
+
+---
+
 *Last updated: February 2026*
 *IntelWatch v1.0 — https://intelwatch.trendsmap.in*
