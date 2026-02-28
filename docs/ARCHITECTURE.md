@@ -73,15 +73,15 @@ Internet ──────────►│  │  Zero Trust │    │  Tunne
 
 ## Service Topology
 
-| Service | Container | Technology | Responsibility | Port |
-|---------|-----------|-----------|----------------|------|
-| **UI** | `ti-platform-ui` | Next.js 14, TypeScript, Tailwind CSS | Server-side rendered dashboard, client-side interactivity | 3000 |
-| **API** | `ti-platform-api` | FastAPI, async SQLAlchemy, Pydantic v2 | REST API, auth middleware, data access layer | 8000 |
-| **Worker** | `ti-platform-worker` | Python RQ | Background feed ingestion, AI summarization | — |
-| **Scheduler** | `ti-platform-scheduler` | APScheduler | Cron-driven job enqueueing | — |
-| **PostgreSQL** | `ti-platform-postgres` | PostgreSQL 16 + TimescaleDB | Primary data store (time-series hypertables) | 5432 |
-| **Redis** | `ti-platform-redis` | Redis 7 Alpine | Job queue (RQ) + API response cache | 6379 |
-| **OpenSearch** | `ti-platform-opensearch` | OpenSearch 2.13 | Full-text IOC search + analytics | 9200 |
+| Service | Compose Name | Technology | Responsibility | Port |
+|---------|-------------|-----------|----------------|------|
+| **UI** | `ui` | Next.js 14, TypeScript, Tailwind CSS | Server-side rendered dashboard, client-side interactivity | 3000 |
+| **API** | `api` | FastAPI, async SQLAlchemy, Pydantic v2 | REST API, auth middleware, data access layer | 8000 |
+| **Worker** | `worker` | Python RQ | Background feed ingestion, AI summarization | — |
+| **Scheduler** | `scheduler` | APScheduler | Cron-driven job enqueueing | — |
+| **PostgreSQL** | `postgres` | PostgreSQL 16 + TimescaleDB | Primary data store (time-series hypertables) | 5432 |
+| **Redis** | `redis` | Redis 7 Alpine | Job queue (RQ) + API response cache | 6379 |
+| **OpenSearch** | `opensearch` | OpenSearch 2.13 | Full-text IOC search + analytics | 9200 |
 
 ### Service Dependencies
 
@@ -102,44 +102,61 @@ Scheduler ──► Redis (enqueues jobs only)
 ### Database Schema (PostgreSQL + TimescaleDB)
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                          TimescaleDB                                │
-│                                                                     │
-│  ┌─────────────────┐          ┌──────────────┐                      │
-│  │  intel_items     │──────1:N──►│  iocs         │                   │
-│  │  (hypertable)    │          │              │                      │
-│  │  partitioned by  │          └──────────────┘                      │
-│  │  ingested_at     │                  ▲                             │
-│  └────────┬─────────┘                  │                             │
-│           │                ┌───────────┴──────────┐                  │
-│           │                │  intel_ioc_links     │                  │
-│           └────────────────►│  (junction table)    │                  │
-│                            └──────────────────────┘                  │
-│                                                                     │
-│  ┌──────────────┐  ┌──────────────────┐  ┌──────────────────────┐   │
-│  │  users        │  │  feed_sync_state │  │  audit_log           │   │
-│  │              │  │                  │  │  (hypertable)        │   │
-│  └──────────────┘  └──────────────────┘  └──────────────────────┘   │
-│                                                                     │
-│  Materialized Views:                                                │
-│  ├── mv_severity_distribution (30-day rollup)                       │
-│  └── mv_top_risks (risk_score ≥ 70, top 100)                       │
-│                                                                     │
-│  ┌──────────────────┐                                               │
-│  │  scoring_config   │  (configurable risk scoring weights)         │
-│  └──────────────────┘                                               │
-│                                                                     │
-│  ┌────────────────────┐   ┌──────────────────────┐                  │
-│  │  attack_techniques  │◄──│  intel_attack_links   │                  │
-│  │  (691 MITRE ATT&CK) │   │  (junction table)    │                  │
-│  └────────────────────┘   └──────────────────────┘                  │
-│                                                                     │
-│  ┌────────────────────┐                                             │
-│  │   relationships     │  (1,181 auto-discovered graph edges)       │
-│  │  (source↔target     │                                            │
-│  │   + type + conf)    │                                            │
-│  └────────────────────┘                                             │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                           TimescaleDB                                   │
+│                                                                          │
+│  ┌─────────────────┐          ┌──────────────┐                           │
+│  │  intel_items     │──────1:N──►│  iocs         │                        │
+│  │  (hypertable)    │          │              │                           │
+│  │  partitioned by  │          └──────────────┘                           │
+│  │  ingested_at     │                  ▲                                  │
+│  └────────┬─────────┘                  │                                  │
+│           │                ┌───────────┴──────────┐                       │
+│           │                │  intel_ioc_links     │                       │
+│           └────────────────►│  (junction table)    │                       │
+│                            └──────────────────────┘                       │
+│                                                                          │
+│  ┌──────────────┐  ┌──────────────────┐  ┌──────────────────────┐        │
+│  │  users        │  │  feed_sync_state │  │  audit_log           │        │
+│  │              │  │                  │  │  (hypertable)        │        │
+│  └──────┬───────┘  └──────────────────┘  └──────────────────────┘        │
+│         │                                                                │
+│         │  ┌──────────────────┐                                          │
+│         │  │  scoring_config   │  (configurable risk scoring weights)    │
+│         │  └──────────────────┘                                          │
+│         │                                                                │
+│  ┌──────┼────────────────────────────────────────────────────────┐       │
+│  │      │  MITRE ATT&CK + Relationships                         │       │
+│  │      │  ┌────────────────────┐   ┌──────────────────────┐     │       │
+│  │      │  │  attack_techniques  │◄──│  intel_attack_links   │     │       │
+│  │      │  │  (691 techniques)   │   │  (junction)          │     │       │
+│  │      │  └────────────────────┘   └──────────────────────┘     │       │
+│  │      │  ┌────────────────────┐                                │       │
+│  │      │  │   relationships     │  (auto-discovered edges)      │       │
+│  │      │  └────────────────────┘                                │       │
+│  └──────┼────────────────────────────────────────────────────────┘       │
+│         │                                                                │
+│  ┌──────┼────────────────────────────────────────────────────────┐       │
+│  │      │  Notifications                                         │       │
+│  │      ├──►┌───────────────────┐   ┌──────────────────┐         │       │
+│  │      │   │ notification_rules │──►│  notifications    │         │       │
+│  │      │   │ (alert rules)      │   │  (in-app alerts) │         │       │
+│  │      │   └───────────────────┘   └──────────────────┘         │       │
+│  └──────┼────────────────────────────────────────────────────────┘       │
+│         │                                                                │
+│  ┌──────┼────────────────────────────────────────────────────────┐       │
+│  │      │  Reports                                               │       │
+│  │      └──►┌──────────────┐   ┌──────────────────┐              │       │
+│  │          │  reports       │──►│  report_items     │              │       │
+│  │          │  (JSONB content│   │  (linked intel,   │              │       │
+│  │          │   + workflow)  │   │   IOCs, techniques)│              │       │
+│  │          └──────────────┘   └──────────────────┘              │       │
+│  └───────────────────────────────────────────────────────────────┘       │
+│                                                                          │
+│  Materialized Views:                                                     │
+│  ├── mv_severity_distribution (30-day rollup)                            │
+│  └── mv_top_risks (risk_score ≥ 70, top 100)                            │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Core Tables
@@ -163,29 +180,51 @@ Scheduler ──► Redis (enqueues jobs only)
 | `mv_severity_distribution` | Materialized view | Pre-computed 30-day severity stats |
 | `mv_top_risks` | Materialized view | Pre-computed top-100 high-risk items |
 
-### Indexing Strategy
+### Indexing Strategy (41 indexes)
 
-| Index | Type | Purpose |
-|-------|------|---------|
-| `idx_intel_severity` | B-tree | Fast severity + time filtering |
-| `idx_intel_risk` | B-tree | Fast risk-score ordering |
-| `idx_intel_source` | B-tree | Filter by source name |
-| `idx_intel_feed_type` | B-tree | Filter by feed type |
-| `idx_intel_kev` | Partial B-tree | Fast KEV lookups (WHERE is_kev = TRUE) |
-| `idx_intel_tags` | GIN | Array containment queries on tags |
-| `idx_intel_cve` | GIN | Array containment queries on CVE IDs |
-| `idx_intel_geo` | GIN | Array containment queries on geo |
-| `idx_intel_title_trgm` | GIN (trigram) | Fuzzy text search on titles |
-| `idx_iocs_value_trgm` | GIN (trigram) | Fuzzy IOC value search |
-| `idx_attack_tactic` | B-tree | Filter techniques by tactic phase |
-| `idx_attack_parent` | B-tree | Sub-technique→parent lookups |
-| `idx_attack_name_trgm` | GIN (trigram) | Fuzzy technique name search |
-| `idx_rel_source` | B-tree | Find edges by source entity |
-| `idx_rel_target` | B-tree | Find edges by target entity |
-| `idx_rel_type` | B-tree | Filter by relationship type |
-| `idx_rel_confidence` | B-tree (desc) | Rank by confidence score |
-| `idx_rel_unique_edge` | Unique B-tree | Prevent duplicate edges |
-| `idx_ial_technique` | B-tree | Fast technique→intel lookups |
+| Index | Table | Type | Purpose |
+|-------|-------|------|---------|
+| `idx_users_email` | `users` | B-tree | User email lookups |
+| `idx_intel_severity` | `intel_items` | B-tree | Fast severity + time filtering |
+| `idx_intel_risk` | `intel_items` | B-tree | Fast risk-score ordering |
+| `idx_intel_source` | `intel_items` | B-tree | Filter by source name |
+| `idx_intel_feed_type` | `intel_items` | B-tree | Filter by feed type |
+| `idx_intel_asset_type` | `intel_items` | B-tree | Filter by asset type |
+| `idx_intel_kev` | `intel_items` | Partial B-tree | Fast KEV lookups (WHERE is_kev = TRUE) |
+| `idx_intel_tags` | `intel_items` | GIN | Array containment queries on tags |
+| `idx_intel_cve` | `intel_items` | GIN | Array containment queries on CVE IDs |
+| `idx_intel_geo` | `intel_items` | GIN | Array containment queries on geo |
+| `idx_intel_source_hash` | `intel_items` | B-tree | Deduplication by source hash |
+| `idx_intel_title_trgm` | `intel_items` | GIN (trigram) | Fuzzy text search on titles |
+| `idx_iocs_value` | `iocs` | B-tree | Exact IOC value lookups |
+| `idx_iocs_type` | `iocs` | B-tree | Filter by IOC type |
+| `idx_iocs_risk` | `iocs` | B-tree (desc) | Rank by IOC risk score |
+| `idx_iocs_value_trgm` | `iocs` | GIN (trigram) | Fuzzy IOC value search |
+| `idx_attack_tactic` | `attack_techniques` | B-tree | Filter techniques by tactic phase |
+| `idx_attack_parent` | `attack_techniques` | Partial B-tree | Sub-technique→parent lookups |
+| `idx_attack_name_trgm` | `attack_techniques` | GIN (trigram) | Fuzzy technique name search |
+| `idx_ial_technique` | `intel_attack_links` | B-tree | Fast technique→intel lookups |
+| `idx_rel_source` | `relationships` | B-tree | Find edges by source entity |
+| `idx_rel_target` | `relationships` | B-tree | Find edges by target entity |
+| `idx_rel_type` | `relationships` | B-tree | Filter by relationship type |
+| `idx_rel_confidence` | `relationships` | B-tree (desc) | Rank by confidence score |
+| `idx_rel_unique_edge` | `relationships` | Unique B-tree | Prevent duplicate edges |
+| `idx_nr_user` | `notification_rules` | B-tree | Rules by user |
+| `idx_nr_active` | `notification_rules` | Partial B-tree | Active rules only |
+| `idx_nr_type` | `notification_rules` | B-tree | Filter by rule type |
+| `idx_notif_user` | `notifications` | B-tree | User notifications (time-sorted) |
+| `idx_notif_unread` | `notifications` | Partial B-tree | Unread notifications (WHERE is_read = FALSE) |
+| `idx_notif_category` | `notifications` | B-tree | Filter by category |
+| `idx_notif_entity` | `notifications` | Partial B-tree | Entity-linked notifications |
+| `idx_reports_author` | `reports` | B-tree | Reports by author |
+| `idx_reports_status` | `reports` | B-tree | Filter by report status |
+| `idx_reports_type` | `reports` | B-tree | Filter by report type |
+| `idx_reports_created` | `reports` | B-tree (desc) | Recent reports first |
+| `idx_reports_tags` | `reports` | GIN | Array containment on report tags |
+| `idx_report_items_report` | `report_items` | B-tree | Items by report |
+| `idx_report_items_type` | `report_items` | B-tree | Items by type + ID |
+| `idx_mv_severity` | `mv_severity_distribution` | Unique B-tree | MV refresh key |
+| `idx_mv_top_risks` | `mv_top_risks` | Unique B-tree | MV refresh key |
 
 ### OpenSearch Index
 
@@ -217,10 +256,10 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 | **Models** | `api/app/models/` | SQLAlchemy ORM model definitions |
 | **Schemas** | `api/app/schemas/` | Pydantic v2 request/response schemas |
 | **Routes** | `api/app/routes/` | Thin route handlers — validate, delegate to service, return response |
-| **Services** | `api/app/services/` | All business logic: auth, scoring, search, AI, export, MITRE ATT&CK, domain config, reports, feed connectors |
+| **Services** | `api/app/services/` | All business logic: auth, database access, scoring, search, AI, export, MITRE ATT&CK, graph, notifications, reports, domain config, feed connectors |
 | **Feeds** | `api/app/services/feeds/` | Plugin-based feed connectors (inherit from `BaseFeedConnector`) |
 
-### Endpoint Map
+### Endpoint Map (46 endpoints across 10 route files)
 
 | Method | Endpoint | Auth | Handler | Service |
 |--------|----------|------|---------|---------|
@@ -229,21 +268,39 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 | `POST` | `/api/v1/auth/login` | None | `routes/auth.py` | `services/auth.py` |
 | `POST` | `/api/v1/auth/logout` | Cookie | `routes/auth.py` | `services/auth.py` |
 | `GET` | `/api/v1/auth/session` | Cookie | `routes/auth.py` | `services/auth.py` |
+| `POST` | `/api/v1/auth/google` | None | `routes/auth.py` | `services/auth.py` |
+| `GET` | `/api/v1/me` | Any | `routes/admin.py` | — |
+| `GET` | `/api/v1/users` | Admin | `routes/admin.py` | — |
+| `PATCH` | `/api/v1/users/{user_id}` | Admin | `routes/admin.py` | — |
 | `GET` | `/api/v1/dashboard` | Viewer | `routes/dashboard.py` | `services/database.py` |
 | `GET` | `/api/v1/intel` | Viewer | `routes/intel.py` | `services/database.py` |
+| `GET` | `/api/v1/intel/export` | Viewer | `routes/intel.py` | `services/export.py` |
 | `GET` | `/api/v1/intel/{id}` | Viewer | `routes/intel.py` | `services/database.py` |
-| `GET` | `/api/v1/search` | Viewer | `routes/search.py` | `services/search.py` |
-| `POST` | `/api/v1/admin/ingest` | Admin | `routes/admin.py` | `services/feeds/*` |
-| `GET` | `/api/v1/admin/feeds` | Admin | `routes/admin.py` | `services/database.py` |
+| `POST` | `/api/v1/search` | Viewer | `routes/search.py` | `services/search.py` |
+| `GET` | `/api/v1/feeds/status` | Viewer | `routes/admin.py` | `services/database.py` |
+| `POST` | `/api/v1/feeds/{feed_name}/trigger` | Admin | `routes/admin.py` | `services/feeds/*` |
+| `POST` | `/api/v1/feeds/trigger-all` | Admin | `routes/admin.py` | `services/feeds/*` |
 | `GET` | `/api/v1/setup/config` | Admin | `routes/admin.py` | `services/domain.py` |
 | `GET` | `/api/v1/setup/status` | Admin | `routes/admin.py` | `services/domain.py` |
 | `GET` | `/api/v1/techniques` | Viewer | `routes/techniques.py` | `services/mitre.py` |
 | `GET` | `/api/v1/techniques/matrix` | Viewer | `routes/techniques.py` | — |
 | `GET` | `/api/v1/techniques/{id}` | Viewer | `routes/techniques.py` | — |
-| `GET` | `/api/v1/techniques/intel/{id}/techniques` | Viewer | `routes/techniques.py` | — |
+| `GET` | `/api/v1/techniques/intel/{item_id}/techniques` | Viewer | `routes/techniques.py` | — |
 | `GET` | `/api/v1/graph/explore` | Viewer | `routes/graph.py` | `services/graph.py` |
 | `GET` | `/api/v1/graph/related/{id}` | Viewer | `routes/graph.py` | `services/graph.py` |
 | `GET` | `/api/v1/graph/stats` | Viewer | `routes/graph.py` | `services/graph.py` |
+| `GET` | `/api/v1/notifications` | Viewer | `routes/notifications.py` | `services/notifications.py` |
+| `GET` | `/api/v1/notifications/unread-count` | Viewer | `routes/notifications.py` | `services/notifications.py` |
+| `GET` | `/api/v1/notifications/stats` | Viewer | `routes/notifications.py` | `services/notifications.py` |
+| `POST` | `/api/v1/notifications/mark-read` | Viewer | `routes/notifications.py` | `services/notifications.py` |
+| `POST` | `/api/v1/notifications/mark-all-read` | Viewer | `routes/notifications.py` | `services/notifications.py` |
+| `DELETE` | `/api/v1/notifications/{id}` | Viewer | `routes/notifications.py` | `services/notifications.py` |
+| `DELETE` | `/api/v1/notifications` | Viewer | `routes/notifications.py` | `services/notifications.py` |
+| `GET` | `/api/v1/notifications/rules` | Viewer | `routes/notifications.py` | `services/notifications.py` |
+| `POST` | `/api/v1/notifications/rules` | Viewer | `routes/notifications.py` | `services/notifications.py` |
+| `PUT` | `/api/v1/notifications/rules/{id}` | Viewer | `routes/notifications.py` | `services/notifications.py` |
+| `DELETE` | `/api/v1/notifications/rules/{id}` | Viewer | `routes/notifications.py` | `services/notifications.py` |
+| `POST` | `/api/v1/notifications/rules/{id}/toggle` | Viewer | `routes/notifications.py` | `services/notifications.py` |
 | `GET` | `/api/v1/reports` | Viewer | `routes/reports.py` | `services/reports.py` |
 | `POST` | `/api/v1/reports` | Analyst | `routes/reports.py` | `services/reports.py` |
 | `GET` | `/api/v1/reports/templates` | Viewer | `routes/reports.py` | `services/reports.py` |
@@ -290,7 +347,7 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 │  │  ATT&CK Map   │    │   (cards, charts,       │
 │  │  IOC Search    │    │    tables, filters)     │
 │  │  IOC Database  │    │                         │
-│  │ Analytics      │    │    tables, filters)     │
+│  │ Analytics      │    │                         │
 │  │  Analytics     │    │                         │
 │  │  Geo View      │    │                         │
 │  │ System         │    │                         │
@@ -300,14 +357,14 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 └──────────────────────────────────────────────────┘
 ```
 
-### Component Hierarchy
+### Component Hierarchy (24 components, 16 pages)
 
 ```
 app/layout.tsx (root HTML, dark class)
 ├── login/page.tsx (IntelWatch branded login — SSO or dev bypass)
-└── (app)/layout.tsx (AuthGuard + Sidebar + Header + ErrorBoundary + main area)
+└── (app)/layout.tsx (AuthGuard + Sidebar + Header + NotificationBell + ErrorBoundary + main area)
     ├── dashboard/page.tsx
-    │   ├── StatCard ×4 (with optional tooltip)
+    │   ├── StatCard ×6 (with optional tooltip)
     │   ├── ThreatLevelBar
     │   ├── DonutChart ×2
     │   ├── HorizontalBarChart
@@ -318,6 +375,7 @@ app/layout.tsx (root HTML, dark class)
     ├── intel/page.tsx → intel/[id]/page.tsx
     │   └── IntelCard (with DataTooltip on risk score)
     ├── investigate/page.tsx (GraphExplorer)
+    ├── techniques/page.tsx (ATTACKMatrix)
     ├── search/page.tsx
     ├── iocs/page.tsx
     ├── analytics/page.tsx
@@ -326,12 +384,20 @@ app/layout.tsx (root HTML, dark class)
     ├── feeds/page.tsx
     └── settings/page.tsx
 
-Shared:
+Shared Components (14 root + 4 charts + 6 ui primitives):
+├── AuthGuard (route protection wrapper)
 ├── ErrorBoundary / WidgetErrorBoundary (page + widget error recovery)
-├── Loading (skeleton-based page loading, no spinners)
 ├── EmptyState (no-data guidance per Instruction.md)
+├── Loading (skeleton-based page loading, no spinners)
+├── NotificationBell (header bell + dropdown via React Portal)
+├── Sidebar (4-section navigation)
+├── StatCard, IntelCard, FeedStatusPanel, RankedDataList, ThreatLevelBar
+├── GraphExplorer (SVG force-directed graph)
+├── ATTACKMatrix (MITRE ATT&CK heatmap grid)
+├── Pagination (page/pages/onPageChange)
 ├── Tooltip / DataTooltip (Radix UI — score/status metadata)
-└── Skeleton / IntelCardSkeleton (loading placeholders)
+├── charts/ — DonutChart, HorizontalBarChart, TrendLineChart
+└── ui/ — badge, button, card, input, tabs, tooltip (shadcn/ui primitives)
 ```
 
 ---
@@ -385,21 +451,24 @@ class BaseFeedConnector(ABC):
         await self.store(items)  # bulk upsert + index
 ```
 
-### Schedule
+### Schedule (14 jobs)
 
-| Feed | Interval | Priority |
-|------|----------|----------|
-| CISA KEV | 5 min | Critical (exploited vulns) |
-| URLhaus | 5 min | High (active malicious URLs) |
-| NVD | 15 min | Medium (new CVEs) |
-| AbuseIPDB | 15 min | Medium (IP reputation) |
-| OTX | 30 min | Medium (campaign intel) |
-| AI Summaries | 5 min | Low (enrichment pass) |
-| ATT&CK Sync | 6 hrs | Low (refresh STIX data) |
-| ATT&CK Mapping | 10 min | Low (auto-map intel→techniques) |
-| Relationship Builder | 15 min | Low (discover shared IOC/CVE/technique edges) |
-| IOC Extraction | 10 min | Low (extract IOCs from intel items) |
-| Notification Eval | 5 min | Low (evaluate rules, create in-app alerts) |
+| Job | Interval | Queue | Priority |
+|-----|----------|-------|----------|
+| CISA KEV | 5 min | high | Critical (exploited vulns) |
+| URLhaus | 5 min | high | High (active malicious URLs) |
+| NVD | 15 min | default | Medium (new CVEs) |
+| AbuseIPDB | 15 min | default | Medium (IP reputation) |
+| VirusTotal | 15 min | default | Medium (malware hashes, URLs) |
+| OTX | 30 min | low | Medium (campaign intel) |
+| Shodan | 30 min | low | Medium (exposed services) |
+| Dashboard Refresh | 2 min | low | Low (refresh materialized views) |
+| AI Summaries | 5 min | low | Low (enrichment pass) |
+| ATT&CK Sync | 24 hrs | low | Low (refresh STIX data) |
+| ATT&CK Mapping | 10 min | low | Low (auto-map intel→techniques) |
+| Relationship Builder | 15 min | low | Low (discover shared IOC/CVE/technique edges) |
+| IOC Extraction | 10 min | low | Low (extract IOCs from intel items) |
+| Notification Eval | 5 min | low | Low (evaluate rules, create in-app alerts) |
 
 ---
 
@@ -444,9 +513,9 @@ Session Management:
 
 | Role | Permissions |
 |------|------------|
-| `viewer` | Read dashboard, intel, search |
-| `analyst` | Viewer + export, advanced search |
-| `admin` | Analyst + trigger ingestion, manage feeds, settings |
+| `viewer` | Read dashboard, intel, search, techniques, graph, reports, notifications, feed status, export intel |
+| `analyst` | Viewer + create/update/delete reports, manage report items, generate AI summaries |
+| `admin` | Analyst + trigger feeds, manage users, setup config/status |
 
 ### Security Layers
 
@@ -493,31 +562,31 @@ GitHub Actions
 
 ## Codebase Metrics
 
-> Last updated: **2026-02-28** (Phase 1.2 complete)
+> Last updated: **2026-02-28** (Phase 1 complete — all 5 sub-phases)
 
 ### Lines of Code by Category
 
 | Category | Lines | Files | Description |
 |----------|------:|------:|-------------|
-| Python (API + Worker) | 6,116 | 47 | FastAPI routes, services, models, schemas, feeds, worker tasks |
-| TypeScript/TSX (UI) | 5,943 | 42 | Next.js pages, components, store, types, API client |
-| Markdown (Docs) | 3,116 | 7 | Architecture, roadmap, instructions, integration, technology |
-| Config (JSON/YAML/CSS) | 604 | 10 | package.json, tailwind, tsconfig, docker-compose, OpenSearch mapping |
-| SQL (Schema) | 307 | 1 | PostgreSQL + TimescaleDB DDL, indexes, materialized views |
-| Docker | 298 | 5 | Multi-stage Dockerfiles (API, UI, Worker), compose files |
-| **TOTAL** | **16,384** | **112** | |
+| Python (API + Worker) | 6,831 | 50 | FastAPI routes, services, models, schemas, feeds, worker tasks |
+| TypeScript/TSX (UI) | 8,589 | 49 | Next.js pages, components, store, types, API client |
+| Markdown (Docs) | 2,648 | 7 | Architecture, roadmap, instructions, integration, technology |
+| Config (JSON/YAML/CSS/TOML) | 517 | 8 | package.json, tailwind, tsconfig, docker-compose, OpenSearch mapping |
+| SQL (Schema + Migrations) | 468 | 3 | PostgreSQL + TimescaleDB DDL, indexes, materialized views |
+| Docker | 262 | 5 | Multi-stage Dockerfiles (API, UI, Worker), compose files |
+| **TOTAL** | **~19,315** | **~122** | |
 
 ### Documentation Breakdown
 
 | File | Lines | Content |
 |------|------:|---------|
-| docs/ROADMAP.md | 854 | 7-phase feature roadmap with implementation details |
-| docs/Instruction.md | 618 | Development rules, UI guidelines, mandatory checklists |
-| docs/INTEGRATION.md | 504 | Feed connector specs, API integration patterns |
-| docs/ARCHITECTURE.md | 473 | System architecture, DB schema, API endpoints |
-| docs/TECHNOLOGY.md | 283 | Tech stack decisions and rationale |
-| README.md | 207 | Project overview, quick start, deployment |
-| docs/WORKFLOW.md | 177 | Git workflow, CI/CD, deployment procedures |
+| docs/ROADMAP.md | 784 | 7-phase feature roadmap with implementation details |
+| docs/Instruction.md | 514 | Development rules, UI guidelines, mandatory checklists |
+| docs/ARCHITECTURE.md | ~540 | System architecture, DB schema (41 indexes), API endpoints (46) |
+| docs/INTEGRATION.md | 382 | Feed connector specs, API integration patterns |
+| docs/TECHNOLOGY.md | 218 | Tech stack decisions and rationale |
+| README.md | 157 | Project overview, quick start, deployment |
+| docs/WORKFLOW.md | 134 | Git workflow, CI/CD, deployment procedures |
 
 ### Growth Milestones
 
@@ -525,7 +594,10 @@ GitHub Actions
 |------|-----------|----------:|
 | 2026-02-23 | Initial platform (7 feeds, dashboard, search) | ~8,500 |
 | 2026-02-26 | Phase 1.1 — MITRE ATT&CK (691 techniques, matrix UI) | ~12,000 |
-| 2026-02-28 | Phase 1.2 — Relationship Graph (1,181 edges, graph explorer) | 16,384 |
+| 2026-02-27 | Phase 1.2 — Relationship Graph (3,875 edges, graph explorer) | ~16,400 |
+| 2026-02-28 | Phase 1.3 — Notifications & Alerting (rules, bell, 12 endpoints) | ~17,500 |
+| 2026-02-28 | Phase 1.4 — Report Generation (templates, AI summary, export) | ~18,800 |
+| 2026-02-28 | Phase 1.5 — VirusTotal & Shodan Connectors | ~19,315 |
 
 ---
 
@@ -533,8 +605,11 @@ GitHub Actions
 
 | Date | Change |
 |------|--------|
+| 2026-02-28 | Full audit: accurate endpoint map (46 endpoints), complete index inventory (41 indexes), updated ER diagram with notifications + reports tables, corrected worker schedule (14 jobs), accurate RBAC roles, updated codebase metrics (~19,315 LOC / 122 files) |
+| 2026-02-28 | Phase 1.4 Report Generation: reports + report_items tables, 11 report endpoints, 3 UI pages, templates, AI summary, markdown export |
+| 2026-02-28 | Phase 1.3 Notifications & Alerting: notification_rules + notifications tables, 12 notification endpoints, NotificationBell component, worker eval task |
 | 2026-02-28 | Post-audit fixes: OpenSearch dedup (834K→3,944), ATT&CK keyword precision, skeleton loaders, ErrorBoundary, Tooltip system |
-| 2026-02-28 | Phase 1.2 Relationship Graph; added Codebase Metrics section (16,384 LOC / 112 files) |
+| 2026-02-28 | Phase 1.2 Relationship Graph; added Codebase Metrics section |
 | 2026-02-24 | Production domain set to intelwatch.trendsmap.in; simplified login docs |
 | 2026-02-24 | Renamed to IntelWatch; added VirusTotal & Shodan API key support; login testing verified |
 | 2026-02-23 | Renamed to IntelWatch TI Platform; added auth architecture (JWT sessions, login flow, auth guard) |
