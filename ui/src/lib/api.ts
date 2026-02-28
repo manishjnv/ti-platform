@@ -315,6 +315,16 @@ export async function generateReportAISummary(reportId: string, includeLinkedIte
   });
 }
 
+export async function generateReportAISections(reportId: string, includeLinkedItems = true) {
+  return fetcher<{ summary: string; sections: Array<{ key: string; title: string; hint?: string; body: string }> }>(
+    `/reports/${reportId}/ai-generate`,
+    {
+      method: "POST",
+      body: JSON.stringify({ include_linked_items: includeLinkedItems }),
+    }
+  );
+}
+
 export async function exportReport(reportId: string, format = "markdown", includeTlpWatermark = true) {
   const query = new URLSearchParams({ format, include_tlp_watermark: String(includeTlpWatermark) });
   return `${API_PREFIX}/reports/${reportId}/export?${query}`;

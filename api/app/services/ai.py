@@ -129,6 +129,61 @@ def _build_prompt(
     return "\n".join(parts)
 
 
+async def chat_completion(
+    system_prompt: str,
+    user_prompt: str,
+    *,
+    max_tokens: int = 800,
+    temperature: float = 0.3,
+) -> str | None:
+    """Generic OpenAI-compatible chat completion. Returns content string or None."""
+    if not settings.ai_enabled:
+        logger.info("ai_disabled")
+        return None
+    if not settings.ai_api_key:
+        logger.warning("ai_no_api_key")
+        return None
+
+    try:
+        async with httpx.AsyncClient(timeout=settings.ai_timeout) as client:
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {settings.ai_api_key}",
+                "User-Agent": "IntelWatch/1.0",
+            }
+            payload = {
+                "model": settings.ai_model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            }
+            logger.info("ai_chat_request", model=settings.ai_model)
+            response = await client.post(settings.ai_api_url, json=payload, headers=headers)
+            response.raise_for_status()
+
+            data = response.json()
+            choices = data.get("choices", [])
+            if choices:
+                content = choices[0].get("message", {}).get("content", "").strip()
+                if content:
+                    logger.info("ai_chat_ok", chars=len(content))
+                    return content
+
+            logger.warning("ai_chat_empty_response")
+    except httpx.TimeoutException:
+        logger.warning("ai_chat_timeout")
+    except httpx.HTTPStatusError as e:
+        body = e.response.text[:300] if e.response else ""
+        logger.warning("ai_chat_http_error", status=e.response.status_code, body=body)
+    except Exception as e:
+        logger.warning("ai_chat_error", error=str(e))
+
+    return None
+
+
 async def check_ai_health() -> bool:
     """Quick health check for AI service."""
     if not settings.ai_enabled or not settings.ai_api_key:

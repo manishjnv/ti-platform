@@ -168,31 +168,21 @@ export default function ReportDetailPage() {
     if (!report) return;
     const sections = [...(report.content?.sections || [])];
     sections[idx] = { ...sections[idx], body: sectionDraft };
+    const isExecSummary = sections[idx].key === "executive_summary";
     setSaving(true);
     try {
-      const updated = await api.updateReport(reportId, {
-        content: { sections },
-      });
+      const updatePayload: Record<string, any> = { content: { sections } };
+      if (isExecSummary) {
+        updatePayload.summary = sectionDraft.trim() || undefined;
+      }
+      const updated = await api.updateReport(reportId, updatePayload);
       setReport(updated);
       setEditingSectionIdx(null);
       setSectionDraft("");
       setEditSections(updated.content?.sections || []);
+      if (isExecSummary) setEditSummary(sectionDraft);
     } catch (e: any) {
       setError(e.message || "Failed to save section");
-    }
-    setSaving(false);
-  };
-
-  const handleSummaryInlineSave = async () => {
-    if (!report) return;
-    setSaving(true);
-    try {
-      const updated = await api.updateReport(reportId, {
-        summary: editSummary.trim() || undefined,
-      });
-      setReport(updated);
-    } catch (e: any) {
-      setError(e.message || "Failed to save summary");
     }
     setSaving(false);
   };
@@ -211,11 +201,20 @@ export default function ReportDetailPage() {
 
   const handleAISummary = async () => {
     setAiLoading(true);
+    setError(null);
     try {
-      const result = await api.generateReportAISummary(reportId);
-      if (result.summary) {
-        setReport((prev) => (prev ? { ...prev, summary: result.summary } : prev));
-        setEditSummary(result.summary);
+      const result = await api.generateReportAISections(reportId);
+      if (result.summary || result.sections) {
+        setReport((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            summary: result.summary || prev.summary,
+            content: { ...prev.content, sections: result.sections || prev.content?.sections || [] },
+          };
+        });
+        setEditSummary(result.summary || editSummary);
+        setEditSections(result.sections || editSections);
       }
     } catch (e: any) {
       setError(e.message || "AI unavailable");
@@ -389,7 +388,7 @@ export default function ReportDetailPage() {
           )}
           <Button variant="outline" size="sm" onClick={handleAISummary} disabled={aiLoading}>
             {aiLoading ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 mr-1" />}
-            AI Summary
+            {aiLoading ? "Generating..." : "AI Generate"}
           </Button>
           <div className="relative" ref={exportRef}>
             <Button variant="outline" size="sm" onClick={() => setExportOpen(!exportOpen)}>
@@ -515,28 +514,26 @@ export default function ReportDetailPage() {
         </div>
       )}
 
-      {/* ── Summary ───────────────────────────────────── */}
-      <SummarySection
-        report={report}
-        editing={editing}
-        editSummary={editSummary}
-        setEditSummary={setEditSummary}
-        onInlineSave={handleSummaryInlineSave}
-        saving={saving}
-      />
-
       {/* ── Content Sections ──────────────────────────── */}
       {(editing ? editSections : sections).map((section, idx) => {
-        const body = section.body || "";
+        // For exec summary section, show the report.summary field
+        const isExecSummary = section.key === "executive_summary";
+        const body = isExecSummary ? (report.summary || section.body || "") : (section.body || "");
         const isInlineEditing = !editing && editingSectionIdx === idx;
 
         return (
           <Card key={section.key} className={`group transition-colors ${!body.trim() && !editing && !isInlineEditing ? "border-dashed border-border/50" : ""}`}>
             <CardHeader className="pb-2 flex flex-row items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="flex items-center justify-center h-5 w-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">
-                  {idx + 1}
-                </span>
+                {isExecSummary ? (
+                  <span className="flex items-center justify-center h-5 w-5 rounded-full bg-primary/20 text-primary">
+                    <Sparkles className="h-3 w-3" />
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center h-5 w-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">
+                    {idx + 1}
+                  </span>
+                )}
                 <CardTitle className="text-sm">{section.title}</CardTitle>
               </div>
               {/* Inline edit button (view mode) */}
@@ -731,116 +728,6 @@ export default function ReportDetailPage() {
         )}
       </div>
     </div>
-  );
-}
-
-/* ─── Summary Section ──────────────────────────────────── */
-
-function SummarySection({
-  report,
-  editing,
-  editSummary,
-  setEditSummary,
-  onInlineSave,
-  saving,
-}: {
-  report: Report;
-  editing: boolean;
-  editSummary: string;
-  setEditSummary: (v: string) => void;
-  onInlineSave: () => void;
-  saving: boolean;
-}) {
-  const [inlineEdit, setInlineEdit] = useState(false);
-
-  // Global edit mode
-  if (editing) {
-    return (
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-primary" />
-            Executive Summary
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <textarea
-            value={editSummary}
-            onChange={(e) => setEditSummary(e.target.value)}
-            placeholder="Write a brief executive summary of this report..."
-            rows={3}
-            className="w-full px-3 py-2 rounded-md border bg-background text-sm resize-y focus:outline-none focus:ring-2 focus:ring-primary/30"
-          />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // Inline edit
-  if (inlineEdit) {
-    return (
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-primary" />
-            Executive Summary
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <textarea
-            value={editSummary}
-            onChange={(e) => setEditSummary(e.target.value)}
-            placeholder="Write a brief executive summary of this report..."
-            rows={3}
-            className="w-full px-3 py-2 rounded-md border bg-background text-sm resize-y focus:outline-none focus:ring-2 focus:ring-primary/30"
-            autoFocus
-          />
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" size="sm" onClick={() => { setInlineEdit(false); setEditSummary(report.summary || ""); }}>
-              Cancel
-            </Button>
-            <Button size="sm" onClick={() => { onInlineSave(); setInlineEdit(false); }} disabled={saving}>
-              {saving ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Check className="h-3.5 w-3.5 mr-1" />}
-              Save
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // View mode
-  return (
-    <Card className="group">
-      <CardHeader className="pb-2 flex flex-row items-center justify-between">
-        <CardTitle className="text-sm flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-primary" />
-          Executive Summary
-        </CardTitle>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 px-2 opacity-0 group-hover:opacity-100 transition-opacity text-xs"
-          onClick={() => setInlineEdit(true)}
-        >
-          <PenLine className="h-3 w-3 mr-1" />
-          Edit
-        </Button>
-      </CardHeader>
-      <CardContent>
-        {report.summary ? (
-          <p className="text-sm text-muted-foreground whitespace-pre-line">{report.summary}</p>
-        ) : (
-          <button
-            onClick={() => setInlineEdit(true)}
-            className="w-full py-4 text-center text-sm text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors rounded-md border border-dashed border-border/30 hover:border-border/60"
-          >
-            <PenLine className="h-4 w-4 mx-auto mb-1 opacity-50" />
-            Click to add executive summary, or use AI Summary button
-          </button>
-        )}
-      </CardContent>
-    </Card>
   );
 }
 

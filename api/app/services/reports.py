@@ -24,6 +24,7 @@ from app.models.models import (
     Report,
     ReportItem,
 )
+from app.services.ai import chat_completion as ai_chat
 from app.services.ai import generate_summary as ai_generate_summary
 
 logger = get_logger(__name__)
@@ -378,6 +379,139 @@ async def generate_ai_summary(
         logger.info("report_ai_summary", report_id=str(report_id))
 
     return summary
+
+
+# ─── AI Full Section Generation ──────────────────────────
+
+
+async def generate_ai_sections(
+    db: AsyncSession,
+    report_id: uuid.UUID,
+    include_linked_items: bool = True,
+) -> dict | None:
+    """AI-generate content for ALL sections of a report.
+
+    Returns dict with 'summary' and 'sections' keys, or None if AI unavailable.
+    """
+    import json as _json
+
+    report = await get_report(db, report_id)
+    if not report:
+        return None
+
+    sections = report.content.get("sections", [])
+    if not sections:
+        return None
+
+    # Build context from linked items
+    context_parts = [f"Report Title: {report.title}"]
+    context_parts.append(f"Report Type: {report.report_type}")
+    context_parts.append(f"Severity: {report.severity}")
+    if report.summary:
+        context_parts.append(f"Current Summary: {report.summary}")
+
+    # Existing section content
+    for section in sections:
+        body = section.get("body", "").strip()
+        if body:
+            context_parts.append(f"{section.get('title', 'Section')}: {body[:300]}")
+
+    if include_linked_items:
+        items = await get_report_items(db, report_id)
+        intel_parts = []
+        for item in items:
+            parts = []
+            if item.item_title:
+                parts.append(item.item_title)
+            meta = item.item_metadata or {}
+            if meta.get("severity"):
+                parts.append(f"severity={meta['severity']}")
+            if meta.get("cve_ids"):
+                parts.append(f"CVEs={','.join(meta['cve_ids'][:3])}")
+            if meta.get("value"):
+                parts.append(f"IOC={meta['value']}")
+            if parts:
+                intel_parts.append("; ".join(parts))
+
+        if intel_parts:
+            context_parts.append(f"Linked Intelligence Items:\n" + "\n".join(f"- {p}" for p in intel_parts[:15]))
+
+    context = "\n".join(context_parts)
+
+    # Build the section list for the AI
+    section_keys = [{"key": s["key"], "title": s["title"], "hint": s.get("hint", "")} for s in sections]
+    section_list = "\n".join(f'- "{s["title"]}" (key: {s["key"]}): {s["hint"]}' for s in section_keys)
+
+    system_prompt = (
+        "You are a cybersecurity threat intelligence analyst. You must generate professional "
+        "content for a threat intelligence report. You will be given the report context and a "
+        "list of sections to fill.\n\n"
+        "IMPORTANT: Respond ONLY with valid JSON — no markdown, no code fences, no extra text.\n"
+        "The JSON must be an object with:\n"
+        '  "summary": "<executive summary, 3-5 sentences for C-level briefing>",\n'
+        '  "sections": { "<section_key>": "<section content, 2-4 paragraphs>" }\n\n'
+        "Guidelines:\n"
+        "- Write in professional, direct language\n"
+        "- Each section should be 2-4 paragraphs, specific and actionable\n"
+        "- Use the linked intelligence items to enrich the content\n"
+        "- If no specific data is available for a section, provide general best-practice guidance\n"
+        "- Do NOT include JSON code fences or any wrapper — raw JSON only"
+    )
+
+    user_prompt = (
+        f"Generate content for all sections of this threat intelligence report.\n\n"
+        f"CONTEXT:\n{context}\n\n"
+        f"SECTIONS TO FILL:\n{section_list}\n\n"
+        f"Respond with JSON containing 'summary' and 'sections' keys."
+    )
+
+    raw = await ai_chat(system_prompt, user_prompt, max_tokens=2000, temperature=0.3)
+    if not raw:
+        return None
+
+    # Parse JSON — strip markdown fences if the model wraps it
+    cleaned = raw.strip()
+    if cleaned.startswith("```"):
+        # Remove ```json ... ``` wrapper
+        lines = cleaned.split("\n")
+        lines = [l for l in lines if not l.strip().startswith("```")]
+        cleaned = "\n".join(lines)
+
+    try:
+        result = _json.loads(cleaned)
+    except _json.JSONDecodeError:
+        logger.warning("ai_sections_json_parse_error", raw=raw[:200])
+        return None
+
+    ai_summary = result.get("summary", "")
+    ai_sections = result.get("sections", {})
+
+    if not isinstance(ai_sections, dict):
+        logger.warning("ai_sections_invalid_format")
+        return None
+
+    # Update report summary
+    if ai_summary:
+        report.summary = ai_summary
+
+    # Update section bodies
+    updated_sections = []
+    for section in sections:
+        key = section["key"]
+        new_body = ai_sections.get(key, "")
+        if new_body and isinstance(new_body, str):
+            updated_sections.append({**section, "body": new_body})
+        else:
+            updated_sections.append(section)
+
+    report.content = {**report.content, "sections": updated_sections}
+    await db.flush()
+    logger.info("report_ai_sections_generated", report_id=str(report_id), sections=len(ai_sections))
+
+    return {
+        "summary": report.summary,
+        "sections": updated_sections,
+    }
 
 
 # ─── Export ───────────────────────────────────────────────

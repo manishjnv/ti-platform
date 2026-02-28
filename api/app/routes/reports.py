@@ -240,6 +240,22 @@ async def generate_ai_summary(
     return {"summary": summary}
 
 
+@router.post("/{report_id}/ai-generate")
+async def generate_ai_sections(
+    report_id: uuid.UUID,
+    user: Annotated[User, Depends(require_analyst)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    body: ReportAISummaryRequest | None = None,
+):
+    """Generate AI content for ALL sections of the report + executive summary."""
+    include = body.include_linked_items if body else True
+    result = await report_service.generate_ai_sections(db, report_id, include)
+    if result is None:
+        raise HTTPException(503, "AI service unavailable or report not found")
+    await db.commit()
+    return result
+
+
 # ─── Export ───────────────────────────────────────────────
 
 
