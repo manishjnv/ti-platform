@@ -277,6 +277,8 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 | `GET` | `/api/v1/intel` | Viewer | `routes/intel.py` | `services/database.py` |
 | `GET` | `/api/v1/intel/export` | Viewer | `routes/intel.py` | `services/export.py` |
 | `GET` | `/api/v1/intel/{id}` | Viewer | `routes/intel.py` | `services/database.py` |
+| `GET` | `/api/v1/intel/{id}/enrichment` | Viewer | `routes/intel.py` | `services/ai.py` |
+| `GET` | `/api/v1/intel/{id}/related` | Viewer | `routes/intel.py` | `services/database.py` |
 | `POST` | `/api/v1/search` | Viewer | `routes/search.py` | `services/search.py` |
 | `GET` | `/api/v1/feeds/status` | Viewer | `routes/admin.py` | `services/database.py` |
 | `POST` | `/api/v1/feeds/{feed_name}/trigger` | Admin | `routes/admin.py` | `services/feeds/*` |
@@ -609,6 +611,7 @@ GitHub Actions
 | Date | Change |
 | ---- | ------ |
 | 2026-03-01 | Phase 1.6 AI Web Research: `services/research.py` (NVD, OTX, DuckDuckGo, OpenSearch live research), enhanced templates (11 sections: timeline, confirmation, exploitability, PoC availability, impacted tech, affected orgs), `generate_ai_sections` now research-backed |
+| 2026-03-01 | Intel pages enhancement: advanced filters (KEV, exploit, asset type, keyword search, sort direction), enrichment endpoints (`/intel/{id}/enrichment` AI analysis, `/intel/{id}/related` DB overlap), detail page 5-tab redesign (Overview, ATT&CK, Timeline, Remediation, Related), IntelCard compact data row |
 | 2026-02-28 | Multi-format export: PDF (reportlab + TLP watermark), STIX 2.1 Bundle, HTML (dark-theme), CSV; UI export dropdown with 5 format options; updated codebase metrics |
 | 2026-02-28 | Phase 1.4 Report Generation: reports + report_items tables, 11 report endpoints, 3 UI pages, templates, AI summary, multi-format export (PDF, STIX 2.1, HTML, CSV, Markdown) |
 | 2026-02-28 | Phase 1.3 Notifications & Alerting: notification_rules + notifications tables, 12 notification endpoints, NotificationBell component, worker eval task |
