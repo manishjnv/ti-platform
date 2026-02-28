@@ -32,11 +32,12 @@ async def list_techniques(
     db: Annotated[AsyncSession, Depends(get_db)],
     tactic: str | None = None,
     search: str | None = None,
+    has_intel: bool | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(100, ge=1, le=500),
 ):
     """List ATT&CK techniques with optional filters."""
-    ck = cache_key("techniques_list", tactic, search, page, page_size)
+    ck = cache_key("techniques_list", tactic, search, has_intel, page, page_size)
     cached = await get_cached(ck)
     if cached:
         return cached
@@ -51,6 +52,15 @@ async def list_techniques(
             AttackTechnique.name.ilike(f"%{search}%")
             | AttackTechnique.id.ilike(f"%{search}%")
         )
+
+    # Filter to only techniques with intel hits
+    if has_intel:
+        hit_ids = (
+            select(IntelAttackLink.technique_id)
+            .distinct()
+            .subquery()
+        )
+        query = query.where(AttackTechnique.id.in_(select(hit_ids.c.technique_id)))
 
     # Count
     count_q = select(func.count()).select_from(query.subquery())

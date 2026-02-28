@@ -142,7 +142,7 @@ export async function getAttackMatrix() {
   return fetcher<import("@/types").AttackMatrixResponse>("/techniques/matrix");
 }
 
-export async function getAttackTechniques(params: Record<string, string | number | undefined> = {}) {
+export async function getAttackTechniques(params: Record<string, string | number | boolean | undefined> = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {
     if (v !== undefined && v !== "") query.set(k, String(v));
