@@ -253,10 +253,26 @@ class Report(Base):
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     summary: Mapped[str | None] = mapped_column(Text)
     content: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
-    report_type: Mapped[str] = mapped_column(String(30), nullable=False, default="custom")
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
-    severity: Mapped[str] = mapped_column(String(20), nullable=False, default="medium")
-    tlp: Mapped[str] = mapped_column(String(30), nullable=False, default="TLP:GREEN")
+    report_type: Mapped[str] = mapped_column(
+        SAEnum("incident", "threat_advisory", "weekly_summary", "ioc_bulletin", "custom",
+               name="report_type", create_type=False),
+        nullable=False, default="custom",
+    )
+    status: Mapped[str] = mapped_column(
+        SAEnum("draft", "review", "published", "archived",
+               name="report_status", create_type=False),
+        nullable=False, default="draft",
+    )
+    severity: Mapped[str] = mapped_column(
+        SAEnum("critical", "high", "medium", "low", "info", "unknown",
+               name="severity_level", create_type=False),
+        nullable=False, default="medium",
+    )
+    tlp: Mapped[str] = mapped_column(
+        SAEnum("TLP:RED", "TLP:AMBER+STRICT", "TLP:AMBER", "TLP:GREEN", "TLP:CLEAR",
+               name="tlp_level", create_type=False),
+        nullable=False, default="TLP:GREEN",
+    )
     author_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     template: Mapped[str | None] = mapped_column(String(50))
     linked_intel_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
