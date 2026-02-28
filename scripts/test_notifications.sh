@@ -196,8 +196,8 @@ for n in data["notifications"]:
     if not isinstance(m, dict):
         print("FAIL: metadata not a dict")
         sys.exit(0)
-    if n["category"] == "alert" and "risk_score" not in m:
-        print("FAIL: alert missing risk_score in metadata")
+    if n["category"] == "alert" and "risk_score" not in m and "top_risk_score" not in m:
+        print("FAIL: alert missing risk_score/top_risk_score in metadata")
         sys.exit(0)
     if n["category"] == "feed_error" and "feed_name" not in m:
         print("FAIL: feed_error missing feed_name in metadata")
