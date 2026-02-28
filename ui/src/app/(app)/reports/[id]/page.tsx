@@ -24,7 +24,6 @@ import {
   Eye,
   Archive,
   Layers,
-  Link2,
   X,
   Send,
   Edit3,
@@ -32,7 +31,15 @@ import {
   FileCode2,
   Globe,
   Table2,
+  Plus,
+  Search,
+  PenLine,
+  Check,
+  Tag,
+  Info,
 } from "lucide-react";
+
+/* ─── Constants ─────────────────────────────────────────── */
 
 const STATUS_CONFIG: Record<ReportStatus, { label: string; color: string; icon: React.ElementType; next?: ReportStatus }> = {
   draft: { label: "Draft", color: "bg-gray-500/10 text-gray-400 border-gray-500/20", icon: Clock, next: "review" },
@@ -68,6 +75,8 @@ const TLP_COLORS: Record<string, string> = {
 const SEVERITY_OPTIONS: Severity[] = ["critical", "high", "medium", "low", "info"];
 const TLP_OPTIONS = ["TLP:RED", "TLP:AMBER+STRICT", "TLP:AMBER", "TLP:GREEN", "TLP:CLEAR"];
 
+/* ─── Main Component ────────────────────────────────────── */
+
 export default function ReportDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -85,18 +94,29 @@ export default function ReportDetailPage() {
 
   // Edit state
   const [editTitle, setEditTitle] = useState("");
+  const [editSummary, setEditSummary] = useState("");
   const [editSeverity, setEditSeverity] = useState<Severity>("medium");
   const [editTlp, setEditTlp] = useState("TLP:GREEN");
   const [editTags, setEditTags] = useState("");
   const [editSections, setEditSections] = useState<Array<{ key: string; title: string; hint?: string; body: string }>>([]);
+
+  // Inline section editing (for non-global edit mode)
+  const [editingSectionIdx, setEditingSectionIdx] = useState<number | null>(null);
+  const [sectionDraft, setSectionDraft] = useState("");
+
+  // Link Intel Items
+  const [showLinkPanel, setShowLinkPanel] = useState(false);
+  const [linkSearch, setLinkSearch] = useState("");
+  const [linkResults, setLinkResults] = useState<any[]>([]);
+  const [linkLoading, setLinkLoading] = useState(false);
 
   const fetchReport = useCallback(async () => {
     setLoading(true);
     try {
       const data = await api.getReport(reportId);
       setReport(data);
-      // Sync edit state
       setEditTitle(data.title);
+      setEditSummary(data.summary || "");
       setEditSeverity(data.severity);
       setEditTlp(data.tlp);
       setEditTags(data.tags.join(", "));
@@ -111,7 +131,6 @@ export default function ReportDetailPage() {
     fetchReport();
   }, [fetchReport]);
 
-  // Close export dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
@@ -122,6 +141,8 @@ export default function ReportDetailPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  /* ─── Handlers ──────────────────────────────────────── */
+
   const handleSave = async () => {
     if (!report) return;
     setSaving(true);
@@ -129,6 +150,7 @@ export default function ReportDetailPage() {
     try {
       const updated = await api.updateReport(reportId, {
         title: editTitle.trim(),
+        summary: editSummary.trim() || undefined,
         severity: editSeverity,
         tlp: editTlp,
         tags: editTags.split(",").map((t) => t.trim()).filter(Boolean),
@@ -138,6 +160,39 @@ export default function ReportDetailPage() {
       setEditing(false);
     } catch (e: any) {
       setError(e.message || "Failed to save");
+    }
+    setSaving(false);
+  };
+
+  const handleSectionInlineSave = async (idx: number) => {
+    if (!report) return;
+    const sections = [...(report.content?.sections || [])];
+    sections[idx] = { ...sections[idx], body: sectionDraft };
+    setSaving(true);
+    try {
+      const updated = await api.updateReport(reportId, {
+        content: { sections },
+      });
+      setReport(updated);
+      setEditingSectionIdx(null);
+      setSectionDraft("");
+      setEditSections(updated.content?.sections || []);
+    } catch (e: any) {
+      setError(e.message || "Failed to save section");
+    }
+    setSaving(false);
+  };
+
+  const handleSummaryInlineSave = async () => {
+    if (!report) return;
+    setSaving(true);
+    try {
+      const updated = await api.updateReport(reportId, {
+        summary: editSummary.trim() || undefined,
+      });
+      setReport(updated);
+    } catch (e: any) {
+      setError(e.message || "Failed to save summary");
     }
     setSaving(false);
   };
@@ -160,6 +215,7 @@ export default function ReportDetailPage() {
       const result = await api.generateReportAISummary(reportId);
       if (result.summary) {
         setReport((prev) => (prev ? { ...prev, summary: result.summary } : prev));
+        setEditSummary(result.summary);
       }
     } catch (e: any) {
       setError(e.message || "AI unavailable");
@@ -194,6 +250,38 @@ export default function ReportDetailPage() {
     }
   };
 
+  const handleLinkSearch = async () => {
+    if (!linkSearch.trim()) return;
+    setLinkLoading(true);
+    try {
+      const res = await api.searchIntel({ query: linkSearch, page: 1, page_size: 10 });
+      setLinkResults(res.results || []);
+    } catch {
+      setLinkResults([]);
+    }
+    setLinkLoading(false);
+  };
+
+  const handleLinkItem = async (item: any) => {
+    try {
+      await api.addReportItem(reportId, {
+        item_type: "intel",
+        item_id: item.id,
+        item_title: item.title,
+        item_metadata: {
+          severity: item.severity,
+          source_name: item.source_feed,
+        },
+      });
+      setLinkResults((prev) => prev.filter((i) => i.id !== item.id));
+      fetchReport();
+    } catch (e: any) {
+      setError(e.message || "Failed to link item");
+    }
+  };
+
+  /* ─── Loading / Error states ────────────────────────── */
+
   if (loading) {
     return (
       <div className="p-6 max-w-4xl mx-auto">
@@ -220,12 +308,16 @@ export default function ReportDetailPage() {
 
   const statusCfg = STATUS_CONFIG[report.status];
   const StatusIcon = statusCfg.icon;
-  const linkedTotal = report.linked_intel_count + report.linked_ioc_count + report.linked_technique_count;
   const sections = report.content?.sections || [];
+  const filledCount = sections.filter((s) => s.body?.trim()).length;
+  const totalSections = sections.length;
+  const linkedTotal = report.linked_intel_count + report.linked_ioc_count + report.linked_technique_count;
+
+  /* ─── Render ────────────────────────────────────────── */
 
   return (
     <div className="p-6 space-y-4 max-w-4xl mx-auto">
-      {/* Header */}
+      {/* ── Header ──────────────────────────────────────── */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-3 min-w-0">
           <Button variant="ghost" size="sm" onClick={() => router.push("/reports")}>
@@ -248,7 +340,7 @@ export default function ReportDetailPage() {
                 {statusCfg.label}
               </Badge>
               <span>{TYPE_LABELS[report.report_type]}</span>
-              <span>•</span>
+              <span>&middot;</span>
               <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${SEVERITY_COLORS[report.severity]}`}>
                 {report.severity.toUpperCase()}
               </Badge>
@@ -257,7 +349,7 @@ export default function ReportDetailPage() {
               </Badge>
               {report.author_email && (
                 <>
-                  <span>•</span>
+                  <span>&middot;</span>
                   <span>by {report.author_email}</span>
                 </>
               )}
@@ -265,16 +357,17 @@ export default function ReportDetailPage() {
           </div>
         </div>
 
+        {/* Action buttons */}
         <div className="flex items-center gap-1.5 flex-wrap">
           {!editing && (
             <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
               <Edit3 className="h-3.5 w-3.5 mr-1" />
-              Edit
+              Edit All
             </Button>
           )}
           {editing && (
             <>
-              <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
+              <Button variant="ghost" size="sm" onClick={() => { setEditing(false); fetchReport(); }}>
                 Cancel
               </Button>
               <Button size="sm" onClick={handleSave} disabled={saving}>
@@ -308,23 +401,23 @@ export default function ReportDetailPage() {
               <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-border bg-card shadow-xl z-50 py-1">
                 <button onClick={() => handleExport("pdf")} className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-muted/50 text-left">
                   <FileText className="h-3.5 w-3.5 text-red-400" />
-                  <span>PDF Document</span>
+                  PDF Document
                 </button>
                 <button onClick={() => handleExport("markdown")} className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-muted/50 text-left">
                   <FileCode2 className="h-3.5 w-3.5 text-blue-400" />
-                  <span>Markdown (.md)</span>
+                  Markdown (.md)
                 </button>
                 <button onClick={() => handleExport("html")} className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-muted/50 text-left">
                   <Globe className="h-3.5 w-3.5 text-emerald-400" />
-                  <span>HTML Report</span>
+                  HTML Report
                 </button>
                 <button onClick={() => handleExport("stix")} className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-muted/50 text-left">
                   <Shield className="h-3.5 w-3.5 text-purple-400" />
-                  <span>STIX 2.1 Bundle</span>
+                  STIX 2.1 Bundle
                 </button>
                 <button onClick={() => handleExport("csv")} className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-muted/50 text-left">
                   <Table2 className="h-3.5 w-3.5 text-amber-400" />
-                  <span>CSV Spreadsheet</span>
+                  CSV Spreadsheet
                 </button>
               </div>
             )}
@@ -341,22 +434,26 @@ export default function ReportDetailPage() {
         </div>
       )}
 
-      {/* Summary */}
-      {report.summary && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-primary" />
-              Executive Summary
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground whitespace-pre-line">{report.summary}</p>
-          </CardContent>
-        </Card>
+      {/* ── Section progress bar ───────────────────────── */}
+      {totalSections > 0 && (
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span>{filledCount}/{totalSections} sections filled</span>
+          <div className="flex-1 h-1.5 bg-border/50 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-primary/60 rounded-full transition-all"
+              style={{ width: `${totalSections > 0 ? (filledCount / totalSections) * 100 : 0}%` }}
+            />
+          </div>
+          {linkedTotal > 0 && (
+            <span className="flex items-center gap-1">
+              <Layers className="h-3 w-3" />
+              {linkedTotal} linked
+            </span>
+          )}
+        </div>
       )}
 
-      {/* Metadata row when editing */}
+      {/* ── Metadata row (edit mode) ───────────────────── */}
       {editing && (
         <Card>
           <CardContent className="p-4">
@@ -406,9 +503,10 @@ export default function ReportDetailPage() {
         </Card>
       )}
 
-      {/* Tags (view mode) */}
+      {/* ── Tags (view mode) ──────────────────────────── */}
       {!editing && report.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <Tag className="h-3 w-3 text-muted-foreground" />
           {report.tags.map((tag) => (
             <Badge key={tag} variant="outline" className="text-xs">
               {tag}
@@ -417,65 +515,214 @@ export default function ReportDetailPage() {
         </div>
       )}
 
-      {/* Content Sections */}
-      {(editing ? editSections : sections).length > 0 && (
-        <div className="space-y-3">
-          {(editing ? editSections : sections).map((section, idx) => {
-            const body = section.body || "";
-            if (!editing && !body.trim()) return null;
-            return (
-              <Card key={section.key}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">{section.title}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {editing ? (
-                    <textarea
-                      value={body}
-                      onChange={(e) =>
-                        setEditSections((prev) =>
-                          prev.map((s, i) => (i === idx ? { ...s, body: e.target.value } : s))
-                        )
-                      }
-                      placeholder={section.hint || `Write ${section.title.toLowerCase()}...`}
-                      rows={4}
-                      className="w-full px-3 py-2 rounded-md border bg-background text-sm resize-y focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    />
-                  ) : (
-                    <p className="text-sm text-muted-foreground whitespace-pre-line">{body}</p>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+      {/* ── Summary ───────────────────────────────────── */}
+      <SummarySection
+        report={report}
+        editing={editing}
+        editSummary={editSummary}
+        setEditSummary={setEditSummary}
+        onInlineSave={handleSummaryInlineSave}
+        saving={saving}
+      />
 
-      {/* Linked Items */}
-      {report.items && report.items.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Layers className="h-4 w-4" />
-              Linked Items ({report.items.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-1.5">
+      {/* ── Content Sections ──────────────────────────── */}
+      {(editing ? editSections : sections).map((section, idx) => {
+        const body = section.body || "";
+        const isInlineEditing = !editing && editingSectionIdx === idx;
+
+        return (
+          <Card key={section.key} className={`group transition-colors ${!body.trim() && !editing && !isInlineEditing ? "border-dashed border-border/50" : ""}`}>
+            <CardHeader className="pb-2 flex flex-row items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="flex items-center justify-center h-5 w-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">
+                  {idx + 1}
+                </span>
+                <CardTitle className="text-sm">{section.title}</CardTitle>
+              </div>
+              {/* Inline edit button (view mode) */}
+              {!editing && !isInlineEditing && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                  onClick={() => {
+                    setEditingSectionIdx(idx);
+                    setSectionDraft(body);
+                  }}
+                >
+                  <PenLine className="h-3 w-3 mr-1" />
+                  Edit
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent>
+              {/* Global edit mode */}
+              {editing && (
+                <div>
+                  {section.hint && (
+                    <p className="text-[11px] text-muted-foreground/60 mb-2 flex items-center gap-1">
+                      <Info className="h-3 w-3" />
+                      {section.hint}
+                    </p>
+                  )}
+                  <textarea
+                    value={editSections[idx]?.body || ""}
+                    onChange={(e) =>
+                      setEditSections((prev) =>
+                        prev.map((s, i) => (i === idx ? { ...s, body: e.target.value } : s))
+                      )
+                    }
+                    placeholder={section.hint || `Write ${section.title.toLowerCase()}...`}
+                    rows={5}
+                    className="w-full px-3 py-2 rounded-md border bg-background text-sm resize-y focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+              )}
+
+              {/* Inline section edit mode */}
+              {isInlineEditing && (
+                <div className="space-y-2">
+                  {section.hint && (
+                    <p className="text-[11px] text-muted-foreground/60 flex items-center gap-1">
+                      <Info className="h-3 w-3" />
+                      {section.hint}
+                    </p>
+                  )}
+                  <textarea
+                    value={sectionDraft}
+                    onChange={(e) => setSectionDraft(e.target.value)}
+                    placeholder={section.hint || `Write ${section.title.toLowerCase()}...`}
+                    rows={6}
+                    className="w-full px-3 py-2 rounded-md border bg-background text-sm resize-y focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    autoFocus
+                  />
+                  <div className="flex items-center justify-end gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { setEditingSectionIdx(null); setSectionDraft(""); }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => handleSectionInlineSave(idx)}
+                      disabled={saving}
+                    >
+                      {saving ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Check className="h-3.5 w-3.5 mr-1" />}
+                      Save Section
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* View mode */}
+              {!editing && !isInlineEditing && (
+                <>
+                  {body.trim() ? (
+                    <p className="text-sm text-muted-foreground whitespace-pre-line">{body}</p>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setEditingSectionIdx(idx);
+                        setSectionDraft("");
+                      }}
+                      className="w-full py-4 text-center text-sm text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors rounded-md border border-dashed border-border/30 hover:border-border/60"
+                    >
+                      <PenLine className="h-4 w-4 mx-auto mb-1 opacity-50" />
+                      {section.hint || `Click to add ${section.title.toLowerCase()}`}
+                    </button>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })}
+
+      {/* ── Link Intel Items ──────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Layers className="h-4 w-4" />
+            Linked Items ({linkedTotal})
+          </CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setShowLinkPanel(!showLinkPanel)}
+          >
+            <Plus className="h-3 w-3 mr-1" />
+            Link Intel
+          </Button>
+        </CardHeader>
+
+        {/* Search & Link Panel */}
+        {showLinkPanel && (
+          <CardContent className="pt-0 pb-3 border-b border-border/30">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="relative flex-1">
+                <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={linkSearch}
+                  onChange={(e) => setLinkSearch(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleLinkSearch()}
+                  placeholder="Search intel items to link..."
+                  className="w-full pl-8 pr-3 py-1.5 rounded-md border bg-background text-sm"
+                  autoFocus
+                />
+              </div>
+              <Button size="sm" onClick={handleLinkSearch} disabled={linkLoading} className="h-8">
+                {linkLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+              </Button>
+            </div>
+            {linkResults.length > 0 && (
+              <div className="space-y-1 max-h-48 overflow-y-auto">
+                {linkResults.map((item: any) => (
+                  <div key={item.id} className="flex items-center gap-2 p-2 rounded-md hover:bg-muted/30 text-sm">
+                    <span className="flex-1 truncate">{item.title}</span>
+                    {item.severity && (
+                      <Badge variant="outline" className={`text-[10px] ${SEVERITY_COLORS[item.severity] || ""}`}>
+                        {item.severity}
+                      </Badge>
+                    )}
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-primary" onClick={() => handleLinkItem(item)}>
+                      <Plus className="h-3 w-3 mr-0.5" />
+                      Link
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {linkResults.length === 0 && linkSearch && !linkLoading && (
+              <p className="text-xs text-muted-foreground py-2 text-center">No items found. Try a different search term.</p>
+            )}
+          </CardContent>
+        )}
+
+        {/* Existing linked items */}
+        <CardContent className={showLinkPanel ? "pt-3" : ""}>
+          {report.items && report.items.length > 0 ? (
+            <div className="space-y-1">
               {report.items.map((item) => (
                 <LinkedItemRow
                   key={item.id}
                   item={item}
                   onRemove={() => handleRemoveItem(item.id)}
-                  editing={editing}
                 />
               ))}
             </div>
-          </CardContent>
-        </Card>
-      )}
+          ) : (
+            <p className="text-xs text-muted-foreground/50 text-center py-4">
+              No linked items yet. Use &ldquo;Link Intel&rdquo; to attach intelligence items to this report.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
-      {/* Timestamps */}
+      {/* ── Timestamps ────────────────────────────────── */}
       <div className="text-xs text-muted-foreground flex flex-wrap gap-4 pt-2 border-t">
         <span>Created: {new Date(report.created_at).toLocaleString()}</span>
         <span>Updated: {new Date(report.updated_at).toLocaleString()}</span>
@@ -487,14 +734,124 @@ export default function ReportDetailPage() {
   );
 }
 
+/* ─── Summary Section ──────────────────────────────────── */
+
+function SummarySection({
+  report,
+  editing,
+  editSummary,
+  setEditSummary,
+  onInlineSave,
+  saving,
+}: {
+  report: Report;
+  editing: boolean;
+  editSummary: string;
+  setEditSummary: (v: string) => void;
+  onInlineSave: () => void;
+  saving: boolean;
+}) {
+  const [inlineEdit, setInlineEdit] = useState(false);
+
+  // Global edit mode
+  if (editing) {
+    return (
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-primary" />
+            Executive Summary
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <textarea
+            value={editSummary}
+            onChange={(e) => setEditSummary(e.target.value)}
+            placeholder="Write a brief executive summary of this report..."
+            rows={3}
+            className="w-full px-3 py-2 rounded-md border bg-background text-sm resize-y focus:outline-none focus:ring-2 focus:ring-primary/30"
+          />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Inline edit
+  if (inlineEdit) {
+    return (
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-primary" />
+            Executive Summary
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <textarea
+            value={editSummary}
+            onChange={(e) => setEditSummary(e.target.value)}
+            placeholder="Write a brief executive summary of this report..."
+            rows={3}
+            className="w-full px-3 py-2 rounded-md border bg-background text-sm resize-y focus:outline-none focus:ring-2 focus:ring-primary/30"
+            autoFocus
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => { setInlineEdit(false); setEditSummary(report.summary || ""); }}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={() => { onInlineSave(); setInlineEdit(false); }} disabled={saving}>
+              {saving ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Check className="h-3.5 w-3.5 mr-1" />}
+              Save
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // View mode
+  return (
+    <Card className="group">
+      <CardHeader className="pb-2 flex flex-row items-center justify-between">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary" />
+          Executive Summary
+        </CardTitle>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+          onClick={() => setInlineEdit(true)}
+        >
+          <PenLine className="h-3 w-3 mr-1" />
+          Edit
+        </Button>
+      </CardHeader>
+      <CardContent>
+        {report.summary ? (
+          <p className="text-sm text-muted-foreground whitespace-pre-line">{report.summary}</p>
+        ) : (
+          <button
+            onClick={() => setInlineEdit(true)}
+            className="w-full py-4 text-center text-sm text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors rounded-md border border-dashed border-border/30 hover:border-border/60"
+          >
+            <PenLine className="h-4 w-4 mx-auto mb-1 opacity-50" />
+            Click to add executive summary, or use AI Summary button
+          </button>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ─── Linked Item Row ──────────────────────────────────── */
+
 function LinkedItemRow({
   item,
   onRemove,
-  editing,
 }: {
   item: ReportItem;
   onRemove: () => void;
-  editing: boolean;
 }) {
   const meta = item.item_metadata || {};
   const typeColors: Record<string, string> = {
@@ -524,17 +881,15 @@ function LinkedItemRow({
       )}
       {typeof meta.severity === "string" && (
         <Badge variant="outline" className={`text-[10px] ${SEVERITY_COLORS[meta.severity] || ""}`}>
-          {meta.severity.toUpperCase()}
+          {(meta.severity as string).toUpperCase()}
         </Badge>
       )}
       {meta.risk_score !== undefined && (
         <span className="text-xs text-muted-foreground">Risk: {String(meta.risk_score)}</span>
       )}
-      {editing && (
-        <Button variant="ghost" size="sm" className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100" onClick={onRemove}>
-          <X className="h-3 w-3" />
-        </Button>
-      )}
+      <Button variant="ghost" size="sm" className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 text-red-400" onClick={onRemove}>
+        <X className="h-3 w-3" />
+      </Button>
     </div>
   );
 }
