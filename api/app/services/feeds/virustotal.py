@@ -25,8 +25,10 @@ settings = get_settings()
 VT_BASE = "https://www.virustotal.com/api/v3"
 
 # Lightweight public threat-intel seed sources (plain-text, no auth)
-FEODO_C2_URL = "https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.txt"
+IPSUM_URL = "https://raw.githubusercontent.com/stamparm/ipsum/master/ipsum.txt"
 BAZAAR_RECENT_URL = "https://bazaar.abuse.ch/export/txt/sha256/recent/"
+# Minimum blacklist count to consider an IP from IPsum (higher = more confident)
+IPSUM_MIN_SCORE = 8
 
 # Delay between VT API calls (16 s keeps us under 4 req/min)
 VT_CALL_DELAY = 16
@@ -62,7 +64,7 @@ class VirusTotalConnector(BaseFeedConnector):
 
         # 1. Fetch seed IOCs from public threat lists (in parallel)
         seed_ips, seed_hashes = await asyncio.gather(
-            self._fetch_feodo_ips(),
+            self._fetch_ipsum_ips(),
             self._fetch_bazaar_hashes(),
         )
 
@@ -94,22 +96,36 @@ class VirusTotalConnector(BaseFeedConnector):
 
         # 2. Lookup IPs on VT
         call_count = 0
+        rate_limited = False
         for ip in batch_ips:
+            if rate_limited:
+                break
             if call_count > 0:
                 await asyncio.sleep(VT_CALL_DELAY)
             item = await self._vt_ip_lookup(ip, headers)
+            if item == "RATE_LIMITED":
+                rate_limited = True
+                break
             if item:
                 all_items.append(item)
             call_count += 1
 
         # 3. Lookup hashes on VT
         for sha in batch_hashes:
+            if rate_limited:
+                break
             if call_count > 0:
                 await asyncio.sleep(VT_CALL_DELAY)
             item = await self._vt_file_lookup(sha, headers)
+            if item == "RATE_LIMITED":
+                rate_limited = True
+                break
             if item:
                 all_items.append(item)
             call_count += 1
+
+        if rate_limited:
+            logger.warning("virustotal_stopped_rate_limited", completed_lookups=call_count)
 
         # Store new cursor offsets for next cycle
         new_ip_offset = ip_offset + MAX_IP_LOOKUPS
@@ -123,22 +139,33 @@ class VirusTotalConnector(BaseFeedConnector):
     # ------------------------------------------------------------------
     # Seed fetchers
     # ------------------------------------------------------------------
-    async def _fetch_feodo_ips(self) -> list[str]:
-        """Return active C2 server IPs from Feodo Tracker (free, no auth)."""
+    async def _fetch_ipsum_ips(self) -> list[str]:
+        """Return high-confidence malicious IPs from IPsum (stamparm/ipsum on GitHub).
+
+        Each line: IP<tab>blacklist_count.  We keep only IPs seen on >= IPSUM_MIN_SCORE lists.
+        """
         try:
-            resp = await self.client.get(FEODO_C2_URL, timeout=20)
+            resp = await self.client.get(IPSUM_URL, timeout=30)
             if resp.status_code != 200:
-                logger.warning("feodo_fetch_failed", status=resp.status_code)
+                logger.warning("ipsum_fetch_failed", status=resp.status_code)
                 return []
-            ips = [
-                line.strip()
-                for line in resp.text.splitlines()
-                if line.strip() and not line.startswith("#")
-            ]
-            random.shuffle(ips)  # shuffle so rotation covers diverse C2 infra
-            return ips
+            ips = []
+            for line in resp.text.splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split("\t")
+                if len(parts) >= 2:
+                    try:
+                        score = int(parts[1])
+                        if score >= IPSUM_MIN_SCORE:
+                            ips.append(parts[0])
+                    except ValueError:
+                        continue
+            random.shuffle(ips)
+            return ips[:500]  # cap to a reasonable pool
         except Exception as e:
-            logger.error("feodo_seed_error", error=str(e))
+            logger.error("ipsum_seed_error", error=str(e))
             return []
 
     async def _fetch_bazaar_hashes(self) -> list[str]:
@@ -162,13 +189,13 @@ class VirusTotalConnector(BaseFeedConnector):
     # ------------------------------------------------------------------
     # VT individual lookups
     # ------------------------------------------------------------------
-    async def _vt_ip_lookup(self, ip: str, headers: dict) -> dict | None:
-        """Look up a single IP on VT.  Returns raw VT data dict or None."""
+    async def _vt_ip_lookup(self, ip: str, headers: dict) -> dict | str | None:
+        """Look up a single IP on VT.  Returns raw dict, 'RATE_LIMITED', or None."""
         try:
             resp = await self.client.get(f"{VT_BASE}/ip_addresses/{ip}", headers=headers)
             if resp.status_code == 429:
                 logger.warning("virustotal_rate_limited")
-                return None
+                return "RATE_LIMITED"
             if resp.status_code == 401:
                 logger.warning("virustotal_unauthorized")
                 return None
@@ -183,13 +210,13 @@ class VirusTotalConnector(BaseFeedConnector):
             logger.debug("vt_ip_lookup_error", ip=ip, error=str(e))
             return None
 
-    async def _vt_file_lookup(self, sha256: str, headers: dict) -> dict | None:
-        """Look up a single SHA-256 hash on VT.  Returns raw VT data dict or None."""
+    async def _vt_file_lookup(self, sha256: str, headers: dict) -> dict | str | None:
+        """Look up a single SHA-256 hash on VT.  Returns raw dict, 'RATE_LIMITED', or None."""
         try:
             resp = await self.client.get(f"{VT_BASE}/files/{sha256}", headers=headers)
             if resp.status_code == 429:
                 logger.warning("virustotal_rate_limited")
-                return None
+                return "RATE_LIMITED"
             if resp.status_code == 401:
                 logger.warning("virustotal_unauthorized")
                 return None
