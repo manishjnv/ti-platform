@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { Report, ReportItem, ReportStatus, ReportType, Severity } from "@/types";
 import * as api from "@/lib/api";
+import MarkdownContent from "@/components/MarkdownContent";
 import {
   ArrowLeft,
   Save,
@@ -617,7 +618,7 @@ export default function ReportDetailPage() {
               {!editing && !isInlineEditing && (
                 <>
                   {body.trim() ? (
-                    <p className="text-sm text-muted-foreground whitespace-pre-line">{body}</p>
+                    <MarkdownContent content={body} />
                   ) : (
                     <button
                       onClick={() => {

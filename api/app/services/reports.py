@@ -505,24 +505,48 @@ async def generate_ai_sections(
         "a professional, data-driven threat intelligence report. You have been provided with "
         "LIVE RESEARCH DATA gathered from multiple sources (NVD, OpenSearch, web search, OTX). "
         "USE THIS RESEARCH DATA to write factual, specific, evidence-based content.\n\n"
-        "IMPORTANT: Respond ONLY with valid JSON — no markdown, no code fences, no extra text.\n"
+        "IMPORTANT: Respond ONLY with valid JSON — no markdown code fences wrapping the JSON.\n"
         "The JSON must be an object with:\n"
         '  "summary": "<executive summary, 3-5 sentences for C-level briefing>",\n'
-        '  "sections": { "<section_key>": "<section content, 2-4 paragraphs>" }\n\n'
+        '  "sections": { "<section_key>": "<section content in MARKDOWN format>" }\n\n'
+        "FORMATTING RULES (section values MUST use Markdown):\n"
+        "- Use **bold** for key terms, CVE IDs, severity labels, product names\n"
+        "- Use bullet points (- ) for lists of IOCs, affected products, organizations, recommendations\n"
+        "- Use numbered lists (1. ) for timelines and sequential steps\n"
+        "- Use ### sub-headings within longer sections to organize content\n"
+        "- Use tables (| col1 | col2 |) for structured data like IOC tables, CVSS breakdowns\n"
+        "- Use `inline code` for hashes, IPs, domains, file paths, commands\n"
+        "- Use > blockquotes for key findings or analyst notes\n"
+        "- Include [link text](URL) for reference sources\n"
+        "- Add --- horizontal rules between major sub-topics\n\n"
         "SECTION-SPECIFIC GUIDELINES:\n"
-        "- Timeline: Use actual dates from research data. Format as bullet points with dates.\n"
-        "- Confirmation Status: State whether the threat is Confirmed/Suspected/Unverified with evidence.\n"
-        "- Exploitability: Reference CVSS scores, attack vectors, complexity from NVD data.\n"
-        "- PoC / Exploit Availability: Cite specific PoC sources, exploit-db, GitHub, Metasploit if found.\n"
-        "- Impacted Technologies: List specific vendors, products, versions from NVD/research data.\n"
-        "- Affected Organizations: Name sectors, industries, geographies from OTX/web data.\n\n"
+        "- **Executive Summary**: 3-5 sentence paragraph for C-level. End with risk rating.\n"
+        "- **Timeline**: Numbered list with **dates** in bold. Include: first discovery, "
+        "disclosure, vendor patch, PoC release, active exploitation dates.\n"
+        "  Example: 1. **2025-12-01** — Vulnerability first reported to vendor...\n"
+        "- **Confirmation Status**: State **Confirmed** / **Suspected** / **Unverified** in bold. "
+        "Bullet list of evidence sources.\n"
+        "- **Exploitability**: Table with CVSS metrics (Score, Vector, Complexity, Privileges). "
+        "Bullet points for attack prerequisites. Bold the risk level.\n"
+        "- **PoC / Exploit Availability**: Bullet list each known exploit. Include source links, "
+        "Metasploit module names, exploit-db IDs. Mark **Active in the wild** if applicable.\n"
+        "- **Impacted Technologies**: Bullet list with **Vendor — Product — Version(s)**. "
+        "Group by vendor. Include OS, firmware, cloud services.\n"
+        "- **Affected Organizations / Sectors**: Bullet list of industries, geographies, "
+        "named victims. Include **sector: detail** format.\n"
+        "- **IOC sections**: Table format with columns: Type | Value | Context. "
+        "Use `code` for hash/IP/domain values.\n"
+        "- **Recommendations / Mitigations**: Numbered priority list. Bold the action. "
+        "Include detection rules, YARA snippets in code blocks if relevant.\n"
+        "- **References**: Bullet list of [source name](URL) links.\n\n"
         "GENERAL GUIDELINES:\n"
-        "- Write in professional, direct language — no filler\n"
-        "- Each section should be 2-4 paragraphs with specific, actionable intelligence\n"
-        "- Cite sources where possible (e.g., 'According to NVD...', 'OTX pulse indicates...')\n"
+        "- NEVER write wall-of-text paragraphs — always break into structured bullets/tables\n"
+        "- Cite sources: 'According to NVD...', 'OTX pulse indicates...', 'Reported by...'\n"
         "- Include actual CVE IDs, CVSS scores, dates, product names from the research\n"
-        "- If research data lacks info for a section, note it as 'No data available' and provide guidance\n"
-        "- Do NOT include JSON code fences or any wrapper — raw JSON only"
+        "- If research data lacks info for a section, write: '> No confirmed data available — "
+        "manual analysis recommended'\n"
+        "- Do NOT wrap JSON in code fences — raw JSON only\n"
+        "- Escape quotes inside JSON string values properly"
     )
 
     user_prompt = (
@@ -530,12 +554,14 @@ async def generate_ai_sections(
         f"REPORT CONTEXT:\n{context}\n\n"
         f"LIVE RESEARCH DATA:\n{research_context}\n\n"
         f"SECTIONS TO FILL:\n{section_list}\n\n"
-        f"Use the research data above to write factual, evidence-based content for each section. "
-        f"Respond with JSON containing 'summary' and 'sections' keys."
+        f"REMEMBER: Each section value must be **Markdown formatted** with bullet points, "
+        f"bold key terms, tables for IOCs/CVSS, numbered timelines, and reference links. "
+        f"No wall-of-text paragraphs. "
+        f"Respond with raw JSON containing 'summary' and 'sections' keys."
     )
 
-    # Use higher token limit to accommodate the richer content
-    raw = await ai_chat(system_prompt, user_prompt, max_tokens=3500, temperature=0.25)
+    # Higher token limit for structured markdown content
+    raw = await ai_chat(system_prompt, user_prompt, max_tokens=4000, temperature=0.25)
     if not raw:
         return None
 
