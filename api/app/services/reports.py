@@ -210,6 +210,14 @@ async def delete_report(db: AsyncSession, report_id: uuid.UUID) -> bool:
 
 # ─── Linked Items ─────────────────────────────────────────
 
+# Map item_type values to model counter field names
+_COUNTER_FIELDS = {
+    "intel_item": "linked_intel_count",
+    "intel": "linked_intel_count",
+    "ioc": "linked_ioc_count",
+    "technique": "linked_technique_count",
+}
+
 
 async def add_report_item(
     db: AsyncSession,
@@ -245,8 +253,8 @@ async def add_report_item(
     db.add(item)
 
     # Update counter
-    counter_field = f"linked_{data['item_type']}_count"
-    if hasattr(report, counter_field):
+    counter_field = _COUNTER_FIELDS.get(data["item_type"])
+    if counter_field and hasattr(report, counter_field):
         setattr(report, counter_field, getattr(report, counter_field) + 1)
 
     await db.flush()
@@ -274,8 +282,8 @@ async def remove_report_item(
     # Update counter
     report = await get_report(db, report_id)
     if report:
-        counter_field = f"linked_{ri.item_type}_count"
-        if hasattr(report, counter_field):
+        counter_field = _COUNTER_FIELDS.get(ri.item_type)
+        if counter_field and hasattr(report, counter_field):
             current = getattr(report, counter_field)
             setattr(report, counter_field, max(0, current - 1))
 
