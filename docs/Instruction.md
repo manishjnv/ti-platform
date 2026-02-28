@@ -35,6 +35,7 @@
 - [Graceful Shutdown](#-graceful-shutdown)
 - [Future Enhancement Readiness](#-future-enhancement-readiness)
 - [Definition of Done](#-definition-of-done)
+- [Post-Development Functional Verification](#post-development-functional-verification-mandatory)
 - [Instructions for AI Agents](#-instructions-for-ai-agents)
 
 ---
@@ -551,6 +552,50 @@ A feature is **complete** only if:
 - [ ] It has error boundaries at page and widget level
 - [ ] Database changes have rollback-safe migrations
 - [ ] No PII leaks in logs or API responses
+- [ ] **Post-development functional verification passed** (see checklist below)
+
+### Post-Development Functional Verification (MANDATORY)
+
+After every feature or page is developed, **all interactive elements must be manually verified** before marking as done. Deploy to the live environment and test each item:
+
+#### Links & Navigation
+- [ ] All clickable links navigate to the correct page/URL
+- [ ] External links open in a new tab (`target="_blank"`)
+- [ ] Back/breadcrumb navigation works correctly
+- [ ] Sidebar active state highlights the current page
+- [ ] Deep links (e.g., `/intel/[id]`) work on direct access and refresh
+
+#### Expand / Collapse / Toggle
+- [ ] All expand/collapse sections toggle correctly (accordion, detail rows, collapsible panels)
+- [ ] Toggle states persist visually (chevron rotates, section shows/hides)
+- [ ] Tab switching loads correct content and preserves URL state where applicable
+- [ ] Modal/dialog open and close without leaving stale state
+
+#### Downloads & Exports
+- [ ] Download/export buttons produce valid files (Excel, CSV, PDF, JSON)
+- [ ] Downloaded files contain expected data (not empty, not truncated)
+- [ ] File names include relevant context (date, entity name)
+- [ ] Large exports don't freeze the UI (async with loading indicator)
+
+#### Data Display
+- [ ] Pagination controls work (next, previous, page numbers, items-per-page)
+- [ ] Sort controls sort correctly (ascending/descending, by each sortable column)
+- [ ] Filters apply and clear correctly, with visual indication of active filters
+- [ ] Search returns relevant results and handles empty/no-results states
+- [ ] Badge/tag counts match actual data
+- [ ] Timestamps display in correct format and timezone
+
+#### Interactive Components
+- [ ] Copy-to-clipboard buttons work and show feedback (toast/tooltip)
+- [ ] Hover states and tooltips appear correctly
+- [ ] Loading states show while data is fetching (skeleton/spinner)
+- [ ] Error states display meaningful messages (not blank screen or raw error)
+- [ ] Empty states show helpful guidance (not just blank area)
+
+#### Cross-Browser & Responsive
+- [ ] Page renders correctly at desktop width (1280px+)
+- [ ] No horizontal overflow or layout breaking
+- [ ] Charts/visualizations render with data and handle empty state
 
 ---
 
