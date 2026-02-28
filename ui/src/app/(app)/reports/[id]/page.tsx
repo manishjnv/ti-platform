@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,6 +28,10 @@ import {
   X,
   Send,
   Edit3,
+  ChevronDown,
+  FileCode2,
+  Globe,
+  Table2,
 } from "lucide-react";
 
 const STATUS_CONFIG: Record<ReportStatus, { label: string; color: string; icon: React.ElementType; next?: ReportStatus }> = {
@@ -76,6 +80,8 @@ export default function ReportDetailPage() {
   const [editing, setEditing] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
 
   // Edit state
   const [editTitle, setEditTitle] = useState("");
@@ -104,6 +110,17 @@ export default function ReportDetailPage() {
   useEffect(() => {
     fetchReport();
   }, [fetchReport]);
+
+  // Close export dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
+        setExportOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const handleSave = async () => {
     if (!report) return;
@@ -150,8 +167,9 @@ export default function ReportDetailPage() {
     setAiLoading(false);
   };
 
-  const handleExport = async () => {
-    const url = await api.exportReport(reportId, "markdown", true);
+  const handleExport = async (format: string) => {
+    setExportOpen(false);
+    const url = await api.exportReport(reportId, format, true);
     window.open(url, "_blank");
   };
 
@@ -280,10 +298,37 @@ export default function ReportDetailPage() {
             {aiLoading ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 mr-1" />}
             AI Summary
           </Button>
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="h-3.5 w-3.5 mr-1" />
-            Export
-          </Button>
+          <div className="relative" ref={exportRef}>
+            <Button variant="outline" size="sm" onClick={() => setExportOpen(!exportOpen)}>
+              <Download className="h-3.5 w-3.5 mr-1" />
+              Export
+              <ChevronDown className="h-3 w-3 ml-1" />
+            </Button>
+            {exportOpen && (
+              <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-border bg-card shadow-xl z-50 py-1">
+                <button onClick={() => handleExport("pdf")} className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-muted/50 text-left">
+                  <FileText className="h-3.5 w-3.5 text-red-400" />
+                  <span>PDF Document</span>
+                </button>
+                <button onClick={() => handleExport("markdown")} className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-muted/50 text-left">
+                  <FileCode2 className="h-3.5 w-3.5 text-blue-400" />
+                  <span>Markdown (.md)</span>
+                </button>
+                <button onClick={() => handleExport("html")} className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-muted/50 text-left">
+                  <Globe className="h-3.5 w-3.5 text-emerald-400" />
+                  <span>HTML Report</span>
+                </button>
+                <button onClick={() => handleExport("stix")} className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-muted/50 text-left">
+                  <Shield className="h-3.5 w-3.5 text-purple-400" />
+                  <span>STIX 2.1 Bundle</span>
+                </button>
+                <button onClick={() => handleExport("csv")} className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-muted/50 text-left">
+                  <Table2 className="h-3.5 w-3.5 text-amber-400" />
+                  <span>CSV Spreadsheet</span>
+                </button>
+              </div>
+            )}
+          </div>
           <Button variant="outline" size="sm" onClick={handleDelete} disabled={deleting} className="text-red-400 hover:text-red-300">
             <Trash2 className="h-3.5 w-3.5" />
           </Button>

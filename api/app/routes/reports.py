@@ -11,16 +11,17 @@ Provides:
 - POST   /reports/{id}/items    — add linked item (intel/IOC/technique)
 - DELETE /reports/{id}/items/{item_id} — remove linked item
 - POST   /reports/{id}/ai-summary     — generate AI executive summary
-- GET    /reports/{id}/export          — export as markdown
+- GET    /reports/{id}/export          — export (markdown, pdf, stix, html, csv)
 """
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -250,7 +251,7 @@ async def export_report(
     format: str = Query("markdown"),
     include_tlp_watermark: bool = Query(True),
 ):
-    """Export a report. Supports markdown format."""
+    """Export a report. Supports: markdown, pdf, stix, html, csv."""
     if format == "markdown":
         md = await report_service.export_markdown(db, report_id, include_tlp_watermark)
         if not md:
@@ -258,7 +259,48 @@ async def export_report(
         return PlainTextResponse(
             content=md,
             media_type="text/markdown",
-            headers={"Content-Disposition": f"attachment; filename=report-{report_id}.md"},
+            headers={"Content-Disposition": f'attachment; filename="report-{report_id}.md"'},
         )
 
-    raise HTTPException(400, f"Unsupported export format: {format}")
+    if format == "pdf":
+        pdf_bytes = await report_service.export_pdf(db, report_id, include_tlp_watermark)
+        if not pdf_bytes:
+            raise HTTPException(404, "Report not found")
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="report-{report_id}.pdf"'},
+        )
+
+    if format == "stix":
+        bundle = await report_service.export_stix(db, report_id)
+        if not bundle:
+            raise HTTPException(404, "Report not found")
+        stix_json = json.dumps(bundle, indent=2, default=str)
+        return Response(
+            content=stix_json,
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="report-{report_id}-stix.json"'},
+        )
+
+    if format == "html":
+        html_str = await report_service.export_html(db, report_id, include_tlp_watermark)
+        if not html_str:
+            raise HTTPException(404, "Report not found")
+        return Response(
+            content=html_str,
+            media_type="text/html",
+            headers={"Content-Disposition": f'attachment; filename="report-{report_id}.html"'},
+        )
+
+    if format == "csv":
+        csv_str = await report_service.export_csv(db, report_id)
+        if not csv_str:
+            raise HTTPException(404, "Report not found")
+        return PlainTextResponse(
+            content=csv_str,
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="report-{report_id}.csv"'},
+        )
+
+    raise HTTPException(400, f"Unsupported export format: {format}. Supported: markdown, pdf, stix, html, csv")

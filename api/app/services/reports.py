@@ -1,16 +1,18 @@
-"""Report generation service — CRUD, AI summaries, export.
+"""Report generation service — CRUD, AI summaries, multi-format export.
 
 USPs:
   - One-Click Intel-to-Report: Attach intel/IOC/technique items instantly
   - AI Executive Summary: Generate AI-powered executive overview
   - Live Cross-Data Sections: Linked items pull real-time data
-  - PDF + Markdown Export with TLP Watermark
+  - Multi-Format Export (PDF, Markdown, STIX 2.1, CSV, HTML) with TLP Watermark
   - Report Templates: Pre-built templates for different report types
   - Status Workflow with Audit Trail: draft → review → published → archived
 """
 
 from __future__ import annotations
 
+import io
+import csv
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -461,6 +463,587 @@ async def export_markdown(
         lines.append(f"*{report.tlp} — This document is classified under the Traffic Light Protocol.*")
 
     return "\n".join(lines)
+
+
+# ─── PDF Export ───────────────────────────────────────────
+
+TLP_COLORS_PDF = {
+    "TLP:RED": (0.8, 0.1, 0.1),
+    "TLP:AMBER+STRICT": (0.85, 0.55, 0.08),
+    "TLP:AMBER": (0.85, 0.55, 0.08),
+    "TLP:GREEN": (0.15, 0.6, 0.15),
+    "TLP:CLEAR": (0.5, 0.5, 0.5),
+}
+
+SEVERITY_COLORS_PDF = {
+    "critical": (0.8, 0.1, 0.1),
+    "high": (0.9, 0.4, 0.0),
+    "medium": (0.85, 0.65, 0.0),
+    "low": (0.2, 0.6, 0.8),
+    "info": (0.3, 0.5, 0.7),
+    "unknown": (0.5, 0.5, 0.5),
+}
+
+
+async def export_pdf(
+    db: AsyncSession,
+    report_id: uuid.UUID,
+    include_tlp_watermark: bool = True,
+) -> bytes | None:
+    """Export report as PDF with TLP watermark and professional formatting."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.lib.colors import HexColor, Color
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+        HRFlowable,
+    )
+    from reportlab.lib.enums import TA_CENTER
+
+    report = await get_report(db, report_id)
+    if not report:
+        return None
+    items = await get_report_items(db, report_id)
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=20 * mm, rightMargin=20 * mm,
+        topMargin=25 * mm, bottomMargin=20 * mm,
+    )
+
+    styles = getSampleStyleSheet()
+    tlp_color = TLP_COLORS_PDF.get(report.tlp, (0.5, 0.5, 0.5))
+
+    # Custom styles
+    styles.add(ParagraphStyle(
+        "TLPBanner", parent=styles["Normal"],
+        fontSize=10, textColor=Color(*tlp_color),
+        alignment=TA_CENTER, spaceAfter=6,
+        fontName="Helvetica-Bold",
+    ))
+    styles.add(ParagraphStyle(
+        "ReportTitle", parent=styles["Title"],
+        fontSize=22, spaceAfter=4, fontName="Helvetica-Bold",
+        textColor=HexColor("#E0E0E0"),
+    ))
+    styles.add(ParagraphStyle(
+        "SectionHead", parent=styles["Heading2"],
+        fontSize=13, spaceBefore=14, spaceAfter=6,
+        fontName="Helvetica-Bold", textColor=HexColor("#B0C4DE"),
+        borderPadding=2,
+    ))
+    styles.add(ParagraphStyle(
+        "MetaLabel", parent=styles["Normal"],
+        fontSize=9, textColor=HexColor("#9E9E9E"), fontName="Helvetica-Bold",
+    ))
+    styles.add(ParagraphStyle(
+        "MetaValue", parent=styles["Normal"],
+        fontSize=9, textColor=HexColor("#D0D0D0"),
+    ))
+    styles.add(ParagraphStyle(
+        "BodyText2", parent=styles["Normal"],
+        fontSize=10, textColor=HexColor("#CCCCCC"), leading=14,
+        spaceAfter=8,
+    ))
+    styles.add(ParagraphStyle(
+        "FooterText", parent=styles["Normal"],
+        fontSize=8, textColor=HexColor("#777777"), alignment=TA_CENTER,
+    ))
+    styles.add(ParagraphStyle(
+        "TableHeader", parent=styles["Normal"],
+        fontSize=9, textColor=HexColor("#FFFFFF"), fontName="Helvetica-Bold",
+    ))
+    styles.add(ParagraphStyle(
+        "TableCell", parent=styles["Normal"],
+        fontSize=8, textColor=HexColor("#D0D0D0"),
+    ))
+
+    elements: list = []
+
+    # TLP watermark banner
+    if include_tlp_watermark:
+        elements.append(Paragraph(
+            f"<b>{report.tlp}</b> — DISTRIBUTION RESTRICTION", styles["TLPBanner"]
+        ))
+        elements.append(HRFlowable(
+            width="100%", thickness=1,
+            color=Color(*tlp_color), spaceAfter=10,
+        ))
+
+    # Title
+    elements.append(Paragraph(report.title, styles["ReportTitle"]))
+    elements.append(Spacer(1, 4))
+
+    # Metadata table
+    created = report.created_at.strftime("%Y-%m-%d %H:%M UTC") if report.created_at else "—"
+    published = report.published_at.strftime("%Y-%m-%d %H:%M UTC") if report.published_at else "—"
+    meta_data = [
+        ["Type", report.report_type.replace("_", " ").title(),
+         "Severity", report.severity.upper()],
+        ["Status", report.status.title(),
+         "TLP", report.tlp],
+        ["Created", created,
+         "Published", published],
+        ["Tags", ", ".join(report.tags) if report.tags else "—",
+         "Author", "IntelWatch Platform"],
+    ]
+    meta_table = Table(meta_data, colWidths=[55, 150, 55, 150])
+    meta_table.setStyle(TableStyle([
+        ("TEXTCOLOR", (0, 0), (0, -1), HexColor("#9E9E9E")),
+        ("TEXTCOLOR", (2, 0), (2, -1), HexColor("#9E9E9E")),
+        ("TEXTCOLOR", (1, 0), (1, -1), HexColor("#D0D0D0")),
+        ("TEXTCOLOR", (3, 0), (3, -1), HexColor("#D0D0D0")),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(meta_table)
+    elements.append(Spacer(1, 12))
+
+    # Summary
+    if report.summary:
+        elements.append(Paragraph("Executive Summary", styles["SectionHead"]))
+        elements.append(HRFlowable(width="100%", thickness=0.5, color=HexColor("#444444"), spaceAfter=6))
+        elements.append(Paragraph(report.summary.replace("\n", "<br/>"), styles["BodyText2"]))
+
+    # Content sections
+    sections = report.content.get("sections", []) if report.content else []
+    for section in sections:
+        body = (section.get("body") or section.get("content", "")).strip()
+        if body:
+            elements.append(Paragraph(section.get("title", "Section"), styles["SectionHead"]))
+            elements.append(HRFlowable(width="100%", thickness=0.5, color=HexColor("#444444"), spaceAfter=6))
+            elements.append(Paragraph(body.replace("\n", "<br/>"), styles["BodyText2"]))
+
+    # Linked items tables
+    intel_items = [i for i in items if i.item_type in ("intel", "intel_item")]
+    ioc_items = [i for i in items if i.item_type == "ioc"]
+    technique_items = [i for i in items if i.item_type == "technique"]
+
+    def _build_table(title: str, headers: list[str], rows: list[list[str]], col_widths: list[int]):
+        elements.append(Paragraph(title, styles["SectionHead"]))
+        elements.append(HRFlowable(width="100%", thickness=0.5, color=HexColor("#444444"), spaceAfter=6))
+        header_row = [Paragraph(h, styles["TableHeader"]) for h in headers]
+        data_rows = [[Paragraph(c, styles["TableCell"]) for c in row] for row in rows]
+        t = Table([header_row] + data_rows, colWidths=col_widths)
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), HexColor("#2A3A4A")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), HexColor("#FFFFFF")),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [HexColor("#1E1E1E"), HexColor("#252525")]),
+            ("GRID", (0, 0), (-1, -1), 0.5, HexColor("#444444")),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(t)
+        elements.append(Spacer(1, 8))
+
+    if intel_items:
+        rows = []
+        for idx, item in enumerate(intel_items, 1):
+            meta = item.item_metadata or {}
+            rows.append([
+                str(idx),
+                item.item_title or str(item.item_id)[:20],
+                meta.get("severity", "—"),
+                meta.get("source_name", "—"),
+            ])
+        _build_table("Linked Intelligence", ["#", "Title", "Severity", "Source"], rows, [25, 210, 60, 100])
+
+    if ioc_items:
+        rows = []
+        for idx, item in enumerate(ioc_items, 1):
+            meta = item.item_metadata or {}
+            rows.append([
+                str(idx),
+                meta.get("ioc_type", "—"),
+                meta.get("value", str(item.item_id)[:20]),
+                str(meta.get("risk_score", "—")),
+            ])
+        _build_table("Indicators of Compromise", ["#", "Type", "Value", "Risk Score"], rows, [25, 80, 200, 60])
+
+    if technique_items:
+        rows = []
+        for item in technique_items:
+            meta = item.item_metadata or {}
+            rows.append([
+                str(item.item_id)[:12],
+                item.item_title or str(item.item_id)[:20],
+                meta.get("tactic", "—"),
+            ])
+        _build_table("MITRE ATT&CK Techniques", ["ID", "Technique", "Tactic"], rows, [80, 180, 130])
+
+    # Footer
+    elements.append(Spacer(1, 20))
+    elements.append(HRFlowable(width="100%", thickness=0.5, color=HexColor("#444444"), spaceAfter=6))
+    elements.append(Paragraph(
+        f"Generated by IntelWatch · {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+        styles["FooterText"],
+    ))
+    if include_tlp_watermark:
+        elements.append(Paragraph(
+            f"{report.tlp} — This document is classified under the Traffic Light Protocol.",
+            styles["FooterText"],
+        ))
+
+    doc.build(elements)
+    return buf.getvalue()
+
+
+# ─── STIX 2.1 JSON Export ────────────────────────────────
+
+REPORT_TYPE_TO_STIX_LABEL = {
+    "incident": "incident-report",
+    "threat_advisory": "threat-advisory",
+    "weekly_summary": "weekly-summary",
+    "ioc_bulletin": "ioc-bulletin",
+    "custom": "custom-report",
+}
+
+TLP_TO_STIX_MARKING = {
+    "TLP:RED": "marking-definition--e828b379-4e03-4974-9ac4-e53a884c97c1",
+    "TLP:AMBER+STRICT": "marking-definition--f88d31f6-486f-44da-b317-01333bde0b82",
+    "TLP:AMBER": "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da",
+    "TLP:GREEN": "marking-definition--bab4a63c-aed9-4571-9c39-01cc457637b7",
+    "TLP:CLEAR": "marking-definition--94868c89-83c2-464b-929b-a1a8aa3c8487",
+}
+
+
+async def export_stix(
+    db: AsyncSession,
+    report_id: uuid.UUID,
+) -> dict | None:
+    """Export report as STIX 2.1 Bundle JSON."""
+    report = await get_report(db, report_id)
+    if not report:
+        return None
+    items = await get_report_items(db, report_id)
+
+    stix_objects: list[dict] = []
+    object_refs: list[str] = []
+
+    # TLP marking definition reference
+    tlp_marking = TLP_TO_STIX_MARKING.get(report.tlp)
+    marking_refs = [tlp_marking] if tlp_marking else []
+
+    # Identity (IntelWatch organization)
+    identity_id = "identity--a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    stix_objects.append({
+        "type": "identity",
+        "spec_version": "2.1",
+        "id": identity_id,
+        "created": report.created_at.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        "modified": report.updated_at.strftime("%Y-%m-%dT%H:%M:%S.000Z") if report.updated_at else report.created_at.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        "name": "IntelWatch Platform",
+        "identity_class": "organization",
+    })
+
+    # Convert linked items to STIX objects
+    for item in items:
+        meta = item.item_metadata or {}
+
+        if item.item_type in ("intel", "intel_item"):
+            # Map to STIX indicator or vulnerability
+            cve_ids = meta.get("cve_ids", [])
+            if cve_ids:
+                # Vulnerability object for CVE-based intel
+                for cve in cve_ids:
+                    vuln_id = f"vulnerability--{uuid.uuid5(uuid.NAMESPACE_URL, cve)}"
+                    stix_objects.append({
+                        "type": "vulnerability",
+                        "spec_version": "2.1",
+                        "id": vuln_id,
+                        "created": item.created_at.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                        "modified": item.created_at.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                        "name": cve,
+                        "description": item.item_title or cve,
+                        "external_references": [{"source_name": "cve", "external_id": cve}],
+                    })
+                    if marking_refs:
+                        stix_objects[-1]["object_marking_refs"] = marking_refs
+                    object_refs.append(vuln_id)
+            else:
+                # Generic indicator
+                ind_id = f"indicator--{item.item_id}"
+                stix_objects.append({
+                    "type": "indicator",
+                    "spec_version": "2.1",
+                    "id": ind_id,
+                    "created": item.created_at.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                    "modified": item.created_at.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                    "name": item.item_title or str(item.item_id),
+                    "description": f"Intel item from {meta.get('source_name', 'IntelWatch')}",
+                    "indicator_types": ["anomalous-activity"],
+                    "pattern": f"[file:name = '{item.item_title or item.item_id}']",
+                    "pattern_type": "stix",
+                    "valid_from": item.created_at.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                })
+                if marking_refs:
+                    stix_objects[-1]["object_marking_refs"] = marking_refs
+                object_refs.append(ind_id)
+
+        elif item.item_type == "ioc":
+            ioc_type = meta.get("ioc_type", "unknown")
+            value = meta.get("value", str(item.item_id))
+            pattern = _ioc_to_stix_pattern(ioc_type, value)
+            ind_id = f"indicator--{item.item_id}"
+            stix_objects.append({
+                "type": "indicator",
+                "spec_version": "2.1",
+                "id": ind_id,
+                "created": item.created_at.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                "modified": item.created_at.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                "name": f"{ioc_type}: {value}",
+                "indicator_types": ["malicious-activity"],
+                "pattern": pattern,
+                "pattern_type": "stix",
+                "valid_from": item.created_at.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            })
+            if meta.get("risk_score"):
+                stix_objects[-1]["confidence"] = min(100, int(meta["risk_score"]))
+            if marking_refs:
+                stix_objects[-1]["object_marking_refs"] = marking_refs
+            object_refs.append(ind_id)
+
+        elif item.item_type == "technique":
+            # MITRE ATT&CK technique → attack-pattern
+            ap_id = f"attack-pattern--{item.item_id}"
+            ext_refs = []
+            technique_id = meta.get("technique_id") or str(item.item_id)
+            if technique_id.startswith("T"):
+                ext_refs.append({
+                    "source_name": "mitre-attack",
+                    "external_id": technique_id,
+                    "url": f"https://attack.mitre.org/techniques/{technique_id.replace('.', '/')}/",
+                })
+            stix_objects.append({
+                "type": "attack-pattern",
+                "spec_version": "2.1",
+                "id": ap_id,
+                "created": item.created_at.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                "modified": item.created_at.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                "name": item.item_title or technique_id,
+                "external_references": ext_refs,
+            })
+            if meta.get("tactic"):
+                stix_objects[-1]["kill_chain_phases"] = [{
+                    "kill_chain_name": "mitre-attack",
+                    "phase_name": meta["tactic"].lower().replace(" ", "-"),
+                }]
+            if marking_refs:
+                stix_objects[-1]["object_marking_refs"] = marking_refs
+            object_refs.append(ap_id)
+
+    # Build section content as description
+    desc_parts = []
+    if report.summary:
+        desc_parts.append(report.summary)
+    sections = report.content.get("sections", []) if report.content else []
+    for section in sections:
+        body = (section.get("body") or section.get("content", "")).strip()
+        if body:
+            desc_parts.append(f"## {section.get('title', 'Section')}\n{body}")
+
+    # The main Report object
+    report_stix_id = f"report--{report.id}"
+    report_obj: dict = {
+        "type": "report",
+        "spec_version": "2.1",
+        "id": report_stix_id,
+        "created": report.created_at.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        "modified": report.updated_at.strftime("%Y-%m-%dT%H:%M:%S.000Z") if report.updated_at else report.created_at.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        "name": report.title,
+        "description": "\n\n".join(desc_parts) if desc_parts else report.title,
+        "report_types": [REPORT_TYPE_TO_STIX_LABEL.get(report.report_type, "custom-report")],
+        "published": (report.published_at or report.created_at).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        "object_refs": object_refs + [identity_id],
+        "created_by_ref": identity_id,
+        "labels": report.tags or [],
+        "confidence": {"critical": 90, "high": 75, "medium": 50, "low": 25, "info": 10}.get(report.severity, 50),
+    }
+    if marking_refs:
+        report_obj["object_marking_refs"] = marking_refs
+
+    stix_objects.append(report_obj)
+
+    # STIX Bundle
+    bundle = {
+        "type": "bundle",
+        "id": f"bundle--{uuid.uuid4()}",
+        "objects": stix_objects,
+    }
+    return bundle
+
+
+def _ioc_to_stix_pattern(ioc_type: str, value: str) -> str:
+    """Convert an IOC type+value into a STIX 2.1 pattern string."""
+    mapping = {
+        "ip": f"[ipv4-addr:value = '{value}']",
+        "ipv4": f"[ipv4-addr:value = '{value}']",
+        "ipv6": f"[ipv6-addr:value = '{value}']",
+        "domain": f"[domain-name:value = '{value}']",
+        "url": f"[url:value = '{value}']",
+        "email": f"[email-addr:value = '{value}']",
+        "hash_md5": f"[file:hashes.MD5 = '{value}']",
+        "hash_sha1": f"[file:hashes.'SHA-1' = '{value}']",
+        "hash_sha256": f"[file:hashes.'SHA-256' = '{value}']",
+        "file": f"[file:name = '{value}']",
+    }
+    return mapping.get(ioc_type, f"[artifact:payload_bin = '{value}']")
+
+
+# ─── HTML Export ──────────────────────────────────────────
+
+
+async def export_html(
+    db: AsyncSession,
+    report_id: uuid.UUID,
+    include_tlp_watermark: bool = True,
+) -> str | None:
+    """Export report as a styled HTML document."""
+    report = await get_report(db, report_id)
+    if not report:
+        return None
+    items = await get_report_items(db, report_id)
+
+    tlp_color = {"TLP:RED": "#ef4444", "TLP:AMBER+STRICT": "#f59e0b", "TLP:AMBER": "#f59e0b",
+                 "TLP:GREEN": "#22c55e", "TLP:CLEAR": "#a1a1aa"}.get(report.tlp, "#a1a1aa")
+    sev_color = {"critical": "#ef4444", "high": "#f97316", "medium": "#eab308",
+                 "low": "#3b82f6", "info": "#06b6d4", "unknown": "#a1a1aa"}.get(report.severity, "#a1a1aa")
+
+    h = []
+    h.append("<!DOCTYPE html>")
+    h.append("<html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'>")
+    h.append(f"<title>{report.title} — IntelWatch</title>")
+    h.append("""<style>
+      :root { --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --muted: #94a3b8; --border: #334155; }
+      body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; padding: 40px; line-height: 1.6; }
+      .container { max-width: 800px; margin: 0 auto; }
+      .tlp-banner { text-align: center; padding: 8px; border-radius: 6px; font-weight: 700; font-size: 13px; margin-bottom: 24px; }
+      h1 { font-size: 28px; margin: 0 0 8px 0; color: #f1f5f9; }
+      .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; font-size: 13px; margin-bottom: 24px; padding: 16px; background: var(--card); border-radius: 8px; border: 1px solid var(--border); }
+      .meta span.label { color: var(--muted); font-weight: 600; }
+      .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+      h2 { font-size: 18px; color: #93c5fd; margin: 28px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+      .section-body { margin-bottom: 16px; white-space: pre-wrap; }
+      table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; font-size: 13px; }
+      th { background: #1e3a5f; color: #fff; padding: 8px 12px; text-align: left; font-size: 12px; }
+      td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+      tr:nth-child(even) { background: rgba(255,255,255,0.03); }
+      .footer { text-align: center; font-size: 12px; color: var(--muted); margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border); }
+      @media print { body { background: #fff; color: #1e293b; } .meta { background: #f8fafc; } th { background: #1e3a5f; } }
+    </style>""")
+    h.append("</head><body><div class='container'>")
+
+    if include_tlp_watermark:
+        h.append(f"<div class='tlp-banner' style='background: {tlp_color}22; color: {tlp_color}; border: 1px solid {tlp_color}44;'>{report.tlp} — DISTRIBUTION RESTRICTION</div>")
+
+    h.append(f"<h1>{report.title}</h1>")
+
+    created = report.created_at.strftime("%Y-%m-%d %H:%M UTC") if report.created_at else "—"
+    published = report.published_at.strftime("%Y-%m-%d %H:%M UTC") if report.published_at else "—"
+    h.append("<div class='meta'>")
+    h.append(f"<div><span class='label'>Type:</span> {report.report_type.replace('_', ' ').title()}</div>")
+    h.append(f"<div><span class='label'>Severity:</span> <span class='badge' style='background: {sev_color}22; color: {sev_color};'>{report.severity.upper()}</span></div>")
+    h.append(f"<div><span class='label'>Status:</span> {report.status.title()}</div>")
+    h.append(f"<div><span class='label'>TLP:</span> <span class='badge' style='background: {tlp_color}22; color: {tlp_color};'>{report.tlp}</span></div>")
+    h.append(f"<div><span class='label'>Created:</span> {created}</div>")
+    h.append(f"<div><span class='label'>Published:</span> {published}</div>")
+    if report.tags:
+        h.append(f"<div><span class='label'>Tags:</span> {', '.join(report.tags)}</div>")
+    h.append("</div>")
+
+    if report.summary:
+        h.append("<h2>Executive Summary</h2>")
+        h.append(f"<div class='section-body'>{report.summary}</div>")
+
+    sections = report.content.get("sections", []) if report.content else []
+    for section in sections:
+        body = (section.get("body") or section.get("content", "")).strip()
+        if body:
+            h.append(f"<h2>{section.get('title', 'Section')}</h2>")
+            h.append(f"<div class='section-body'>{body}</div>")
+
+    intel_items = [i for i in items if i.item_type in ("intel", "intel_item")]
+    ioc_items = [i for i in items if i.item_type == "ioc"]
+    technique_items = [i for i in items if i.item_type == "technique"]
+
+    if intel_items:
+        h.append("<h2>Linked Intelligence</h2>")
+        h.append("<table><thead><tr><th>#</th><th>Title</th><th>Severity</th><th>Source</th></tr></thead><tbody>")
+        for idx, item in enumerate(intel_items, 1):
+            meta = item.item_metadata or {}
+            h.append(f"<tr><td>{idx}</td><td>{item.item_title or item.item_id}</td><td>{meta.get('severity', '—')}</td><td>{meta.get('source_name', '—')}</td></tr>")
+        h.append("</tbody></table>")
+
+    if ioc_items:
+        h.append("<h2>Indicators of Compromise</h2>")
+        h.append("<table><thead><tr><th>#</th><th>Type</th><th>Value</th><th>Risk Score</th></tr></thead><tbody>")
+        for idx, item in enumerate(ioc_items, 1):
+            meta = item.item_metadata or {}
+            h.append(f"<tr><td>{idx}</td><td>{meta.get('ioc_type', '—')}</td><td>{meta.get('value', item.item_id)}</td><td>{meta.get('risk_score', '—')}</td></tr>")
+        h.append("</tbody></table>")
+
+    if technique_items:
+        h.append("<h2>MITRE ATT&CK Techniques</h2>")
+        h.append("<table><thead><tr><th>ID</th><th>Technique</th><th>Tactic</th></tr></thead><tbody>")
+        for item in technique_items:
+            meta = item.item_metadata or {}
+            h.append(f"<tr><td>{item.item_id}</td><td>{item.item_title or item.item_id}</td><td>{meta.get('tactic', '—')}</td></tr>")
+        h.append("</tbody></table>")
+
+    h.append(f"<div class='footer'>Generated by IntelWatch · {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+    if include_tlp_watermark:
+        h.append(f"<br/>{report.tlp} — This document is classified under the Traffic Light Protocol.")
+    h.append("</div></div></body></html>")
+
+    return "\n".join(h)
+
+
+# ─── CSV Export ───────────────────────────────────────────
+
+
+async def export_csv(
+    db: AsyncSession,
+    report_id: uuid.UUID,
+) -> str | None:
+    """Export report linked items as CSV (IOC-focused)."""
+    report = await get_report(db, report_id)
+    if not report:
+        return None
+    items = await get_report_items(db, report_id)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Report", report.title])
+    writer.writerow(["Type", report.report_type])
+    writer.writerow(["Severity", report.severity])
+    writer.writerow(["TLP", report.tlp])
+    writer.writerow(["Status", report.status])
+    writer.writerow(["Created", report.created_at.strftime("%Y-%m-%d %H:%M UTC") if report.created_at else ""])
+    writer.writerow([])
+    writer.writerow(["Item Type", "Title / Value", "IOC Type", "Severity", "Risk Score", "Source", "Tactic", "Notes"])
+
+    for item in items:
+        meta = item.item_metadata or {}
+        writer.writerow([
+            item.item_type,
+            item.item_title or meta.get("value", str(item.item_id)),
+            meta.get("ioc_type", ""),
+            meta.get("severity", ""),
+            meta.get("risk_score", ""),
+            meta.get("source_name", ""),
+            meta.get("tactic", ""),
+            item.notes or "",
+        ])
+
+    return output.getvalue()
 
 
 # ─── Stats ────────────────────────────────────────────────
