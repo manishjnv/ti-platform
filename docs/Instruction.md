@@ -20,6 +20,18 @@
 - [UX Standards](#-ux-standards)
 - [Testing Requirements](#-testing-requirements)
 - [Code Standards](#-code-standards)
+- [Accessibility](#-accessibility-a11y)
+- [Responsive Design](#-responsive-design)
+- [API Versioning & Deprecation](#-api-versioning--deprecation)
+- [Performance Budgets](#-performance-budgets)
+- [Error Boundaries (UI)](#-error-boundaries-ui)
+- [Rate Limiting (Own API)](#-rate-limiting-own-api)
+- [Database Migration Strategy](#-database-migration-strategy)
+- [Dependency Management](#-dependency-management)
+- [Git & PR Conventions](#-git--pr-conventions)
+- [Data Privacy](#-data-privacy)
+- [Component Design System](#-component-design-system)
+- [Graceful Shutdown](#-graceful-shutdown)
 - [Future Enhancement Readiness](#-future-enhancement-readiness)
 - [Definition of Done](#-definition-of-done)
 - [Instructions for AI Agents](#-instructions-for-ai-agents)
@@ -258,6 +270,223 @@ Each module must include:
 
 ---
 
+## ♿ Accessibility (a11y)
+
+All UI must meet **WCAG 2.1 Level AA** compliance:
+
+| Requirement | Standard |
+|-------------|----------|
+| Color contrast | Minimum 4.5:1 for normal text, 3:1 for large text |
+| Keyboard navigation | All interactive elements reachable via Tab / Enter / Escape |
+| ARIA labels | All icons, buttons, and interactive elements must have `aria-label` or `aria-labelledby` |
+| Screen reader | Semantic HTML (`<nav>`, `<main>`, `<section>`, `<article>`) — no `<div>` soup |
+| Focus indicators | Visible focus ring on all interactive elements |
+| Alt text | All images and charts must have descriptive alt text or `aria-hidden` if decorative |
+| Motion | Respect `prefers-reduced-motion` — disable animations when set |
+
+---
+
+## 📐 Responsive Design
+
+| Breakpoint | Target | Min Width |
+|------------|--------|----------|
+| `sm` | Mobile | 640px |
+| `md` | Tablet | 768px |
+| `lg` | Desktop | 1024px |
+| `xl` | Wide desktop | 1280px |
+| `2xl` | Ultra-wide | 1536px |
+
+- **Desktop-first** approach (analyst workstation is the primary device)
+- Sidebar collapses to hamburger menu on `< lg`
+- Charts and tables reflow to stacked layout on `< md`
+- Touch targets minimum **44×44px** on mobile breakpoints
+- Test all pages at each breakpoint before shipping
+
+---
+
+## 🔀 API Versioning & Deprecation
+
+- All endpoints prefixed with `/api/v{N}` (currently `/api/v1`)
+- **When to create a new version:**
+  - Removing or renaming a field in a response
+  - Changing response shape (e.g., nested → flat)
+  - Changing authentication mechanism
+- **Deprecation process:**
+  1. Add `Deprecation` and `Sunset` HTTP headers to old endpoints
+  2. Log usage of deprecated endpoints
+  3. Minimum **90-day notice** before removal
+  4. Document migration path in CHANGELOG
+- **Non-breaking changes** (no new version needed): adding optional fields, new endpoints, new query parameters
+
+---
+
+## ⏱ Performance Budgets
+
+All features must meet these measurable thresholds:
+
+| Metric | Target | Hard Limit |
+|--------|--------|------------|
+| Page load (LCP) | < 1.5s | < 2.5s |
+| API response (p95) | < 300ms | < 500ms |
+| Time to Interactive | < 2s | < 3.5s |
+| JS bundle (per route) | < 150KB gzipped | < 250KB gzipped |
+| First Contentful Paint | < 1s | < 1.8s |
+| Feed ingestion cycle | < 30s | < 60s |
+| Database query (p95) | < 100ms | < 250ms |
+| OpenSearch query (p95) | < 200ms | < 500ms |
+
+- Monitor with Lighthouse CI or Web Vitals in production
+- Performance regression = **blocker** — must fix before merge
+
+---
+
+## 🛡 Error Boundaries (UI)
+
+- Every **page-level component** must be wrapped in a React Error Boundary
+- Every **widget/card** should have its own error boundary — one failing card must not crash the page
+- Error boundary UI must show:
+  - A concise error message (not a stack trace)
+  - A "Retry" button
+  - Option to report the issue
+- **Never show raw exceptions to users** — log them, display a friendly message
+- Unhandled promise rejections must be caught globally and reported
+
+---
+
+## 🚦 Rate Limiting (Own API)
+
+Protect IntelWatch's own API from abuse:
+
+| Tier | Limit | Scope |
+|------|-------|-------|
+| Anonymous | Blocked (auth required) | — |
+| Viewer | 60 req/min | Per user session |
+| Analyst | 120 req/min | Per user session |
+| Admin | 300 req/min | Per user session |
+| Ingestion (internal) | Unlimited | Worker → API only |
+
+- Return `429 Too Many Requests` with `Retry-After` header
+- Rate limit state stored in Redis (sliding window)
+- Exempt health check and auth endpoints
+
+---
+
+## 🗃 Database Migration Strategy
+
+- All schema changes go through versioned migration files (`migrations/`)
+- **Rules:**
+  - Migrations must be **idempotent** — safe to run twice
+  - Migrations must be **rollback-safe** — include a `DOWN` path
+  - **Never** drop a column in the same release that stops using it — separate releases
+  - Add new columns as `NULLABLE` or with defaults — zero-downtime compatibility
+  - Large data migrations run as background jobs, not in migration scripts
+- **Naming:** `YYYYMMDD_HHMMSS_description.sql` (e.g., `20260228_120000_add_attack_techniques.sql`)
+- Test migrations against a copy of production data before deploying
+
+---
+
+## 📦 Dependency Management
+
+| Practice | Tool |
+|----------|------|
+| Python deps | `pyproject.toml` with pinned versions |
+| Node deps | `package.json` with lockfile (`package-lock.json`) |
+| Vulnerability scanning | Dependabot or `pip-audit` / `npm audit` — run weekly |
+| Update cadence | Patch updates: immediate. Minor: monthly. Major: evaluate in PR. |
+| License compliance | Only permissive licenses (MIT, Apache 2.0, BSD). No GPL in runtime deps. |
+
+- **Never** use `*` or `latest` for version specifiers
+- Review and test dependency updates before merging
+- Document breaking changes from dependency upgrades in CHANGELOG
+
+---
+
+## 🌿 Git & PR Conventions
+
+### Branching Strategy
+
+| Branch | Purpose |
+|--------|---------|
+| `main` | Production-ready code — always deployable |
+| `feature/<name>` | New features — branch from `main` |
+| `fix/<name>` | Bug fixes — branch from `main` |
+| `docs/<name>` | Documentation-only changes |
+
+### Commit Message Format
+
+```
+<type>: <short description>
+
+Types: feat, fix, docs, refactor, test, chore, perf
+Examples:
+  feat: add MITRE ATT&CK technique mapping
+  fix: NVD date range causing RetryError
+  docs: update INTEGRATION.md with VT status
+```
+
+### Code Review Requirements
+
+- All PRs require **at least 1 reviewer** (when team grows)
+- CI must pass (lint + build + tests)
+- No force-pushes to `main`
+- Squash merge preferred for feature branches
+
+---
+
+## 🔒 Data Privacy
+
+- **No PII in logs** — mask email addresses, IP addresses in structured logs unless explicitly needed for security audit
+- **Data minimization** — only collect and store data required for threat intelligence operations
+- **Retention awareness** — all data must have a defined retention period (see Phase 3 retention policies)
+- **User data:**
+  - User accounts store only: email, name, role, last login
+  - Session tokens expire after configurable TTL (default: 8 hours)
+  - Deleted users → anonymize audit log entries
+- **Third-party data:** respect TLP markings — never expose `TLP:RED` or `TLP:AMBER` data beyond authorized scope
+
+---
+
+## 🧱 Component Design System
+
+### Naming Conventions
+
+| Pattern | Example |
+|---------|---------|
+| Page components | `DashboardPage`, `IntelDetailPage` |
+| Feature components | `FeedStatusPanel`, `ThreatLevelBar` |
+| Primitive/UI components | `ui/button.tsx`, `ui/card.tsx`, `ui/badge.tsx` |
+| Chart components | `charts/DonutChart`, `charts/TrendLineChart` |
+| Layout components | `Sidebar`, `Header`, `PageContainer` |
+
+### Component Rules
+
+- **Single responsibility** — one component does one thing
+- **Props over internal state** — prefer controlled components
+- **Composition over inheritance** — use children/slots, not deep hierarchies
+- **Co-locate** styles, types, and tests with the component
+- All shared components go in `src/components/ui/` with documented prop contracts
+- Feature-specific components live in their feature directory
+- **No inline styles** — use Tailwind utility classes exclusively
+
+---
+
+## 🔌 Graceful Shutdown
+
+All services must handle `SIGTERM` cleanly:
+
+| Service | Shutdown Behavior |
+|---------|-------------------|
+| **API (Uvicorn)** | Stop accepting new requests, drain in-flight requests (30s timeout), close DB pool |
+| **Worker (RQ)** | Finish current job (or checkpoint), then exit. Do not start new jobs. |
+| **Scheduler** | Cancel pending timers, flush state, exit |
+| **Redis / PostgreSQL / OpenSearch** | Managed by Docker — ensure `stop_grace_period` is set (default: 30s) |
+
+- Docker Compose `stop_grace_period: 30s` on all app containers
+- Workers must be **interruptible** — long jobs should checkpoint progress so they can resume
+- Never leave orphaned locks in Redis on shutdown
+
+---
+
 ## 🔄 Future Enhancement Readiness
 
 The system must support:
@@ -280,6 +509,11 @@ A feature is **complete** only if:
 - [ ] It is configuration-driven
 - [ ] It fails gracefully
 - [ ] It does not degrade UI performance
+- [ ] It meets accessibility standards (keyboard nav, ARIA labels, contrast)
+- [ ] It meets performance budgets (LCP, bundle size, API latency)
+- [ ] It has error boundaries at page and widget level
+- [ ] Database changes have rollback-safe migrations
+- [ ] No PII leaks in logs or API responses
 
 ---
 
