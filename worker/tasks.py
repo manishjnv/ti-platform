@@ -76,13 +76,14 @@ def ingest_feed(feed_name: str) -> dict:
         scored = batch_score(normalized)
 
         # 4. Store in PostgreSQL (with dedup)
-        stored = _bulk_store(session, scored)
+        stored_items = _bulk_store(session, scored)
+        stored = len(stored_items)
         logger.info("store_complete", feed=feed_name, stored=stored)
 
-        # 5. Index in OpenSearch
+        # 5. Index in OpenSearch (only newly stored items — avoids duplication)
         ensure_index()
-        os_docs = _prepare_os_docs(scored)
-        index_result = bulk_index_items(os_docs)
+        os_docs = _prepare_os_docs(stored_items) if stored_items else []
+        index_result = bulk_index_items(os_docs) if os_docs else {"indexed": 0}
         logger.info("index_complete", feed=feed_name, indexed=index_result.get("indexed", 0))
 
         # 6. Update state
@@ -440,18 +441,27 @@ def _extract_ioc_values(item) -> list[tuple[str, str]]:
             return results
 
     if item.source_name == "URLhaus" and item.asset_type == "url":
-        # Description: "Malicious URL detected by URLhaus. URL: {url}. Threat type: {threat}."
-        if item.description:
-            match = re.search(r"URL:\s*(https?://\S+?)\.?\s", item.description)
-            if match:
-                results.append((match.group(1), "url"))
-                return results
-        # Fallback: title "[URLhaus] Malicious URL: http://..."
+        # Title: "[URLhaus] Malicious URL: http://..."
         if item.title:
             match = re.search(r"Malicious URL:\s*(https?://\S+)", item.title)
             if match:
+                url_val = match.group(1).rstrip(".,;)")
+                results.append((url_val, "url"))
+                return results
+        # Fallback: Description: "Malicious URL detected by URLhaus. URL: {url}. Threat type: ..."
+        if item.description:
+            match = re.search(r"URL:\s*(https?://[^\s.]+(?:\.[^\s.]+)*(?:/\S*)?)", item.description)
+            if match:
                 results.append((match.group(1), "url"))
                 return results
+
+    # -- OTX extraction: pulse-based items don't carry raw IOC values --------
+    # OTX stores 1 intel_item per pulse; the actual IOCs are in the indicators
+    # array which isn't stored in the DB. Skip these to avoid false extractions.
+    if item.source_name == "OTX" and item.asset_type in ("domain", "hash_sha256", "hash_md5", "hash_sha1", "ip"):
+        # OTX title and description rarely contain raw IOC values
+        # These items represent threat reports, not individual IOCs
+        return results
 
     # -- Generic regex extraction (fallback) ---------------
     text = f"{item.title or ''} {item.description or ''}"
@@ -546,17 +556,19 @@ def _update_feed_state(
     state.run_count = (state.run_count or 0) + 1
 
 
-def _bulk_store(session: Session, items: list[dict]) -> int:
+def _bulk_store(session: Session, items: list[dict]) -> list[dict]:
     """Store items in PostgreSQL with dedup.
 
     TimescaleDB hypertables require unique indexes to include the partition key,
     so we pre-check for existing source_hash values to avoid duplicates.
+
+    Returns the list of actually stored (new) items for downstream indexing.
     """
     from app.models.models import IntelItem
     from sqlalchemy import select
 
     if not items:
-        return 0
+        return []
 
     # Pre-fetch existing source hashes for fast dedup
     hashes = [item["source_hash"] for item in items]
@@ -566,20 +578,20 @@ def _bulk_store(session: Session, items: list[dict]) -> int:
         ).scalars().all()
     )
 
-    stored = 0
+    stored_items: list[dict] = []
     for item in items:
         if item["source_hash"] in existing:
             continue
         try:
             session.add(IntelItem(**item))
             session.flush()
-            stored += 1
+            stored_items.append(item)
             existing.add(item["source_hash"])
         except Exception:
             session.rollback()
             continue
 
-    return stored
+    return stored_items
 
 
 def _prepare_os_docs(items: list[dict]) -> list[dict]:

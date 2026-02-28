@@ -209,15 +209,22 @@ KEYWORD_TECHNIQUE_MAP: dict[str, list[str]] = {
 
     # Impact
     "ransomware": ["T1486"],
-    "encryption": ["T1486"],
+    "ransom demand": ["T1486"],
+    "file encryption malware": ["T1486"],
+    "encrypted for ransom": ["T1486"],
+    "lockbit": ["T1486"],
+    "conti ransomware": ["T1486"],
     "wiper": ["T1485"],
     "data destruction": ["T1485"],
+    "disk wipe": ["T1485"],
     "defacement": ["T1491"],
     "denial of service": ["T1498"],
     "ddos": ["T1498"],
+    "dos attack": ["T1498"],
     "resource hijacking": ["T1496"],
     "cryptominer": ["T1496"],
     "cryptojacking": ["T1496"],
+    "coin miner": ["T1496"],
 
     # Initial Access
     "supply chain": ["T1195"],
