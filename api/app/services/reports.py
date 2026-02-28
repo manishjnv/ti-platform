@@ -609,6 +609,384 @@ async def generate_ai_sections(
     }
 
 
+# ─── Markdown → Export Helpers ────────────────────────────
+
+import re as _re
+
+
+def _escape_xml(text: str) -> str:
+    """Escape text for use inside reportlab XML Paragraph tags."""
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
+def _md_inline_to_xml(text: str) -> str:
+    """Convert inline markdown (bold, italic, code, links) to reportlab XML."""
+    t = _escape_xml(text)
+    # Bold **text** or __text__
+    t = _re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", t)
+    t = _re.sub(r"__(.+?)__", r"<b>\1</b>", t)
+    # Italic *text* or _text_ (but not inside already-converted bold)
+    t = _re.sub(r"(?<!/)\*(.+?)\*", r"<i>\1</i>", t)
+    # Inline code `text`
+    t = _re.sub(r"`([^`]+)`", r'<font face="Courier" size="8">\1</font>', t)
+    # Links [text](url) → text (url)
+    t = _re.sub(
+        r"\[([^\]]+)\]\(([^)]+)\)",
+        r'<font color="#2563eb">\1</font> (<font face="Courier" size="7">\2</font>)',
+        t,
+    )
+    return t
+
+
+def _md_to_pdf_flowables(md_text: str, styles) -> list:
+    """Convert a markdown string into a list of reportlab flowables.
+
+    Supports: paragraphs, bullet lists, numbered lists, bold/italic/code,
+    headings (###), tables (| col |), horizontal rules, blockquotes, links.
+    """
+    from reportlab.platypus import Paragraph, Spacer, Table, TableStyle, HRFlowable
+    from reportlab.lib.colors import HexColor
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.enums import TA_LEFT
+
+    flowables = []
+    lines = md_text.split("\n")
+    i = 0
+
+    # Bullet/list style
+    bullet_style = ParagraphStyle(
+        "BulletItem", parent=styles["BodyText2"],
+        fontSize=10, leftIndent=18, bulletIndent=6,
+        spaceBefore=1, spaceAfter=1,
+    )
+    numbered_style = ParagraphStyle(
+        "NumberedItem", parent=styles["BodyText2"],
+        fontSize=10, leftIndent=18,
+        spaceBefore=1, spaceAfter=1,
+    )
+    subheading_style = ParagraphStyle(
+        "SubHeading", parent=styles["BodyText2"],
+        fontSize=11, fontName="Helvetica-Bold",
+        textColor=HexColor("#1A1A2E"),
+        spaceBefore=8, spaceAfter=4,
+    )
+    blockquote_style = ParagraphStyle(
+        "BlockQuote", parent=styles["BodyText2"],
+        fontSize=10, leftIndent=12, textColor=HexColor("#555555"),
+        fontName="Helvetica-Oblique",
+        borderPadding=4, spaceBefore=4, spaceAfter=4,
+    )
+
+    para_buffer: list[str] = []
+
+    def flush_para():
+        if para_buffer:
+            text = " ".join(para_buffer)
+            flowables.append(Paragraph(_md_inline_to_xml(text), styles["BodyText2"]))
+            para_buffer.clear()
+
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        # Empty line — flush paragraph
+        if not stripped:
+            flush_para()
+            i += 1
+            continue
+
+        # Horizontal rule
+        if stripped in ("---", "***", "___"):
+            flush_para()
+            flowables.append(HRFlowable(
+                width="100%", thickness=0.5,
+                color=HexColor("#CCCCCC"), spaceBefore=4, spaceAfter=4,
+            ))
+            i += 1
+            continue
+
+        # Heading ### or ##
+        if stripped.startswith("###"):
+            flush_para()
+            heading_text = stripped.lstrip("#").strip()
+            flowables.append(Paragraph(
+                f"<b>{_escape_xml(heading_text)}</b>", subheading_style
+            ))
+            i += 1
+            continue
+        if stripped.startswith("##"):
+            flush_para()
+            heading_text = stripped.lstrip("#").strip()
+            flowables.append(Paragraph(
+                f"<b>{_escape_xml(heading_text)}</b>", subheading_style
+            ))
+            i += 1
+            continue
+
+        # Blockquote
+        if stripped.startswith(">"):
+            flush_para()
+            quote_text = stripped.lstrip("> ").strip()
+            flowables.append(Paragraph(
+                f"▎ {_md_inline_to_xml(quote_text)}", blockquote_style
+            ))
+            i += 1
+            continue
+
+        # Table (collect all | rows)
+        if stripped.startswith("|") and "|" in stripped[1:]:
+            flush_para()
+            table_lines = []
+            while i < len(lines) and lines[i].strip().startswith("|"):
+                row = lines[i].strip()
+                # Skip separator rows (|---|---|)
+                if _re.match(r"^\|[\s\-:|]+\|$", row):
+                    i += 1
+                    continue
+                cells = [c.strip() for c in row.split("|")[1:-1]]
+                table_lines.append(cells)
+                i += 1
+
+            if table_lines:
+                # First row = headers
+                n_cols = max(len(r) for r in table_lines)
+                # Normalize row lengths
+                for row in table_lines:
+                    while len(row) < n_cols:
+                        row.append("")
+
+                col_width = min(480 // n_cols, 160)
+                header_style = ParagraphStyle(
+                    "TblH", parent=styles["Normal"],
+                    fontSize=8, fontName="Helvetica-Bold",
+                    textColor=HexColor("#FFFFFF"),
+                )
+                cell_style = ParagraphStyle(
+                    "TblC", parent=styles["Normal"],
+                    fontSize=8, textColor=HexColor("#2D2D2D"),
+                )
+
+                data = []
+                for ri, row in enumerate(table_lines):
+                    st = header_style if ri == 0 else cell_style
+                    data.append([Paragraph(_md_inline_to_xml(c), st) for c in row])
+
+                tbl = Table(data, colWidths=[col_width] * n_cols)
+                tbl_style = [
+                    ("BACKGROUND", (0, 0), (-1, 0), HexColor("#1A1A2E")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), HexColor("#FFFFFF")),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [HexColor("#FFFFFF"), HexColor("#F5F5F5")]),
+                    ("GRID", (0, 0), (-1, -1), 0.5, HexColor("#CCCCCC")),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ]
+                tbl.setStyle(TableStyle(tbl_style))
+                flowables.append(Spacer(1, 4))
+                flowables.append(tbl)
+                flowables.append(Spacer(1, 4))
+            continue
+
+        # Bullet list item (- or *)
+        bullet_match = _re.match(r"^[\-\*]\s+(.+)", stripped)
+        if bullet_match:
+            flush_para()
+            text = bullet_match.group(1)
+            flowables.append(Paragraph(
+                f"• {_md_inline_to_xml(text)}", bullet_style
+            ))
+            i += 1
+            continue
+
+        # Numbered list item (1. 2. etc.)
+        num_match = _re.match(r"^(\d+)[\.\)]\s+(.+)", stripped)
+        if num_match:
+            flush_para()
+            num = num_match.group(1)
+            text = num_match.group(2)
+            flowables.append(Paragraph(
+                f"<b>{num}.</b> {_md_inline_to_xml(text)}", numbered_style
+            ))
+            i += 1
+            continue
+
+        # Regular text — accumulate into paragraph
+        para_buffer.append(stripped)
+        i += 1
+
+    flush_para()
+
+    if not flowables:
+        flowables.append(Paragraph(
+            "<i>No content available.</i>", styles["BodyText2"]
+        ))
+
+    return flowables
+
+
+def _md_to_html(md_text: str) -> str:
+    """Convert markdown text to HTML for HTML export.
+
+    Handles: bold, italic, code, links, bullets, numbered lists,
+    headings, tables, blockquotes, horizontal rules.
+    """
+    import html as _html
+
+    lines = md_text.split("\n")
+    out: list[str] = []
+    in_ul = False
+    in_ol = False
+    in_table = False
+    in_thead = False
+    para_buf: list[str] = []
+
+    def flush_para():
+        nonlocal para_buf
+        if para_buf:
+            text = " ".join(para_buf)
+            out.append(f"<p>{_md_inline_html(text)}</p>")
+            para_buf = []
+
+    def close_lists():
+        nonlocal in_ul, in_ol, in_table, in_thead
+        if in_ul:
+            out.append("</ul>")
+            in_ul = False
+        if in_ol:
+            out.append("</ol>")
+            in_ol = False
+        if in_table:
+            if in_thead:
+                out.append("</thead>")
+                in_thead = False
+            out.append("</table>")
+            in_table = False
+
+    for line in lines:
+        s = line.strip()
+
+        if not s:
+            flush_para()
+            close_lists()
+            continue
+
+        # Horizontal rule
+        if s in ("---", "***", "___"):
+            flush_para()
+            close_lists()
+            out.append("<hr/>")
+            continue
+
+        # Heading
+        if s.startswith("###"):
+            flush_para()
+            close_lists()
+            out.append(f"<h4>{_md_inline_html(s.lstrip('#').strip())}</h4>")
+            continue
+        if s.startswith("##"):
+            flush_para()
+            close_lists()
+            out.append(f"<h3>{_md_inline_html(s.lstrip('#').strip())}</h3>")
+            continue
+
+        # Blockquote
+        if s.startswith(">"):
+            flush_para()
+            close_lists()
+            out.append(f"<blockquote style='border-left:3px solid var(--border);padding-left:12px;color:var(--muted);font-style:italic;'>{_md_inline_html(s.lstrip('> ').strip())}</blockquote>")
+            continue
+
+        # Table row
+        if s.startswith("|") and "|" in s[1:]:
+            flush_para()
+            # Skip separator rows
+            if _re.match(r"^\|[\s\-:|]+\|$", s):
+                if in_thead:
+                    out.append("</thead><tbody>")
+                    in_thead = False
+                continue
+            cells = [c.strip() for c in s.split("|")[1:-1]]
+            if not in_table:
+                close_lists()
+                out.append("<table>")
+                in_table = True
+                out.append("<thead>")
+                in_thead = True
+                out.append("<tr>" + "".join(f"<th>{_md_inline_html(c)}</th>" for c in cells) + "</tr>")
+            else:
+                out.append("<tr>" + "".join(f"<td>{_md_inline_html(c)}</td>" for c in cells) + "</tr>")
+            continue
+
+        # Close table if we're out of table rows
+        if in_table:
+            close_lists()
+
+        # Bullet
+        bullet_m = _re.match(r"^[\-\*]\s+(.+)", s)
+        if bullet_m:
+            flush_para()
+            if in_ol:
+                out.append("</ol>")
+                in_ol = False
+            if not in_ul:
+                out.append("<ul style='margin:4px 0;padding-left:20px;'>")
+                in_ul = True
+            out.append(f"<li>{_md_inline_html(bullet_m.group(1))}</li>")
+            continue
+
+        # Numbered
+        num_m = _re.match(r"^(\d+)[\.\)]\s+(.+)", s)
+        if num_m:
+            flush_para()
+            if in_ul:
+                out.append("</ul>")
+                in_ul = False
+            if not in_ol:
+                out.append(f"<ol start='{num_m.group(1)}' style='margin:4px 0;padding-left:20px;'>")
+                in_ol = True
+            out.append(f"<li>{_md_inline_html(num_m.group(2))}</li>")
+            continue
+
+        # Close lists for regular text
+        if in_ul or in_ol:
+            close_lists()
+
+        para_buf.append(s)
+
+    flush_para()
+    close_lists()
+    return "\n".join(out)
+
+
+def _md_inline_html(text: str) -> str:
+    """Convert inline markdown to HTML."""
+    import html as _html
+    t = _html.escape(text)
+    # Bold
+    t = _re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", t)
+    t = _re.sub(r"__(.+?)__", r"<strong>\1</strong>", t)
+    # Italic
+    t = _re.sub(r"(?<!/)\*(.+?)\*", r"<em>\1</em>", t)
+    # Code
+    t = _re.sub(
+        r"`([^`]+)`",
+        r"<code style='background:rgba(255,255,255,0.06);padding:1px 4px;border-radius:3px;font-size:12px;'>\1</code>",
+        t,
+    )
+    # Links
+    t = _re.sub(
+        r"\[([^\]]+)\]\(([^)]+)\)",
+        r'<a href="\2" style="color:#60a5fa;" target="_blank">\1</a>',
+        t,
+    )
+    return t
+
+
 # ─── Export ───────────────────────────────────────────────
 
 
@@ -649,9 +1027,11 @@ async def export_markdown(
         lines.append("## Executive Summary\n")
         lines.append(f"{report.summary}\n")
 
-    # Content sections
+    # Content sections (skip executive_summary — already rendered above)
     sections = report.content.get("sections", [])
     for section in sections:
+        if section.get("key") == "executive_summary":
+            continue
         body = section.get("body", "").strip()
         if body:
             lines.append(f"## {section.get('title', 'Section')}\n")
@@ -848,16 +1228,18 @@ async def export_pdf(
     if report.summary:
         elements.append(Paragraph("Executive Summary", styles["SectionHead"]))
         elements.append(HRFlowable(width="100%", thickness=0.5, color=HexColor("#CCCCCC"), spaceAfter=6))
-        elements.append(Paragraph(report.summary.replace("\n", "<br/>"), styles["BodyText2"]))
+        elements.extend(_md_to_pdf_flowables(report.summary, styles))
 
-    # Content sections
+    # Content sections (skip executive_summary — already rendered above)
     sections = report.content.get("sections", []) if report.content else []
     for section in sections:
+        if section.get("key") == "executive_summary":
+            continue
         body = (section.get("body") or section.get("content", "")).strip()
         if body:
             elements.append(Paragraph(section.get("title", "Section"), styles["SectionHead"]))
             elements.append(HRFlowable(width="100%", thickness=0.5, color=HexColor("#CCCCCC"), spaceAfter=6))
-            elements.append(Paragraph(body.replace("\n", "<br/>"), styles["BodyText2"]))
+            elements.extend(_md_to_pdf_flowables(body, styles))
 
     # Linked items tables
     intel_items = [i for i in items if i.item_type in ("intel", "intel_item")]
@@ -1201,14 +1583,16 @@ async def export_html(
 
     if report.summary:
         h.append("<h2>Executive Summary</h2>")
-        h.append(f"<div class='section-body'>{report.summary}</div>")
+        h.append(f"<div class='section-body'>{_md_to_html(report.summary)}</div>")
 
     sections = report.content.get("sections", []) if report.content else []
     for section in sections:
+        if section.get("key") == "executive_summary":
+            continue
         body = (section.get("body") or section.get("content", "")).strip()
         if body:
             h.append(f"<h2>{section.get('title', 'Section')}</h2>")
-            h.append(f"<div class='section-body'>{body}</div>")
+            h.append(f"<div class='section-body'>{_md_to_html(body)}</div>")
 
     intel_items = [i for i in items if i.item_type in ("intel", "intel_item")]
     ioc_items = [i for i in items if i.item_type == "ioc"]
