@@ -15,6 +15,7 @@
 - [Worker Architecture](#worker-architecture)
 - [Security Architecture](#security-architecture)
 - [Deployment Architecture](#deployment-architecture)
+- [Codebase Metrics](#codebase-metrics)
 
 ---
 
@@ -463,10 +464,49 @@ GitHub Actions
 
 ---
 
+## Codebase Metrics
+
+> Last updated: **2026-02-28** (Phase 1.2 complete)
+
+### Lines of Code by Category
+
+| Category | Lines | Files | Description |
+|----------|------:|------:|-------------|
+| Python (API + Worker) | 6,116 | 47 | FastAPI routes, services, models, schemas, feeds, worker tasks |
+| TypeScript/TSX (UI) | 5,943 | 42 | Next.js pages, components, store, types, API client |
+| Markdown (Docs) | 3,116 | 7 | Architecture, roadmap, instructions, integration, technology |
+| Config (JSON/YAML/CSS) | 604 | 10 | package.json, tailwind, tsconfig, docker-compose, OpenSearch mapping |
+| SQL (Schema) | 307 | 1 | PostgreSQL + TimescaleDB DDL, indexes, materialized views |
+| Docker | 298 | 5 | Multi-stage Dockerfiles (API, UI, Worker), compose files |
+| **TOTAL** | **16,384** | **112** | |
+
+### Documentation Breakdown
+
+| File | Lines | Content |
+|------|------:|---------|
+| docs/ROADMAP.md | 854 | 7-phase feature roadmap with implementation details |
+| docs/Instruction.md | 618 | Development rules, UI guidelines, mandatory checklists |
+| docs/INTEGRATION.md | 504 | Feed connector specs, API integration patterns |
+| docs/ARCHITECTURE.md | 473 | System architecture, DB schema, API endpoints |
+| docs/TECHNOLOGY.md | 283 | Tech stack decisions and rationale |
+| README.md | 207 | Project overview, quick start, deployment |
+| docs/WORKFLOW.md | 177 | Git workflow, CI/CD, deployment procedures |
+
+### Growth Milestones
+
+| Date | Milestone | Total LOC |
+|------|-----------|----------:|
+| 2026-02-23 | Initial platform (7 feeds, dashboard, search) | ~8,500 |
+| 2026-02-26 | Phase 1.1 — MITRE ATT&CK (691 techniques, matrix UI) | ~12,000 |
+| 2026-02-28 | Phase 1.2 — Relationship Graph (1,181 edges, graph explorer) | 16,384 |
+
+---
+
 ## Revision History
 
 | Date | Change |
 |------|--------|
+| 2026-02-28 | Phase 1.2 Relationship Graph; added Codebase Metrics section (16,384 LOC / 112 files) |
 | 2026-02-24 | Production domain set to intelwatch.trendsmap.in; simplified login docs |
 | 2026-02-24 | Renamed to IntelWatch; added VirusTotal & Shodan API key support; login testing verified |
 | 2026-02-23 | Renamed to IntelWatch TI Platform; added auth architecture (JWT sessions, login flow, auth guard) |
