@@ -158,6 +158,8 @@ Scheduler ──► Redis (enqueues jobs only)
 | `relationships` | Regular table | Auto-discovered graph edges (shared IOC/CVE/technique) |
 | `notification_rules` | Regular table | User-defined + system-default alert rules (threshold, feed_error, correlation) |
 | `notifications` | Regular table | In-app notifications with severity, category, entity linking, and metadata |
+| `reports` | Regular table | Analyst reports with JSONB content sections, status workflow, severity/TLP, template-based |
+| `report_items` | Junction | Links reports to intel items, IOCs, techniques with metadata |
 | `mv_severity_distribution` | Materialized view | Pre-computed 30-day severity stats |
 | `mv_top_risks` | Materialized view | Pre-computed top-100 high-risk items |
 
@@ -215,7 +217,7 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 | **Models** | `api/app/models/` | SQLAlchemy ORM model definitions |
 | **Schemas** | `api/app/schemas/` | Pydantic v2 request/response schemas |
 | **Routes** | `api/app/routes/` | Thin route handlers — validate, delegate to service, return response |
-| **Services** | `api/app/services/` | All business logic: auth, scoring, search, AI, export, MITRE ATT&CK, domain config, feed connectors |
+| **Services** | `api/app/services/` | All business logic: auth, scoring, search, AI, export, MITRE ATT&CK, domain config, reports, feed connectors |
 | **Feeds** | `api/app/services/feeds/` | Plugin-based feed connectors (inherit from `BaseFeedConnector`) |
 
 ### Endpoint Map
@@ -242,6 +244,17 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 | `GET` | `/api/v1/graph/explore` | Viewer | `routes/graph.py` | `services/graph.py` |
 | `GET` | `/api/v1/graph/related/{id}` | Viewer | `routes/graph.py` | `services/graph.py` |
 | `GET` | `/api/v1/graph/stats` | Viewer | `routes/graph.py` | `services/graph.py` |
+| `GET` | `/api/v1/reports` | Viewer | `routes/reports.py` | `services/reports.py` |
+| `POST` | `/api/v1/reports` | Analyst | `routes/reports.py` | `services/reports.py` |
+| `GET` | `/api/v1/reports/templates` | Viewer | `routes/reports.py` | `services/reports.py` |
+| `GET` | `/api/v1/reports/stats` | Viewer | `routes/reports.py` | `services/reports.py` |
+| `GET` | `/api/v1/reports/{id}` | Viewer | `routes/reports.py` | `services/reports.py` |
+| `PUT` | `/api/v1/reports/{id}` | Analyst | `routes/reports.py` | `services/reports.py` |
+| `DELETE` | `/api/v1/reports/{id}` | Analyst | `routes/reports.py` | `services/reports.py` |
+| `POST` | `/api/v1/reports/{id}/items` | Analyst | `routes/reports.py` | `services/reports.py` |
+| `DELETE` | `/api/v1/reports/{id}/items/{item_id}` | Analyst | `routes/reports.py` | `services/reports.py` |
+| `POST` | `/api/v1/reports/{id}/ai-summary` | Analyst | `routes/reports.py` | `services/reports.py` |
+| `GET` | `/api/v1/reports/{id}/export` | Viewer | `routes/reports.py` | `services/reports.py` |
 
 ---
 
@@ -272,6 +285,7 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 │  │  Threat Feed   │    ├─────────────────────────│
 │  │ Investigation  │    │                         │
 │  │  Intel Items   │    │   Page Content           │
+│  │  Reports       │    │                         │
 │  │  Investigate   │    │                         │
 │  │  ATT&CK Map   │    │   (cards, charts,       │
 │  │  IOC Search    │    │    tables, filters)     │
@@ -307,6 +321,7 @@ app/layout.tsx (root HTML, dark class)
     ├── search/page.tsx
     ├── iocs/page.tsx
     ├── analytics/page.tsx
+    ├── reports/page.tsx → reports/new/page.tsx, reports/[id]/page.tsx
     ├── geo/page.tsx
     ├── feeds/page.tsx
     └── settings/page.tsx

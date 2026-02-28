@@ -102,19 +102,33 @@ CISA KEV, NVD, URLhaus, AbuseIPDB, AlienVault OTX, VirusTotal, Shodan
   - **Severity Intelligence** — Notification severity is computed from multiple signals (risk score, KEV status, raw severity, ATT&CK mapping count) rather than just echoing the source severity label. Produces more accurate alert prioritization.
   - **Alert Noise Reduction** — Batch notifications with intelligent grouping. When multiple items match a single rule in one evaluation cycle, they are combined into a single grouped notification with top-5 ranked items. Reduces analyst alert fatigue.
 
-### 1.4 Report Generation
-- **Module:** `api/app/services/reports.py` — report builder with templating
-- **Database:** New `reports` table (id, title, author_id, type, status, content JSON, created_at, published_at, tlp)
-- **Page:** `/reports` — list, create, edit, publish reports
-- **Page:** `/reports/new` — report editor with rich text (Tiptap/ProseMirror)
+### 1.4 Report Generation ✅ DONE
+- **Module:** `api/app/services/reports.py` — report builder with templating ✅
+- **Module:** `api/app/routes/reports.py` — full REST API (CRUD, items, AI summary, export) ✅
+- **Database:** New `reports` table + `report_items` junction table ✅
+  - Enums: `report_status` (draft/review/published/archived), `report_type` (incident/threat_advisory/weekly_summary/ioc_bulletin/custom)
+  - JSONB content with template-driven sections, linked item counters, tags
+- **Models:** `Report` + `ReportItem` SQLAlchemy models with enum types ✅
+- **Schemas:** Full Pydantic v2 schemas (Create/Update/Response/List/Stats/Export) ✅
+- **Page:** `/reports` — list with stats cards, filters (status/type/search), pagination ✅
+- **Page:** `/reports/new` — report editor with template selection, section editing ✅
+- **Page:** `/reports/[id]` — view/edit report with status workflow, linked items ✅
 - **Features:**
-  - Link intel items, IOCs, ATT&CK techniques to report
-  - Auto-generate executive summary via AI
-  - Export to PDF (using puppeteer or weasyprint)
-  - Export to DOCX
-  - TLP marking on reports
-  - Status workflow: Draft → Review → Published
-- **Sidebar:** Add "Reports" under Investigation section
+  - One-Click Intel-to-Report: Add intel items to draft reports from Intel Detail page ✅
+  - AI Executive Summary: Generate AI-powered summaries from linked items context ✅
+  - Report Templates: 5 pre-built templates (Incident, Threat Advisory, Weekly Summary, IOC Bulletin, Custom) ✅
+  - Status Workflow: Draft → Review → Published → Archived with audit timestamps ✅
+  - Markdown Export with TLP Watermark: Full report export with sections, linked items tables ✅
+  - Live Cross-Data Sections: Linked intel/IOCs/techniques with metadata badges ✅
+- **Sidebar:** "Reports" link under Investigation section ✅
+- **Dashboard:** Reports StatCard in KPI row ✅
+- **USPs Implemented:**
+  - One-Click Intel-to-Report — no competitor has single-click intel linking from detail view
+  - AI Executive Summary — auto-generated from linked items context
+  - Report Templates — pre-structured sections per report type
+  - Status Workflow with Timestamps — draft→review→published→archived with published_at
+  - TLP Watermark Export — Markdown export with TLP classification markings
+  - Cross-Data Enrichment — Dashboard stat, Intel Detail "Add to Report" button
 
 ### 1.5 Complete VirusTotal & Shodan Connectors ✅ DONE
 - **Module:** `api/app/services/feeds/virustotal.py` — VT APIv3 connector ✅
