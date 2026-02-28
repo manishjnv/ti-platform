@@ -48,7 +48,7 @@
 The system must **never fail completely** due to external API failure, timeout, schema change, or partial data unavailability.
 
 | Requirement | Detail |
-|-------------|--------|
+| ----------- | ------ |
 | Error handling | Centralized, with structured error types |
 | Degradation | Graceful — show stale data, never blank screens |
 | Retry | Exponential backoff (via `tenacity`) |
@@ -102,7 +102,7 @@ Before starting any new feature from the roadmap, complete **all** of the follow
 Identify how the following major TI platforms implement the same feature (or whether they do at all):
 
 | Platform | Tier | Check Against |
-|----------|------|---------------|
+| -------- | ---- | ------------- |
 | OpenCTI | Open-source | Feature parity, UX, data model |
 | MISP | Open-source | Community approach, sharing model |
 | Recorded Future | Enterprise ($$$) | Depth, AI capabilities, automation |
@@ -116,7 +116,7 @@ Identify how the following major TI platforms implement the same feature (or whe
 For each new feature, propose **at minimum 3 unique selling points** that make IntelWatch's implementation distinctly better. USPs must fall into at least 2 of these categories:
 
 | USP Category | Description | Example |
-|--------------|-------------|---------|
+| ------------ | ----------- | ------- |
 | **AI/Automation** | Use AI or algorithms to automate what competitors require manual effort for | Auto-mapping ATT&CK techniques via NLP instead of manual tagging |
 | **Cross-Data Intelligence** | Connect data across features in ways competitors silo | Graph relationships auto-discovered from shared IOCs across feeds |
 | **Real-Time / Speed** | Faster detection, shorter time-to-insight | Live streaming feed with sub-minute ingestion vs. hourly batch |
@@ -131,6 +131,7 @@ Add the approved USPs as bullet points under the feature's section in `docs/ROAD
 #### Step 4 — Confirm Before Coding
 
 Present the USP analysis to the user for approval before any implementation begins. The user may:
+
 - Approve all proposed USPs
 - Add additional USPs
 - Remove USPs that are out of scope for current phase
@@ -158,7 +159,7 @@ When a feature has multiple approved USPs, implement them in this order:
 ### Tracking Record
 
 | Phase | Feature | USPs Added | Status |
-|-------|---------|------------|--------|
+| ----- | ------- | ---------- | ------ |
 | 1.1 | MITRE ATT&CK Integration | Auto-mapping via NLP, technique gap analysis | ✅ Done |
 | 1.2 | Relationship Graph | AI discovery, attack chain reconstruction, temporal playback, campaign clustering | ✅ Done |
 | 1.3 | Notifications & Alerting | Zero-config smart defaults, cross-feed correlation, feed health watchdog, severity intelligence, alert noise reduction | ✅ Done |
@@ -178,7 +179,7 @@ When a feature has multiple approved USPs, implement them in this order:
 ### ✅ Every New Feature MUST Create
 
 | Layer | Required Artifacts |
-|-------|--------------------|
+| ----- | ------------------ |
 | **Backend** | New service module, new route file, config entries, DB migration (if needed) |
 | **Frontend** | New component(s), page (if needed), types, API client methods |
 | **Shared** | Documentation update, test files |
@@ -205,7 +206,7 @@ Every new feature that introduces new data (tables, API endpoints, computed valu
 #### Examples
 
 | New Feature | Must Also Enrich |
-|-------------|-----------------|
+| ----------- | --------------- |
 | MITRE ATT&CK | Intel Detail page (ATT&CK tab), Dashboard (technique coverage stat), Search results (technique badges) |
 | Dark Web Monitoring | Intel Detail (if IOC found on dark web, show badge), Dashboard (credential leak counter), IOC Database (dark web mention flag) |
 | Attack Surface Discovery | Dashboard (exposed asset count), Intel Detail (correlate IOCs with discovered assets), Geo View (overlay discovered assets) |
@@ -272,7 +273,7 @@ If any field is unavailable → display: `Not provided` (never leave blank).
 Every data-driven UI element that shows a score, status, or enrichment value must have a tooltip displaying:
 
 | Field | Example |
-|-------|---------|
+| ----- | ------- |
 | Data source | "VirusTotal API v3" |
 | Scoring logic | "5-factor weighted: KEV, severity, reliability, freshness, prevalence" |
 | Confidence method | "Detection ratio: 45/72 engines" |
@@ -299,7 +300,7 @@ The status bar must dynamically show (changing based on current page context):
 
 ## 🧩 Data Pipeline Standard
 
-```
+```text
 Collector → Raw Storage → Normalization → Enrichment → Scoring → API → UI
 ```
 
@@ -314,7 +315,7 @@ Collector → Raw Storage → Normalization → Enrichment → Scoring → API �
 ## 🔐 Security Requirements
 
 | Area | Requirement |
-|------|-------------|
+| ---- | ----------- |
 | Secrets | Environment variables or vault — **never in code** |
 | Input validation | At all layers (Pydantic schemas, SQL parameterization) |
 | Output encoding | Sanitize all data rendered in UI |
@@ -332,7 +333,7 @@ Collector → Raw Storage → Normalization → Enrichment → Scoring → API �
 - Error classification by type:
 
 | Error Type | Example |
-|------------|---------|
+| ---------- | ------- |
 | `network` | Connection timeout, DNS failure |
 | `parsing` | Malformed JSON, unexpected schema |
 | `schema` | Missing required field, type mismatch |
@@ -341,7 +342,7 @@ Collector → Raw Storage → Normalization → Enrichment → Scoring → API �
 ### Metrics
 
 | Metric | Purpose |
-|--------|---------|
+| ------ | ------- |
 | Collector latency | Time to fetch from each external source |
 | Enrichment latency | Time for enrichment pipeline per item |
 | Cache hit ratio | Redis cache effectiveness |
@@ -375,7 +376,7 @@ Collector → Raw Storage → Normalization → Enrichment → Scoring → API �
 Each module must include:
 
 | Test Type | Scope |
-|-----------|-------|
+| --------- | ----- |
 | **Unit tests** | Individual functions, normalization logic, scoring |
 | **Integration tests** | API endpoint → database round-trip |
 | **Schema validation tests** | Pydantic model validation, DB constraint checks |
@@ -396,7 +397,7 @@ Each module must include:
 All UI must meet **WCAG 2.1 Level AA** compliance:
 
 | Requirement | Standard |
-|-------------|----------|
+| ----------- | -------- |
 | Color contrast | Minimum 4.5:1 for normal text, 3:1 for large text |
 | Keyboard navigation | All interactive elements reachable via Tab / Enter / Escape |
 | ARIA labels | All icons, buttons, and interactive elements must have `aria-label` or `aria-labelledby` |
@@ -410,7 +411,7 @@ All UI must meet **WCAG 2.1 Level AA** compliance:
 ## 📐 Responsive Design
 
 | Breakpoint | Target | Min Width |
-|------------|--------|----------|
+| ---------- | ------ | -------- |
 | `sm` | Mobile | 640px |
 | `md` | Tablet | 768px |
 | `lg` | Desktop | 1024px |
@@ -446,7 +447,7 @@ All UI must meet **WCAG 2.1 Level AA** compliance:
 All features must meet these measurable thresholds:
 
 | Metric | Target | Hard Limit |
-|--------|--------|------------|
+| ------ | ------ | ---------- |
 | Page load (LCP) | < 1.5s | < 2.5s |
 | API response (p95) | < 300ms | < 500ms |
 | Time to Interactive | < 2s | < 3.5s |
@@ -479,7 +480,7 @@ All features must meet these measurable thresholds:
 Protect IntelWatch's own API from abuse:
 
 | Tier | Limit | Scope |
-|------|-------|-------|
+| ---- | ----- | ----- |
 | Anonymous | Blocked (auth required) | — |
 | Viewer | 60 req/min | Per user session |
 | Analyst | 120 req/min | Per user session |
@@ -509,7 +510,7 @@ Protect IntelWatch's own API from abuse:
 ## 📦 Dependency Management
 
 | Practice | Tool |
-|----------|------|
+| -------- | ---- |
 | Python deps | `pyproject.toml` with pinned versions |
 | Node deps | `package.json` with lockfile (`package-lock.json`) |
 | Vulnerability scanning | Dependabot or `pip-audit` / `npm audit` — run weekly |
@@ -527,7 +528,7 @@ Protect IntelWatch's own API from abuse:
 ### Branching Strategy
 
 | Branch | Purpose |
-|--------|---------|
+| ------ | ------- |
 | `main` | Production-ready code — always deployable |
 | `feature/<name>` | New features — branch from `main` |
 | `fix/<name>` | Bug fixes — branch from `main` |
@@ -535,7 +536,7 @@ Protect IntelWatch's own API from abuse:
 
 ### Commit Message Format
 
-```
+```text
 <type>: <short description>
 
 Types: feat, fix, docs, refactor, test, chore, perf
@@ -572,7 +573,7 @@ Examples:
 ### Naming Conventions
 
 | Pattern | Example |
-|---------|---------|
+| ------- | ------- |
 | Page components | `DashboardPage`, `IntelDetailPage` |
 | Feature components | `FeedStatusPanel`, `ThreatLevelBar` |
 | Primitive/UI components | `ui/button.tsx`, `ui/card.tsx`, `ui/badge.tsx` |
@@ -596,7 +597,7 @@ Examples:
 All services must handle `SIGTERM` cleanly:
 
 | Service | Shutdown Behavior |
-|---------|-------------------|
+| ------- | ----------------- |
 | **API (Uvicorn)** | Stop accepting new requests, drain in-flight requests (30s timeout), close DB pool |
 | **Worker (RQ)** | Finish current job (or checkpoint), then exit. Do not start new jobs. |
 | **Scheduler** | Cancel pending timers, flush state, exit |
@@ -642,6 +643,7 @@ A feature is **complete** only if:
 After every feature or page is developed, **all interactive elements must be manually verified** before marking as done. Deploy to the live environment and test each item:
 
 #### Links & Navigation
+
 - [ ] All clickable links navigate to the correct page/URL
 - [ ] External links open in a new tab (`target="_blank"`)
 - [ ] Back/breadcrumb navigation works correctly
@@ -649,18 +651,21 @@ After every feature or page is developed, **all interactive elements must be man
 - [ ] Deep links (e.g., `/intel/[id]`) work on direct access and refresh
 
 #### Expand / Collapse / Toggle
+
 - [ ] All expand/collapse sections toggle correctly (accordion, detail rows, collapsible panels)
 - [ ] Toggle states persist visually (chevron rotates, section shows/hides)
 - [ ] Tab switching loads correct content and preserves URL state where applicable
 - [ ] Modal/dialog open and close without leaving stale state
 
 #### Downloads & Exports
+
 - [ ] Download/export buttons produce valid files (Excel, CSV, PDF, JSON)
 - [ ] Downloaded files contain expected data (not empty, not truncated)
 - [ ] File names include relevant context (date, entity name)
 - [ ] Large exports don't freeze the UI (async with loading indicator)
 
 #### Data Display
+
 - [ ] Pagination controls work (next, previous, page numbers, items-per-page)
 - [ ] Sort controls sort correctly (ascending/descending, by each sortable column)
 - [ ] Filters apply and clear correctly, with visual indication of active filters
@@ -669,6 +674,7 @@ After every feature or page is developed, **all interactive elements must be man
 - [ ] Timestamps display in correct format and timezone
 
 #### Interactive Components
+
 - [ ] Copy-to-clipboard buttons work and show feedback (toast/tooltip)
 - [ ] Hover states and tooltips appear correctly
 - [ ] Loading states show while data is fetching (skeleton/spinner)
@@ -676,6 +682,7 @@ After every feature or page is developed, **all interactive elements must be man
 - [ ] Empty states show helpful guidance (not just blank area)
 
 #### Cross-Browser & Responsive
+
 - [ ] Page renders correctly at desktop width (1280px+)
 - [ ] No horizontal overflow or layout breaking
 - [ ] Charts/visualizations render with data and handle empty state

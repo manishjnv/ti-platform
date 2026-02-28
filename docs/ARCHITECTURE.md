@@ -24,6 +24,7 @@
 The IntelWatch TI Platform is a **self-hosted, containerized** system that aggregates, normalizes, scores, and visualizes threat intelligence from multiple open-source feeds. It is designed as a modular monolith — each concern is cleanly separated into its own layer and can be independently scaled.
 
 **Core principles:**
+
 - Async-first backend (no blocking I/O)
 - Event-driven ingestion (Redis Queue)
 - Time-series optimized storage (TimescaleDB)
@@ -35,7 +36,7 @@ The IntelWatch TI Platform is a **self-hosted, containerized** system that aggre
 
 ## High-Level Architecture
 
-```
+```text
                     ┌───────────────────────────────────────────────┐
                     │              Cloudflare Edge                  │
                     │  ┌─────────────┐    ┌──────────────────┐     │
@@ -74,7 +75,7 @@ Internet ──────────►│  │  Zero Trust │    │  Tunne
 ## Service Topology
 
 | Service | Compose Name | Technology | Responsibility | Port |
-|---------|-------------|-----------|----------------|------|
+| ------- | ------------ | ---------- | --------------- | ---- |
 | **UI** | `ui` | Next.js 14, TypeScript, Tailwind CSS | Server-side rendered dashboard, client-side interactivity | 3000 |
 | **API** | `api` | FastAPI, async SQLAlchemy, Pydantic v2 | REST API, auth middleware, data access layer | 8000 |
 | **Worker** | `worker` | Python RQ | Background feed ingestion, AI summarization | — |
@@ -85,7 +86,7 @@ Internet ──────────►│  │  Zero Trust │    │  Tunne
 
 ### Service Dependencies
 
-```
+```text
 UI ──► API ──► PostgreSQL (health check: service_healthy)
               ──► Redis (health check: service_healthy)
               ──► OpenSearch (health check: service_healthy)
@@ -101,7 +102,7 @@ Scheduler ──► Redis (enqueues jobs only)
 
 ### Database Schema (PostgreSQL + TimescaleDB)
 
-```
+```text
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                           TimescaleDB                                   │
 │                                                                          │
@@ -162,7 +163,7 @@ Scheduler ──► Redis (enqueues jobs only)
 ### Core Tables
 
 | Table | Type | Purpose |
-|-------|------|---------|
+| ----- | ---- | ------- |
 | `intel_items` | Hypertable (partitioned by `ingested_at`) | Unified intelligence records |
 | `iocs` | Regular table | Deduplicated indicators of compromise |
 | `intel_ioc_links` | Junction | Many-to-many intel↔IOC relationships |
@@ -183,7 +184,7 @@ Scheduler ──► Redis (enqueues jobs only)
 ### Indexing Strategy (41 indexes)
 
 | Index | Table | Type | Purpose |
-|-------|-------|------|---------|
+| ----- | ----- | ---- | ------- |
 | `idx_users_email` | `users` | B-tree | User email lookups |
 | `idx_intel_severity` | `intel_items` | B-tree | Fast severity + time filtering |
 | `idx_intel_risk` | `intel_items` | B-tree | Fast risk-score ordering |
@@ -238,7 +239,7 @@ Scheduler ──► Redis (enqueues jobs only)
 
 ### Layer Pattern
 
-```
+```text
 Route Handler (thin) ──► Service Layer (business logic) ──► Data Layer (ORM / cache)
          │                        │                              │
          ▼                        ▼                              ▼
@@ -250,7 +251,7 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 ### Module Breakdown
 
 | Layer | Path | Responsibility |
-|-------|------|----------------|
+| ----- | ---- | -------------- |
 | **Core** | `api/app/core/` | Config, database pool, Redis client, OpenSearch client, structured logging |
 | **Middleware** | `api/app/middleware/` | Auth (JWT session + Cloudflare JWT verify), audit logging |
 | **Models** | `api/app/models/` | SQLAlchemy ORM model definitions |
@@ -262,7 +263,7 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 ### Endpoint Map (46 endpoints across 10 route files)
 
 | Method | Endpoint | Auth | Handler | Service |
-|--------|----------|------|---------|---------|
+| ------ | -------- | ---- | ------- | ------- |
 | `GET` | `/api/v1/health` | None | `routes/health.py` | — |
 | `GET` | `/api/v1/auth/config` | None | `routes/auth.py` | `services/auth.py` |
 | `POST` | `/api/v1/auth/login` | None | `routes/auth.py` | `services/auth.py` |
@@ -311,7 +312,7 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 | `POST` | `/api/v1/reports/{id}/items` | Analyst | `routes/reports.py` | `services/reports.py` |
 | `DELETE` | `/api/v1/reports/{id}/items/{item_id}` | Analyst | `routes/reports.py` | `services/reports.py` |
 | `POST` | `/api/v1/reports/{id}/ai-summary` | Analyst | `routes/reports.py` | `services/reports.py` |
-| `GET` | `/api/v1/reports/{id}/export` | Viewer | `routes/reports.py` | `services/reports.py` | `?format=markdown\|pdf\|stix\|html\|csv` |
+| `GET` | `/api/v1/reports/{id}/export?format=` | Viewer | `routes/reports.py` | `services/reports.py` |
 
 ---
 
@@ -320,7 +321,7 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 ### Stack
 
 | Concern | Technology |
-|---------|-----------|
+| ------- | ---------- |
 | Framework | Next.js 14 (App Router) |
 | Language | TypeScript (strict) |
 | Styling | Tailwind CSS 3.4 + CSS variables |
@@ -332,7 +333,7 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 
 ### Page Layout
 
-```
+```text
 ┌──────────────────────────────────────────────────┐
 │  Sidebar               │  Header Bar             │
 │  ┌────────────────┐    │  ┌───────────────────┐  │
@@ -359,7 +360,7 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 
 ### Component Hierarchy (24 components, 16 pages)
 
-```
+```text
 app/layout.tsx (root HTML, dark class)
 ├── login/page.tsx (IntelWatch branded login — SSO or dev bypass)
 └── (app)/layout.tsx (AuthGuard + Sidebar + Header + NotificationBell + ErrorBoundary + main area)
@@ -406,7 +407,7 @@ Shared Components (14 root + 4 charts + 6 ui primitives):
 
 ### Job Processing
 
-```
+```text
 Scheduler (APScheduler)
     │
     │  enqueue every N minutes
@@ -454,7 +455,7 @@ class BaseFeedConnector(ABC):
 ### Schedule (14 jobs)
 
 | Job | Interval | Queue | Priority |
-|-----|----------|-------|----------|
+| --- | -------- | ----- | -------- |
 | CISA KEV | 5 min | high | Critical (exploited vulns) |
 | URLhaus | 5 min | high | High (active malicious URLs) |
 | NVD | 15 min | default | Medium (new CVEs) |
@@ -476,7 +477,7 @@ class BaseFeedConnector(ABC):
 
 ### Authentication Flow
 
-```
+```text
 ┌─ Production (Cloudflare Zero Trust SSO) ─────────────────────────┐
 │                                                                    │
 │  Browser ──► Cloudflare Access ──► SSO Provider (Google)          │
@@ -512,7 +513,7 @@ Session Management:
 ### RBAC Roles
 
 | Role | Permissions |
-|------|------------|
+| ---- | ----------- |
 | `viewer` | Read dashboard, intel, search, techniques, graph, reports, notifications, feed status, export intel |
 | `analyst` | Viewer + create/update/delete reports, manage report items, generate AI summaries |
 | `admin` | Analyst + trigger feeds, manage users, setup config/status |
@@ -520,7 +521,7 @@ Session Management:
 ### Security Layers
 
 | Layer | Implementation |
-|-------|---------------|
+| ----- | -------------- |
 | Network | Cloudflare Tunnel (no exposed ports to internet) |
 | Auth | JWT session cookies + Cloudflare Zero Trust SSO fallback |
 | Sessions | Redis-backed, revocable, HttpOnly cookies |
@@ -537,7 +538,7 @@ Session Management:
 
 ### Production
 
-```
+```text
 VPS (2 vCPU, 4 GB RAM minimum)
     │
     ├── Docker Compose (7 services)
@@ -548,7 +549,7 @@ VPS (2 vCPU, 4 GB RAM minimum)
 
 ### CI/CD Pipeline
 
-```
+```text
 Push to main
     ▼
 GitHub Actions
@@ -567,7 +568,7 @@ GitHub Actions
 ### Lines of Code by Category
 
 | Category | Lines | Files | Description |
-|----------|------:|------:|-------------|
+| -------- | -----: | -----: | ----------- |
 | Python (API + Worker) | 6,831 | 50 | FastAPI routes, services, models, schemas, feeds, worker tasks |
 | TypeScript/TSX (UI) | 8,589 | 49 | Next.js pages, components, store, types, API client |
 | Markdown (Docs) | 2,648 | 7 | Architecture, roadmap, instructions, integration, technology |
@@ -579,7 +580,7 @@ GitHub Actions
 ### Documentation Breakdown
 
 | File | Lines | Content |
-|------|------:|---------|
+| ---- | -----: | ------- |
 | docs/ROADMAP.md | 784 | 7-phase feature roadmap with implementation details |
 | docs/Instruction.md | 514 | Development rules, UI guidelines, mandatory checklists |
 | docs/ARCHITECTURE.md | ~540 | System architecture, DB schema (41 indexes), API endpoints (46) |
@@ -591,7 +592,7 @@ GitHub Actions
 ### Growth Milestones
 
 | Date | Milestone | Total LOC |
-|------|-----------|----------:|
+| ---- | --------- | --------: |
 | 2026-02-23 | Initial platform (7 feeds, dashboard, search) | ~8,500 |
 | 2026-02-26 | Phase 1.1 — MITRE ATT&CK (691 techniques, matrix UI) | ~12,000 |
 | 2026-02-27 | Phase 1.2 — Relationship Graph (3,875 edges, graph explorer) | ~16,400 |
@@ -604,7 +605,7 @@ GitHub Actions
 ## Revision History
 
 | Date | Change |
-|------|--------|
+| ---- | ------ |
 | 2026-02-28 | Multi-format export: PDF (reportlab + TLP watermark), STIX 2.1 Bundle, HTML (dark-theme), CSV; UI export dropdown with 5 format options; updated codebase metrics |
 | 2026-02-28 | Phase 1.4 Report Generation: reports + report_items tables, 11 report endpoints, 3 UI pages, templates, AI summary, multi-format export (PDF, STIX 2.1, HTML, CSV, Markdown) |
 | 2026-02-28 | Phase 1.3 Notifications & Alerting: notification_rules + notifications tables, 12 notification endpoints, NotificationBell component, worker eval task |
