@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useAppStore } from "@/store";
 import { AuthGuard } from "@/components/AuthGuard";
 import { Sidebar } from "@/components/Sidebar";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   Search,
   Bell,
@@ -123,7 +124,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Main content */}
-        <main className="flex-1 overflow-auto">{children}</main>
+        <main className="flex-1 overflow-auto">
+          <ErrorBoundary>{children}</ErrorBoundary>
+        </main>
       </div>
     </div>
     </AuthGuard>

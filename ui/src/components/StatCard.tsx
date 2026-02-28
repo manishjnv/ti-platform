@@ -2,6 +2,7 @@
 
 import React from "react";
 import { cn } from "@/lib/utils";
+import { Tooltip } from "@/components/ui/tooltip";
 
 interface StatCardProps {
   title: string;
@@ -10,6 +11,7 @@ interface StatCardProps {
   icon?: React.ReactNode;
   trend?: { value: number; label: string };
   variant?: "default" | "danger" | "warning" | "success";
+  tooltipContent?: React.ReactNode;
 }
 
 export function StatCard({
@@ -19,6 +21,7 @@ export function StatCard({
   icon,
   trend,
   variant = "default",
+  tooltipContent,
 }: StatCardProps) {
   const accentColor = {
     default: "from-primary/5 to-transparent border-primary/20",
@@ -34,7 +37,7 @@ export function StatCard({
     success: "text-emerald-500",
   }[variant];
 
-  return (
+  const card = (
     <div
       className={cn(
         "rounded-xl border bg-gradient-to-br p-4 transition-all hover:shadow-md",
@@ -75,4 +78,9 @@ export function StatCard({
       </div>
     </div>
   );
+
+  if (tooltipContent) {
+    return <Tooltip content={tooltipContent} side="bottom">{card}</Tooltip>;
+  }
+  return card;
 }

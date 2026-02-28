@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { IntelItem } from "@/types";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { DataTooltip } from "@/components/ui/tooltip";
 import {
   cn,
   formatDate,
@@ -83,17 +84,30 @@ export function IntelCard({ item }: IntelCardProps) {
           </div>
 
           {/* Risk Score */}
-          <div
-            className={cn(
-              "flex flex-col items-center justify-center rounded-lg p-2 min-w-[56px]",
-              riskBg(item.risk_score)
-            )}
+          <DataTooltip
+            label="Risk Score"
+            details={{
+              "Score": `${item.risk_score}/100`,
+              "Scoring": "5-factor weighted: KEV, severity, reliability, freshness, prevalence",
+              "Severity": item.severity,
+              "Confidence": `${item.confidence}%`,
+              "Source": item.source_name,
+              "KEV Listed": item.is_kev ? "Yes" : "No",
+            }}
+            side="left"
           >
-            <span className={cn("text-2xl font-bold", riskColor(item.risk_score))}>
-              {item.risk_score}
-            </span>
-            <span className="text-[10px] text-muted-foreground">RISK</span>
-          </div>
+            <div
+              className={cn(
+                "flex flex-col items-center justify-center rounded-lg p-2 min-w-[56px]",
+                riskBg(item.risk_score)
+              )}
+            >
+              <span className={cn("text-2xl font-bold", riskColor(item.risk_score))}>
+                {item.risk_score}
+              </span>
+              <span className="text-[10px] text-muted-foreground">RISK</span>
+            </div>
+          </DataTooltip>
         </div>
 
         {/* Quick meta row */}
