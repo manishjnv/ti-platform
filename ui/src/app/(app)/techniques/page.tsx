@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loading } from "@/components/Loading";
@@ -102,66 +102,87 @@ function CoverageRing({
   );
 }
 
-/* ─── Detection Gaps Card ─────────────────────────────── */
+/* ─── Detection Gaps Card (compact multi-column) ──────── */
+
+const TACTIC_COLORS: Record<string, string> = {
+  "initial-access": "text-red-400",
+  execution: "text-orange-400",
+  persistence: "text-amber-400",
+  "privilege-escalation": "text-yellow-400",
+  "defense-evasion": "text-emerald-400",
+  "lateral-movement": "text-cyan-400",
+  impact: "text-rose-400",
+};
+
 function DetectionGapsCard({ gaps }: { gaps: DetectionGap[] }) {
   const [expanded, setExpanded] = useState(false);
-  const shown = expanded ? gaps : gaps.slice(0, 8);
+  const shown = expanded ? gaps : gaps.slice(0, 12);
 
   if (gaps.length === 0) return null;
 
+  /* group by tactic for the summary strip */
+  const tacticCounts = gaps.reduce<Record<string, number>>((acc, g) => {
+    acc[g.tactic_label] = (acc[g.tactic_label] || 0) + 1;
+    return acc;
+  }, {});
+
   return (
-    <Card className="border-orange-500/20">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4 text-orange-500" />
-          Detection Gaps
-          <Badge variant="secondary" className="text-[10px] ml-auto">
+    <Card className="border-orange-500/15 bg-orange-500/[0.02]">
+      <CardContent className="pt-3 pb-2 px-3">
+        {/* Header row */}
+        <div className="flex items-center gap-2 mb-2">
+          <AlertTriangle className="h-3.5 w-3.5 text-orange-500 shrink-0" />
+          <span className="text-xs font-semibold">Detection Gaps</span>
+          <Badge variant="secondary" className="text-[9px] px-1.5 py-0">
             {gaps.length} unmapped
           </Badge>
-        </CardTitle>
-        <p className="text-[10px] text-muted-foreground">
-          High-priority techniques without intel coverage — prioritize these for improved detection
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-1">
-        {shown.map((gap) => (
-          <Link
-            key={gap.id}
-            href={`/techniques/${gap.id}`}
-            className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/30 transition-colors group"
-          >
-            <Badge variant="outline" className="font-mono text-[9px] shrink-0">
-              {gap.id}
-            </Badge>
-            <span className="text-xs truncate flex-1 group-hover:text-primary transition-colors">
-              {gap.name}
-            </span>
-            <Badge
-              variant="secondary"
-              className="text-[9px] shrink-0 capitalize"
+          {/* tactic summary chips */}
+          <div className="hidden sm:flex items-center gap-1.5 ml-auto overflow-x-auto">
+            {Object.entries(tacticCounts)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 5)
+              .map(([tactic, count]) => (
+                <span
+                  key={tactic}
+                  className="text-[9px] text-muted-foreground whitespace-nowrap"
+                >
+                  <span className={TACTIC_COLORS[tactic.toLowerCase().replace(/\s/g, "-")] || "text-muted-foreground"}>●</span>{" "}
+                  {tactic} ({count})
+                </span>
+              ))}
+          </div>
+          {gaps.length > 12 && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="text-[10px] text-primary hover:underline shrink-0 ml-auto sm:ml-0"
             >
-              {gap.tactic_label}
-            </Badge>
-            {gap.platforms.length > 0 && (
-              <div className="hidden md:flex gap-0.5">
-                {gap.platforms.slice(0, 2).map((p) => (
-                  <span key={p} className="text-[8px] text-muted-foreground/60">
-                    {p}
-                  </span>
-                ))}
-              </div>
-            )}
-            <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-          </Link>
-        ))}
-        {gaps.length > 8 && (
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="w-full text-center text-[10px] text-primary hover:underline py-1"
-          >
-            {expanded ? "Show fewer" : `Show all ${gaps.length} gaps`}
-          </button>
-        )}
+              {expanded ? "Less" : `+${gaps.length - 12} more`}
+            </button>
+          )}
+        </div>
+
+        {/* Compact grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-3 gap-y-0.5">
+          {shown.map((gap) => (
+            <Link
+              key={gap.id}
+              href={`/techniques/${gap.id}`}
+              className="flex items-center gap-1.5 px-1.5 py-1 rounded hover:bg-muted/40 transition-colors group min-w-0"
+            >
+              <span className="font-mono text-[9px] text-orange-400/80 shrink-0 w-[4.5rem]">
+                {gap.id}
+              </span>
+              <span className="text-[11px] truncate flex-1 group-hover:text-primary transition-colors">
+                {gap.name}
+              </span>
+              <span
+                className={`text-[8px] shrink-0 capitalize ${TACTIC_COLORS[gap.tactic?.toLowerCase().replace(/\s/g, "-") || ""] || "text-muted-foreground/60"}`}
+              >
+                ●
+              </span>
+            </Link>
+          ))}
+        </div>
       </CardContent>
     </Card>
   );
