@@ -113,20 +113,22 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     className="fixed inset-0 z-40"
                     onClick={() => setShowUserMenu(false)}
                   />
-                  <div className="absolute right-0 top-full mt-1 w-44 z-50 rounded-lg border border-border/50 bg-popover shadow-xl py-1">
-                    <div className="px-3 py-2 border-b border-border/30">
+                  <div className="absolute right-0 top-full mt-1 w-48 z-50 rounded-xl border border-border bg-[hsl(222,47%,8%)] shadow-2xl py-1 overflow-hidden">
+                    <div className="px-3 py-2.5 border-b border-border/30 bg-[hsl(222,47%,10%)]">
                       <p className="text-xs font-semibold">{user?.name || "Admin"}</p>
                       <p className="text-[10px] text-muted-foreground">
                         {user?.role || "Administrator"}
                       </p>
                     </div>
-                    <button className="w-full flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors">
-                      <User className="h-3.5 w-3.5" /> Profile
-                    </button>
-                    <button className="w-full flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors">
-                      <Shield className="h-3.5 w-3.5" /> Security
-                    </button>
-                    <div className="border-t border-border/30 mt-1">
+                    <div className="py-1">
+                      <button className="w-full flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors">
+                        <User className="h-3.5 w-3.5" /> Profile
+                      </button>
+                      <button className="w-full flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors">
+                        <Shield className="h-3.5 w-3.5" /> Security
+                      </button>
+                    </div>
+                    <div className="border-t border-border/30">
                       <button
                         onClick={handleLogout}
                         className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 transition-colors"

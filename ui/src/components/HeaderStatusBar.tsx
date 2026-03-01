@@ -160,6 +160,7 @@ export function HeaderStatusBar() {
       <Pill className={`${tl.bg} ${tl.color}`} title={`Avg risk score: ${data.avg_risk_score}`}>
         <Gauge className="h-3 w-3" />
         {tl.label}
+        <span className="opacity-70">{data.avg_risk_score}</span>
       </Pill>
 
       <Sep />
