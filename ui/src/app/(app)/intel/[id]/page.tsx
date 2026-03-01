@@ -105,7 +105,7 @@ export default function IntelDetailPage() {
   const remediation = enrichment?.remediation;
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto">
+    <div className="p-4 md:p-6 space-y-6 max-w-5xl mx-auto">
       {/* Back button + Actions */}
       <div className="flex items-center justify-between">
         <Button variant="ghost" onClick={() => router.back()} className="gap-2">

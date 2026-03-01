@@ -316,7 +316,7 @@ export default function ReportDetailPage() {
   /* ─── Render ────────────────────────────────────────── */
 
   return (
-    <div className="p-6 space-y-4 max-w-4xl mx-auto">
+    <div className="p-4 md:p-6 space-y-4 max-w-4xl mx-auto">
       {/* ── Header ──────────────────────────────────────── */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-3 min-w-0">

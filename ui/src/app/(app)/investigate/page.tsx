@@ -140,7 +140,7 @@ export default function InvestigatePage() {
     : [];
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-4 md:p-6 space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -166,13 +166,13 @@ export default function InvestigatePage() {
       {/* Search Bar */}
       <Card className="border-border/50">
         <CardContent className="py-4">
-          <form onSubmit={handleSubmit} className="flex items-center gap-3">
-            <div className="flex-1 relative">
+          <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-2 md:gap-3">
+            <div className="flex-1 min-w-[200px] relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Enter an intel item ID, IOC value, CVE-ID, or ATT&CK technique…"
+                placeholder="Intel ID, IOC, CVE-ID, or technique…"
                 className="pl-9"
               />
             </div>
@@ -203,7 +203,7 @@ export default function InvestigatePage() {
                 <Plus className="h-3.5 w-3.5" />
               </button>
             </div>
-            <Button type="submit" disabled={loading || !query.trim()}>
+            <Button type="submit" disabled={loading || !query.trim()} className="w-full sm:w-auto">
               {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : "Explore"}
             </Button>
           </form>
@@ -221,15 +221,14 @@ export default function InvestigatePage() {
           </CardContent>
         </Card>
       ) : graphData ? (
-        <div className="flex gap-4">
+        <div className="flex flex-col lg:flex-row gap-4">
           {/* Graph area */}
-          <div className={cn("flex-1 min-w-0 transition-all", selectedNode ? "max-w-[calc(100%-340px)]" : "")}>
+          <div className="flex-1 min-w-0 transition-all">
             <Card className="border-border/30 overflow-hidden">
               <CardContent className="p-0">
                 <GraphExplorer
                   data={graphData}
-                  width={selectedNode ? 820 : 1120}
-                  height={640}
+                  height={560}
                   onNodeClick={handleNodeClick}
                   onNodeSelect={handleNodeSelect}
                   selectedNodeId={selectedNode?.id}
@@ -336,7 +335,7 @@ function NodeDetailPanel({
   });
 
   return (
-    <div className="w-[320px] shrink-0 space-y-3 animate-in slide-in-from-right-4 duration-300">
+    <div className="w-full lg:w-[320px] shrink-0 space-y-3 animate-in slide-in-from-right-4 duration-300">
       {/* Header card */}
       <Card className="border-border/30 overflow-hidden">
         <div className="h-1.5" style={{ background: `linear-gradient(90deg, ${meta.color}, ${meta.color}88)` }} />

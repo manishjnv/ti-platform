@@ -144,14 +144,16 @@ interface Props {
 
 export function GraphExplorer({
   data,
-  width = 800,
+  width: propWidth,
   height = 640,
   onNodeClick,
   onNodeSelect,
   selectedNodeId,
   className,
 }: Props) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const [containerWidth, setContainerWidth] = useState<number>(propWidth || 800);
   const [nodes, setNodes] = useState<SimNode[]>([]);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [hoveredEdge, setHoveredEdge] = useState<string | null>(null);
@@ -160,6 +162,23 @@ export function GraphExplorer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number; tx: number; ty: number } | null>(null);
   const [animTick, setAnimTick] = useState(0);
+
+  // Measure container width responsively
+  useEffect(() => {
+    if (propWidth) { setContainerWidth(propWidth); return; }
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(Math.floor(entry.contentRect.width));
+      }
+    });
+    observer.observe(el);
+    setContainerWidth(el.clientWidth || 800);
+    return () => observer.disconnect();
+  }, [propWidth]);
+
+  const width = containerWidth;
 
   // Animated particle tick
   useEffect(() => {
@@ -265,6 +284,7 @@ export function GraphExplorer({
 
   return (
     <div
+      ref={containerRef}
       className={cn(
         "relative select-none overflow-hidden",
         isFullscreen && "fixed inset-0 z-50 bg-[#0a0e1a]",

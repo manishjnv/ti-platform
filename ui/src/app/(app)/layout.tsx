@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAppStore } from "@/store";
 import { AuthGuard } from "@/components/AuthGuard";
-import { Sidebar } from "@/components/Sidebar";
+import { Sidebar, MobileMenuButton } from "@/components/Sidebar";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { NotificationBell } from "@/components/NotificationBell";
 import { HeaderStatusBar } from "@/components/HeaderStatusBar";
@@ -84,10 +84,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <Sidebar />
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Top header bar */}
-          <header className="h-12 shrink-0 border-b border-gray-200/60 dark:border-border/40 bg-white/80 dark:bg-card/80 backdrop-blur-sm flex items-center gap-4 px-4 lg:px-6">
-          {/* Left: breadcrumb / search */}
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="relative max-w-sm w-full lg:w-64">
+          <header className="h-12 shrink-0 border-b border-gray-200/60 dark:border-border/40 bg-white/80 dark:bg-card/80 backdrop-blur-sm flex items-center gap-3 px-3 md:gap-4 md:px-4 lg:px-6">
+          {/* Mobile hamburger */}
+          <MobileMenuButton />
+
+          {/* Left: search */}
+          <div className="flex items-center gap-3 shrink-0 flex-1 md:flex-none">
+            <div className="relative w-full md:w-64 lg:w-72">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 dark:text-muted-foreground" />
               <input
                 ref={searchRef}
@@ -98,7 +101,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 placeholder="Search threats, IOCs, CVEs..."
                 className="w-full h-8 pl-8 pr-3 rounded-lg bg-gray-100/80 dark:bg-muted/30 border border-gray-200/60 dark:border-border/40 text-xs text-gray-900 dark:text-foreground placeholder:text-gray-400 dark:placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50 focus:bg-white dark:focus:bg-muted/50 transition-colors"
               />
-              <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[9px] text-gray-400 dark:text-muted-foreground/40 border border-gray-200/40 dark:border-border/30 rounded px-1 py-0.5">
+              <kbd className="hidden sm:block absolute right-2.5 top-1/2 -translate-y-1/2 text-[9px] text-gray-400 dark:text-muted-foreground/40 border border-gray-200/40 dark:border-border/30 rounded px-1 py-0.5">
                 ⌘K
               </kbd>
             </div>

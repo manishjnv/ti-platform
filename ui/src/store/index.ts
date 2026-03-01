@@ -46,6 +46,8 @@ interface AppState {
   // UI
   sidebarOpen: boolean;
   toggleSidebar: () => void;
+  mobileSidebarOpen: boolean;
+  setMobileSidebarOpen: (open: boolean) => void;
 
   // Notifications
   notifications: Notification[];
@@ -184,6 +186,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   // UI
   sidebarOpen: true,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+  mobileSidebarOpen: false,
+  setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
 
   // Notifications
   notifications: [],
