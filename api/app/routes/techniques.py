@@ -6,7 +6,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select, case, Integer as SAInteger
+from sqlalchemy import func, select, case, Integer as SAInteger, text, literal_column
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -117,6 +117,7 @@ async def get_attack_matrix(
         return cached
 
     # Get all parent techniques with their intel counts, max risk, and severity breakdown
+    # severity column is a PostgreSQL ENUM (severity_level), so we cast literals
     stmt = (
         select(
             AttackTechnique.id,
@@ -126,10 +127,10 @@ async def get_attack_matrix(
             AttackTechnique.url,
             func.count(IntelAttackLink.intel_id).label("count"),
             func.coalesce(func.max(IntelItem.risk_score), 0).label("max_risk"),
-            func.count(case((IntelItem.severity == "critical", 1), else_=None)).label("sev_critical"),
-            func.count(case((IntelItem.severity == "high", 1), else_=None)).label("sev_high"),
-            func.count(case((IntelItem.severity == "medium", 1), else_=None)).label("sev_medium"),
-            func.count(case((IntelItem.severity == "low", 1), else_=None)).label("sev_low"),
+            func.count(case((IntelItem.severity == literal_column("'critical'::severity_level"), 1), else_=None)).label("sev_critical"),
+            func.count(case((IntelItem.severity == literal_column("'high'::severity_level"), 1), else_=None)).label("sev_high"),
+            func.count(case((IntelItem.severity == literal_column("'medium'::severity_level"), 1), else_=None)).label("sev_medium"),
+            func.count(case((IntelItem.severity == literal_column("'low'::severity_level"), 1), else_=None)).label("sev_low"),
         )
         .outerjoin(IntelAttackLink, IntelAttackLink.technique_id == AttackTechnique.id)
         .outerjoin(
