@@ -41,6 +41,16 @@ import {
   ChevronRight,
   Sparkles,
   BarChart3,
+  Copy,
+  Check,
+  Server,
+  Network,
+  MapPin,
+  ShieldAlert,
+  Skull,
+  Swords,
+  Bug,
+  Radio,
 } from "lucide-react";
 import type {
   IntelAttackLink,
@@ -49,6 +59,7 @@ import type {
   RelatedIntelItemEnriched,
 } from "@/types";
 import * as api from "@/lib/api";
+import type { IntelLinkedIOC } from "@/lib/api";
 import { StructuredIntelCards, type StructuredIntelData } from "@/components/StructuredIntelCards";
 
 export default function IntelDetailPage() {
@@ -62,6 +73,8 @@ export default function IntelDetailPage() {
   const [relatedLoading, setRelatedLoading] = useState(false);
   const [enrichment, setEnrichment] = useState<IntelEnrichment | null>(null);
   const [enrichmentLoading, setEnrichmentLoading] = useState(false);
+  const [linkedIOCs, setLinkedIOCs] = useState<IntelLinkedIOC[]>([]);
+  const [iocsLoading, setIOCsLoading] = useState(false);
   const [addingToReport, setAddingToReport] = useState(false);
   const [reportMenuOpen, setReportMenuOpen] = useState(false);
   const [userReports, setUserReports] = useState<{ id: string; title: string }[]>([]);
@@ -91,6 +104,12 @@ export default function IntelDetailPage() {
       .then(setEnrichment)
       .catch(() => setEnrichment(null))
       .finally(() => setEnrichmentLoading(false));
+
+    setIOCsLoading(true);
+    api.getIntelIOCs(id)
+      .then(setLinkedIOCs)
+      .catch(() => setLinkedIOCs([]))
+      .finally(() => setIOCsLoading(false));
   }, [id]);
 
   if (selectedLoading) return <Loading text="Loading intel item..." />;
@@ -325,6 +344,14 @@ export default function IntelDetailPage() {
               </Badge>
             )}
           </TabsTrigger>
+          <TabsTrigger value="iocs" className="gap-1">
+            <ShieldAlert className="h-3 w-3" /> IOCs
+            {linkedIOCs.length > 0 && (
+              <Badge variant="secondary" className="text-[9px] ml-1 px-1 py-0">
+                {linkedIOCs.length}
+              </Badge>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         {/* ───── Overview Tab ───── */}
@@ -408,67 +435,128 @@ export default function IntelDetailPage() {
             />
           )}
 
-          {/* Threat Actors */}
+          {/* Threat Actors — Enhanced */}
           {enrichment && enrichment.threat_actors.length > 0 && (
-            <Card className="border-red-500/20">
+            <Card className="border-red-500/20 bg-red-500/[0.02]">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <Users className="h-4 w-4 text-red-400" /> Associated Threat Actors
+                  <Skull className="h-4 w-4 text-red-400" /> Associated Threat Actors
+                  <Badge variant="destructive" className="text-[9px] ml-auto">
+                    {enrichment.threat_actors.length} Actor{enrichment.threat_actors.length > 1 ? "s" : ""}
+                  </Badge>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {enrichment.threat_actors.map((ta, i) => (
-                  <div key={i} className="flex items-start gap-3 rounded-md border border-border/30 px-3 py-2">
-                    <div className="h-8 w-8 rounded-full bg-red-500/10 flex items-center justify-center shrink-0 mt-0.5">
-                      <Users className="h-4 w-4 text-red-400" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-semibold">{ta.name}</span>
-                        <Badge variant="outline" className="text-[9px] capitalize">
-                          {ta.motivation}
-                        </Badge>
-                        <Badge variant="secondary" className="text-[9px]">
-                          {ta.confidence} confidence
-                        </Badge>
+                {enrichment.threat_actors.map((ta, i) => {
+                  const motivationIcon =
+                    ta.motivation === "financial" ? "💰" :
+                    ta.motivation === "espionage" ? "🕵️" :
+                    ta.motivation === "hacktivism" ? "✊" :
+                    ta.motivation === "destruction" ? "💥" : "❓";
+                  const confidenceColor =
+                    ta.confidence === "high" ? "text-red-400 border-red-400/40 bg-red-400/10" :
+                    ta.confidence === "medium" ? "text-yellow-400 border-yellow-400/40 bg-yellow-400/10" :
+                    "text-muted-foreground border-border/40 bg-muted/10";
+                  return (
+                    <div key={i} className="rounded-lg border border-red-500/20 bg-card overflow-hidden">
+                      {/* Actor header */}
+                      <div className="flex items-center gap-3 px-4 py-3 border-b border-border/20 bg-red-500/[0.03]">
+                        <div className="h-10 w-10 rounded-full bg-gradient-to-br from-red-500/20 to-red-900/20 flex items-center justify-center shrink-0 text-lg">
+                          {motivationIcon}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-bold">{ta.name}</span>
+                            <Badge className={cn("text-[9px] capitalize border", confidenceColor)}>
+                              {ta.confidence} confidence
+                            </Badge>
+                          </div>
+                          {ta.aliases.length > 0 && (
+                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                              Also known as: <span className="text-foreground/70">{ta.aliases.join(", ")}</span>
+                            </p>
+                          )}
+                        </div>
+                        <a
+                          href={`/search?q=${encodeURIComponent(ta.name)}`}
+                          className="text-[10px] text-primary hover:underline shrink-0 flex items-center gap-1"
+                        >
+                          <Crosshair className="h-3 w-3" /> Hunt
+                        </a>
                       </div>
-                      {ta.aliases.length > 0 && (
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          AKA: {ta.aliases.join(", ")}
-                        </p>
-                      )}
-                      <p className="text-xs text-muted-foreground mt-1">{ta.description}</p>
+                      {/* Actor details */}
+                      <div className="px-4 py-3 space-y-2">
+                        <p className="text-xs leading-relaxed">{ta.description}</p>
+                        <div className="flex items-center gap-3 flex-wrap text-[10px]">
+                          <span className="flex items-center gap-1 text-muted-foreground">
+                            <Swords className="h-3 w-3" /> Motivation:
+                            <span className="text-foreground capitalize font-medium">{ta.motivation}</span>
+                          </span>
+                          {/* Show related ATT&CK techniques if any match */}
+                          {enrichment.attack_techniques.length > 0 && (
+                            <span className="flex items-center gap-1 text-muted-foreground">
+                              <Crosshair className="h-3 w-3" />
+                              <span className="text-foreground font-medium">
+                                {enrichment.attack_techniques.length} technique{enrichment.attack_techniques.length > 1 ? "s" : ""}
+                              </span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </CardContent>
             </Card>
           )}
 
-          {/* Notable Campaigns / Breaches */}
+          {/* Notable Campaigns / Breaches — Enhanced */}
           {enrichment && enrichment.notable_campaigns.length > 0 && (
-            <Card className="border-orange-500/20">
+            <Card className="border-orange-500/20 bg-orange-500/[0.02]">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <Flame className="h-4 w-4 text-orange-400" /> Notable Campaigns & Breaches
+                  <Flame className="h-4 w-4 text-orange-400" /> Notable Attacks & Breaches
+                  <Badge variant="outline" className="text-[9px] text-orange-400 border-orange-400/40 ml-auto">
+                    {enrichment.notable_campaigns.length} event{enrichment.notable_campaigns.length > 1 ? "s" : ""}
+                  </Badge>
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2">
-                {enrichment.notable_campaigns.map((c, i) => (
-                  <div key={i} className="rounded-md border border-border/30 px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">{c.name}</span>
-                      <Badge variant="outline" className="text-[9px]">{c.date}</Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">{c.description}</p>
-                    {c.impact && (
-                      <p className="text-xs mt-1">
-                        <span className="text-muted-foreground">Impact: </span>
-                        <span className="text-orange-400">{c.impact}</span>
-                      </p>
-                    )}
-                  </div>
-                ))}
+              <CardContent>
+                <div className="relative border-l-2 border-orange-500/30 pl-5 space-y-4 ml-2">
+                  {enrichment.notable_campaigns.map((c, i) => {
+                    const severityLevel =
+                      c.impact?.toLowerCase().includes("critical") || c.impact?.toLowerCase().includes("major") ? "critical" :
+                      c.impact?.toLowerCase().includes("significant") || c.impact?.toLowerCase().includes("high") ? "high" :
+                      "medium";
+                    const dotColor =
+                      severityLevel === "critical" ? "bg-red-500 shadow-red-500/50" :
+                      severityLevel === "high" ? "bg-orange-500 shadow-orange-500/50" :
+                      "bg-yellow-500 shadow-yellow-500/50";
+                    return (
+                      <div key={i} className="relative">
+                        <div className={cn("absolute -left-[25px] top-1.5 h-3 w-3 rounded-full shadow-sm", dotColor)} />
+                        <div className="rounded-lg border border-orange-500/15 bg-card p-3 space-y-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-bold">{c.name}</span>
+                            <Badge variant="outline" className="text-[9px] text-orange-400 border-orange-400/30 font-mono">
+                              {c.date}
+                            </Badge>
+                          </div>
+                          <p className="text-xs leading-relaxed text-muted-foreground">{c.description}</p>
+                          {c.impact && (
+                            <div className="flex items-start gap-2 rounded-md bg-orange-500/[0.06] border border-orange-500/15 px-3 py-2">
+                              <AlertTriangle className="h-3.5 w-3.5 text-orange-400 shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-[10px] font-semibold text-orange-300 uppercase tracking-wider mb-0.5">Impact Assessment</p>
+                                <p className="text-xs text-orange-200/80">{c.impact}</p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </CardContent>
             </Card>
           )}
@@ -810,77 +898,94 @@ export default function IntelDetailPage() {
         </TabsContent>
 
         {/* ───── Timeline Tab ───── */}
-        <TabsContent value="timeline" className="mt-4">
+        <TabsContent value="timeline" className="mt-4 space-y-4">
+          {/* Timeline legend */}
+          <div className="flex items-center gap-4 flex-wrap text-[10px] text-muted-foreground">
+            <span className="font-semibold uppercase tracking-wider">Event Types:</span>
+            {Object.entries(timelineTypeConfig).map(([type, cfg]) => (
+              <span key={type} className="flex items-center gap-1.5 capitalize">
+                <span className={cn("h-2 w-2 rounded-full", cfg.dot)} />
+                {type}
+              </span>
+            ))}
+          </div>
+
           <Card>
             <CardContent className="py-8">
-              <div className="relative border-l-2 border-muted pl-6 space-y-6 ml-4">
-                {enrichment && enrichment.timeline_events.length > 0 && (
-                  <>
-                    {enrichment.timeline_events
+              <div className="relative border-l-2 border-muted/50 pl-8 space-y-0 ml-4">
+                {(() => {
+                  // Collect all events, sort by date
+                  const events: { date: string; title: string; description: string; type: string; source?: string }[] = [];
+
+                  if (enrichment) {
+                    enrichment.timeline_events
                       .filter((e) => e.date)
-                      .sort((a, b) => {
-                        const da = new Date(a.date!).getTime();
-                        const db = new Date(b.date!).getTime();
-                        return da - db;
-                      })
-                      .map((evt, i) => (
-                        <TimelineEvent
-                          key={`enr-${i}`}
-                          date={evt.date!}
-                          title={evt.event}
+                      .forEach((evt) => events.push({
+                        date: evt.date!, title: evt.event, description: evt.description, type: evt.type, source: "ai"
+                      }));
+                  }
+
+                  if (item.published_at) {
+                    events.push({ date: item.published_at, title: "Published", description: `Published by ${item.source_name}`, type: "publication", source: "system" });
+                  }
+                  events.push({ date: item.ingested_at, title: "Ingested by IntelWatch", description: "First seen by TI Platform", type: "update", source: "system" });
+                  if (item.ai_summary_at) {
+                    events.push({ date: item.ai_summary_at, title: "AI Analysis Complete", description: "Automated threat intelligence analysis", type: "advisory", source: "system" });
+                  }
+                  if (item.updated_at) {
+                    events.push({ date: item.updated_at, title: "Last Updated", description: "Most recent data update", type: "update", source: "system" });
+                  }
+
+                  // Undated events
+                  const undated = enrichment?.timeline_events.filter((e) => !e.date) ?? [];
+
+                  // Sort by date
+                  events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+                  return (
+                    <>
+                      {events.map((evt, i) => (
+                        <EnhancedTimelineEvent
+                          key={`evt-${i}`}
+                          date={evt.date}
+                          title={evt.title}
                           description={evt.description}
                           type={evt.type}
+                          isLast={i === events.length - 1 && undated.length === 0}
+                          source={evt.source}
                         />
                       ))}
-                  </>
-                )}
-
-                {item.published_at && (
-                  <TimelineEvent
-                    date={item.published_at}
-                    title="Published"
-                    description={`Published by ${item.source_name}`}
-                    type="publication"
-                  />
-                )}
-                <TimelineEvent
-                  date={item.ingested_at}
-                  title="Ingested by IntelWatch"
-                  description="First seen by TI Platform"
-                  type="update"
-                />
-                {item.ai_summary_at && (
-                  <TimelineEvent
-                    date={item.ai_summary_at}
-                    title="AI Summary Generated"
-                    description="Analyzed by AI model"
-                    type="update"
-                  />
-                )}
-                <TimelineEvent
-                  date={item.updated_at ?? ""}
-                  title="Last Updated"
-                  description="Most recent update"
-                  type="update"
-                />
-
-                {enrichment && enrichment.timeline_events
-                  .filter((e) => !e.date)
-                  .map((evt, i) => (
-                    <TimelineEvent
-                      key={`nodate-${i}`}
-                      date=""
-                      title={evt.event}
-                      description={evt.description}
-                      type={evt.type}
-                    />
-                  ))}
+                      {undated.length > 0 && (
+                        <div className="pt-4 border-t border-border/20 mt-4">
+                          <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider mb-3">Undated Events</p>
+                          {undated.map((evt, i) => (
+                            <EnhancedTimelineEvent
+                              key={`undated-${i}`}
+                              date=""
+                              title={evt.event}
+                              description={evt.description}
+                              type={evt.type}
+                              isLast={i === undated.length - 1}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
 
               {enrichmentLoading && (
                 <div className="mt-4 flex items-center justify-center gap-2 text-sm text-muted-foreground">
                   <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                   Loading CVE timeline...
+                </div>
+              )}
+
+              {!enrichmentLoading && !enrichment && (
+                <div className="mt-4 text-center text-xs text-muted-foreground">
+                  <Clock className="h-6 w-6 mx-auto mb-2 opacity-30" />
+                  Timeline data is generated by AI enrichment analysis.
                 </div>
               )}
             </CardContent>
@@ -1104,6 +1209,76 @@ export default function IntelDetailPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* ───── IOCs Tab ───── */}
+        <TabsContent value="iocs" className="mt-4 space-y-4">
+          {/* IOC Stats summary */}
+          {linkedIOCs.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="rounded-lg border bg-card p-3">
+                <p className="text-[10px] text-muted-foreground">Total IOCs</p>
+                <p className="text-2xl font-bold">{linkedIOCs.length}</p>
+              </div>
+              <div className="rounded-lg border bg-card p-3">
+                <p className="text-[10px] text-muted-foreground">IOC Types</p>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {[...new Set(linkedIOCs.map(i => i.ioc_type))].map(t => (
+                    <Badge key={t} variant="secondary" className="text-[9px]">
+                      {t} ({linkedIOCs.filter(i => i.ioc_type === t).length})
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-lg border bg-card p-3">
+                <p className="text-[10px] text-muted-foreground">Countries</p>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {[...new Set(linkedIOCs.filter(i => i.country_code).map(i => i.country_code!))].slice(0, 5).map(cc => (
+                    <span key={cc} className="flex items-center gap-1 text-[10px]">
+                      <img src={`https://flagcdn.com/16x12/${cc.toLowerCase()}.png`} alt={cc} className="h-2.5" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                      {cc}
+                    </span>
+                  ))}
+                  {linkedIOCs.filter(i => i.country_code).length === 0 && <span className="text-[10px] text-muted-foreground">—</span>}
+                </div>
+              </div>
+              <div className="rounded-lg border bg-card p-3">
+                <p className="text-[10px] text-muted-foreground">With Vulnerabilities</p>
+                <p className="text-2xl font-bold text-red-400">
+                  {linkedIOCs.filter(i => i.vulns.length > 0).length}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* IOC Table */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <ShieldAlert className="h-4 w-4 text-primary" /> Linked Indicators of Compromise
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {iocsLoading ? (
+                <div className="text-center py-8 text-sm text-muted-foreground">
+                  <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                  Loading IOCs...
+                </div>
+              ) : linkedIOCs.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <ShieldAlert className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No IOCs linked to this intel item.</p>
+                  <p className="text-xs mt-1">IOCs are extracted from ingested feeds and linked to intel items automatically.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {linkedIOCs.map((ioc) => (
+                    <IOCDetailRow key={ioc.id} ioc={ioc} />
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
     </div>
   );
@@ -1128,52 +1303,310 @@ function Row({
   );
 }
 
-const timelineTypeColors: Record<string, string> = {
-  disclosure: "border-yellow-500 bg-yellow-500",
-  publication: "border-blue-500 bg-blue-500",
-  patch: "border-green-500 bg-green-500",
-  exploit: "border-red-500 bg-red-500",
-  kev: "border-red-600 bg-red-600",
-  advisory: "border-cyan-500 bg-cyan-500",
-  update: "border-primary bg-primary",
+/* ── Timeline Config & Component ───────────────────────── */
+
+const timelineTypeConfig: Record<string, { dot: string; icon: React.ReactNode; label: string; bg: string }> = {
+  disclosure: {
+    dot: "bg-yellow-500",
+    icon: <AlertTriangle className="h-3 w-3 text-yellow-400" />,
+    label: "Disclosure",
+    bg: "border-yellow-500/20 bg-yellow-500/5",
+  },
+  publication: {
+    dot: "bg-blue-500",
+    icon: <FileText className="h-3 w-3 text-blue-400" />,
+    label: "Publication",
+    bg: "border-blue-500/20 bg-blue-500/5",
+  },
+  patch: {
+    dot: "bg-green-500",
+    icon: <CheckCircle className="h-3 w-3 text-green-400" />,
+    label: "Patch",
+    bg: "border-green-500/20 bg-green-500/5",
+  },
+  exploit: {
+    dot: "bg-red-500",
+    icon: <Zap className="h-3 w-3 text-red-400" />,
+    label: "Exploit",
+    bg: "border-red-500/20 bg-red-500/5",
+  },
+  kev: {
+    dot: "bg-red-600",
+    icon: <AlertTriangle className="h-3 w-3 text-red-500" />,
+    label: "KEV",
+    bg: "border-red-600/20 bg-red-600/5",
+  },
+  advisory: {
+    dot: "bg-cyan-500",
+    icon: <BookOpen className="h-3 w-3 text-cyan-400" />,
+    label: "Advisory",
+    bg: "border-cyan-500/20 bg-cyan-500/5",
+  },
+  update: {
+    dot: "bg-primary",
+    icon: <Clock className="h-3 w-3 text-primary" />,
+    label: "Update",
+    bg: "border-border/30 bg-muted/5",
+  },
 };
 
-function TimelineEvent({
+function EnhancedTimelineEvent({
   date,
   title,
   description,
   type = "update",
+  isLast = false,
+  source,
 }: {
   date: string;
   title: string;
   description: string;
   type?: string;
+  isLast?: boolean;
+  source?: string;
 }) {
-  const dotColor = timelineTypeColors[type] || "border-primary bg-background";
-  const isFilled = type !== "update";
+  const cfg = timelineTypeConfig[type] || timelineTypeConfig.update;
+  const relDate = date ? formatDate(date, { relative: true }) : "";
+  const absDate = date ? formatDate(date) : "";
 
   return (
-    <div className="relative">
-      <div
-        className={cn(
-          "absolute -left-[29px] top-1 h-3 w-3 rounded-full border-2",
-          isFilled ? dotColor : "border-primary bg-background"
-        )}
-      />
-      <div>
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-medium">{title}</p>
-          {type && type !== "update" && (
-            <Badge variant="outline" className="text-[8px] capitalize px-1 py-0">
-              {type}
-            </Badge>
+    <div className={cn("relative pb-6", isLast && "pb-0")}>
+      {/* Dot */}
+      <div className={cn("absolute -left-[33px] top-3 h-3.5 w-3.5 rounded-full ring-4 ring-background", cfg.dot)} />
+      {/* Card */}
+      <div className={cn("rounded-lg border p-3 ml-1", cfg.bg)}>
+        <div className="flex items-center gap-2 flex-wrap">
+          {cfg.icon}
+          <span className="text-sm font-semibold">{title}</span>
+          <Badge variant="outline" className={cn("text-[8px] capitalize px-1.5 py-0 h-4", type !== "update" && "font-medium")}>
+            {cfg.label}
+          </Badge>
+          {source === "ai" && (
+            <Sparkles className="h-3 w-3 text-purple-400 ml-auto" title="AI-generated" />
           )}
         </div>
-        <p className="text-xs text-muted-foreground">{description}</p>
+        <p className="text-xs text-muted-foreground mt-1">{description}</p>
         {date && (
-          <p className="text-xs text-muted-foreground mt-0.5">{formatDate(date)}</p>
+          <div className="flex items-center gap-2 mt-1.5 text-[10px] text-muted-foreground">
+            <Clock className="h-2.5 w-2.5" />
+            <span>{absDate}</span>
+            <span className="text-muted-foreground/50">({relDate})</span>
+          </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ── IOC Detail Row Component ──────────────────────────── */
+
+const IOC_TYPE_COLORS: Record<string, string> = {
+  ip: "#3b82f6",
+  domain: "#a855f7",
+  url: "#f97316",
+  hash_md5: "#ef4444",
+  hash_sha1: "#dc2626",
+  hash_sha256: "#b91c1c",
+  email: "#ec4899",
+  cve: "#22c55e",
+  file: "#6366f1",
+  other: "#6b7280",
+};
+
+function IOCDetailRow({ ioc }: { ioc: api.IntelLinkedIOC }) {
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const riskColor =
+    ioc.risk_score >= 80 ? "text-red-400" :
+    ioc.risk_score >= 60 ? "text-orange-400" :
+    ioc.risk_score >= 40 ? "text-yellow-400" : "text-green-400";
+  const riskBgClass =
+    ioc.risk_score >= 80 ? "bg-red-500/10" :
+    ioc.risk_score >= 60 ? "bg-orange-500/10" :
+    ioc.risk_score >= 40 ? "bg-yellow-500/10" : "bg-green-500/10";
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(ioc.value);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  const hasEnrichment = ioc.ports.length > 0 || ioc.vulns.length > 0 || ioc.cpes.length > 0 || ioc.country_code || ioc.epss_score != null;
+
+  return (
+    <div className={cn("rounded-lg border transition-colors", expanded ? "border-primary/30 bg-primary/[0.02]" : "border-border/30 hover:border-border/50")}>
+      {/* Main row */}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-3 px-3 py-2.5 text-left"
+      >
+        {/* Risk score */}
+        <div className={cn("flex items-center justify-center h-9 w-11 rounded-md text-xs font-bold shrink-0", riskBgClass, riskColor)}>
+          {ioc.risk_score}
+        </div>
+
+        {/* IOC value & type */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <Badge
+              variant="secondary"
+              className="text-[9px] px-1.5 py-0 h-4 shrink-0"
+              style={{
+                background: (IOC_TYPE_COLORS[ioc.ioc_type] || "#6b7280") + "18",
+                color: IOC_TYPE_COLORS[ioc.ioc_type] || "#6b7280",
+              }}
+            >
+              {ioc.ioc_type}
+            </Badge>
+            <span className="font-mono text-[11px] truncate">{ioc.value}</span>
+          </div>
+          <div className="flex items-center gap-3 mt-0.5 text-[10px] text-muted-foreground">
+            {ioc.source_names.length > 0 && <span>{ioc.source_names.join(", ")}</span>}
+            <span>×{ioc.sighting_count} sightings</span>
+            {ioc.country_code && (
+              <span className="flex items-center gap-1">
+                <img src={`https://flagcdn.com/16x12/${ioc.country_code.toLowerCase()}.png`} alt={ioc.country_code} className="h-2.5" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                {ioc.country}
+              </span>
+            )}
+            {ioc.vulns.length > 0 && (
+              <span className="text-red-400 font-medium">{ioc.vulns.length} CVE{ioc.vulns.length > 1 ? "s" : ""}</span>
+            )}
+            {ioc.ports.length > 0 && (
+              <span>{ioc.ports.length} port{ioc.ports.length > 1 ? "s" : ""}</span>
+            )}
+          </div>
+        </div>
+
+        {/* Actions */}
+        <button onClick={(e) => { e.stopPropagation(); handleCopy(); }} className="p-1 rounded hover:bg-muted/40" title="Copy IOC value">
+          {copied ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5 text-muted-foreground/50" />}
+        </button>
+        <ChevronRight className={cn("h-4 w-4 text-muted-foreground/40 transition-transform", expanded && "rotate-90")} />
+      </button>
+
+      {/* Expanded detail */}
+      {expanded && hasEnrichment && (
+        <div className="px-3 pb-3 pt-1 space-y-3 border-t border-border/20">
+          {/* Location & ASN */}
+          {ioc.country_code && (
+            <div className="rounded-md bg-muted/10 border border-border/20 p-2.5 space-y-1">
+              <p className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1">
+                <Globe className="h-3 w-3" /> Geolocation & Network
+              </p>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-muted-foreground">Country: </span>
+                  <span className="font-medium">{ioc.country} ({ioc.country_code})</span>
+                </div>
+                {ioc.asn && (
+                  <div>
+                    <span className="text-muted-foreground">ASN: </span>
+                    <span className="font-medium">{ioc.asn}</span>
+                  </div>
+                )}
+                {ioc.as_name && (
+                  <div className="col-span-2">
+                    <span className="text-muted-foreground">Network: </span>
+                    <span className="font-medium">{ioc.as_name}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* InternetDB: Ports */}
+          {ioc.ports.length > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold text-muted-foreground mb-1 flex items-center gap-1">
+                <Network className="h-3 w-3" /> Open Ports ({ioc.ports.length})
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {ioc.ports.sort((a, b) => a - b).map(p => (
+                  <Badge key={p} variant="outline" className="text-[9px] font-mono">{p}</Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* InternetDB: Vulnerabilities */}
+          {ioc.vulns.length > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold text-red-400 mb-1 flex items-center gap-1">
+                <Bug className="h-3 w-3" /> Vulnerabilities ({ioc.vulns.length})
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {ioc.vulns.map(v => (
+                  <a key={v} href={`https://nvd.nist.gov/vuln/detail/${v}`} target="_blank" rel="noopener noreferrer">
+                    <Badge variant="destructive" className="text-[9px] hover:opacity-80">{v}</Badge>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* InternetDB: CPEs */}
+          {ioc.cpes.length > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold text-muted-foreground mb-1 flex items-center gap-1">
+                <Server className="h-3 w-3" /> Technologies ({ioc.cpes.length})
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {ioc.cpes.map((cpe, i) => {
+                  const parts = cpe.split(":");
+                  const display = parts.length >= 5 ? `${parts[3]} ${parts[4]}` : cpe;
+                  return (
+                    <Badge key={i} variant="secondary" className="text-[9px]">{display}</Badge>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* InternetDB: Hostnames */}
+          {ioc.hostnames.length > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold text-muted-foreground mb-1">Hostnames</p>
+              <div className="text-[11px] text-muted-foreground font-mono space-y-0.5">
+                {ioc.hostnames.map(h => <div key={h}>{h}</div>)}
+              </div>
+            </div>
+          )}
+
+          {/* EPSS Score */}
+          {ioc.epss_score != null && (
+            <div className="rounded-md bg-purple-500/5 border border-purple-500/20 p-2.5">
+              <p className="text-[10px] font-semibold text-purple-300 mb-1 flex items-center gap-1">
+                <BarChart3 className="h-3 w-3" /> EPSS Score
+              </p>
+              <div className="flex items-center gap-4 text-xs">
+                <div>
+                  <span className="text-muted-foreground">Probability: </span>
+                  <span className="font-bold text-purple-400">{(ioc.epss_score * 100).toFixed(2)}%</span>
+                </div>
+                {ioc.epss_percentile != null && (
+                  <div>
+                    <span className="text-muted-foreground">Percentile: </span>
+                    <span className="font-bold">{(ioc.epss_percentile * 100).toFixed(1)}%</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Tags */}
+          {(ioc.tags.length > 0 || ioc.internetdb_tags.length > 0) && (
+            <div className="flex flex-wrap gap-1">
+              {ioc.tags.map(t => (
+                <Badge key={t} variant="outline" className="text-[9px]">{t}</Badge>
+              ))}
+              {ioc.internetdb_tags.map(t => (
+                <Badge key={`idb-${t}`} variant="secondary" className="text-[9px]">{t}</Badge>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

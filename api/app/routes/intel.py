@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import select, or_, and_, cast
+from sqlalchemy import select, or_, and_, cast, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy import Text as SAText
@@ -18,7 +18,7 @@ from app.core.redis import cache_key, get_cached, set_cached
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.middleware.auth import get_current_user, require_viewer
-from app.models.models import IntelItem, User
+from app.models.models import IntelItem, User, IOC, IntelIOCLink
 from app.schemas import IntelItemListResponse, IntelItemResponse
 from app.services import database as db_service
 from app.services.ai import chat_completion
@@ -339,3 +339,64 @@ async def get_related_intel(
 
     await set_cached(ck, related, ttl=300)
     return related
+
+
+# ─── Linked IOCs ─────────────────────────────────────────
+
+@router.get("/{item_id}/iocs")
+async def get_intel_iocs(
+    item_id: uuid.UUID,
+    user: Annotated[User, Depends(require_viewer)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    limit: int = Query(50, ge=1, le=200),
+):
+    """Get IOCs linked to this intel item."""
+    ck = cache_key("intel_iocs", str(item_id), limit)
+    cached = await get_cached(ck)
+    if cached:
+        return cached
+
+    query = (
+        select(IOC, IntelIOCLink.relationship)
+        .join(IntelIOCLink, IOC.id == IntelIOCLink.ioc_id)
+        .where(IntelIOCLink.intel_id == item_id)
+        .order_by(desc(IOC.risk_score), desc(IOC.last_seen))
+        .limit(limit)
+    )
+    rows = (await db.execute(query)).all()
+
+    iocs = []
+    for r in rows:
+        ioc = r.IOC
+        internetdb = (ioc.context or {}).get("internetdb", {})
+        epss = (ioc.context or {}).get("epss", {})
+        iocs.append({
+            "id": str(ioc.id),
+            "value": ioc.value,
+            "ioc_type": ioc.ioc_type,
+            "risk_score": ioc.risk_score,
+            "first_seen": ioc.first_seen.isoformat() if ioc.first_seen else None,
+            "last_seen": ioc.last_seen.isoformat() if ioc.last_seen else None,
+            "sighting_count": ioc.sighting_count,
+            "tags": ioc.tags or [],
+            "geo": ioc.geo or [],
+            "source_names": ioc.source_names or [],
+            "relationship": r.relationship,
+            # IPinfo
+            "country_code": ioc.country_code,
+            "country": ioc.country,
+            "asn": ioc.asn,
+            "as_name": ioc.as_name,
+            # InternetDB
+            "ports": internetdb.get("ports", []),
+            "vulns": internetdb.get("vulns", []),
+            "cpes": internetdb.get("cpes", []),
+            "hostnames": internetdb.get("hostnames", []),
+            "internetdb_tags": internetdb.get("tags", []),
+            # EPSS
+            "epss_score": epss.get("score"),
+            "epss_percentile": epss.get("percentile"),
+        })
+
+    await set_cached(ck, iocs, ttl=120)
+    return iocs

@@ -915,6 +915,143 @@ export default function IOCDatabasePage() {
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {/* ── Stored Context: IPinfo / InternetDB / EPSS ─── */}
+              {(() => {
+                const idb = enrichTarget.context?.internetdb as Record<string, any> | undefined;
+                const epss = enrichTarget.context?.epss as Record<string, any> | undefined;
+                const hasIdb = idb && (idb.ports?.length > 0 || idb.vulns?.length > 0 || idb.cpes?.length > 0 || idb.hostnames?.length > 0 || idb.tags?.length > 0);
+                const hasEpss = epss && epss.score != null;
+                const hasGeo = enrichTarget.country_code;
+
+                if (!hasGeo && !hasIdb && !hasEpss) return null;
+                return (
+                  <>
+                    {/* Geolocation & Network (IPinfo) */}
+                    {hasGeo && (
+                      <Card className="border-cyan-500/10 bg-gradient-to-r from-cyan-500/[0.03] to-transparent">
+                        <CardContent className="pt-3 pb-2 px-3">
+                          <div className="flex items-center gap-1.5 mb-2">
+                            <Globe className="h-3.5 w-3.5 text-cyan-400" />
+                            <span className="text-[11px] font-semibold">Geolocation & Network</span>
+                            <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 ml-auto border-cyan-500/20 text-cyan-300/70">IPinfo</Badge>
+                          </div>
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
+                            <DetailRow label="Country" value={`${enrichTarget.country} (${enrichTarget.country_code})`} />
+                            {enrichTarget.continent && <DetailRow label="Continent" value={enrichTarget.continent} />}
+                            {enrichTarget.asn && <DetailRow label="ASN" value={enrichTarget.asn} />}
+                            {enrichTarget.as_name && <DetailRow label="Network" value={enrichTarget.as_name} />}
+                            {enrichTarget.as_domain && <DetailRow label="AS Domain" value={enrichTarget.as_domain} />}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* InternetDB */}
+                    {hasIdb && (
+                      <Card className="border-orange-500/10 bg-gradient-to-r from-orange-500/[0.03] to-transparent">
+                        <CardContent className="pt-3 pb-2 px-3 space-y-2.5">
+                          <div className="flex items-center gap-1.5">
+                            <Server className="h-3.5 w-3.5 text-orange-400" />
+                            <span className="text-[11px] font-semibold">InternetDB</span>
+                            <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 ml-auto border-orange-500/20 text-orange-300/70">Shodan</Badge>
+                          </div>
+
+                          {idb!.ports?.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-medium text-muted-foreground mb-1">Open Ports ({idb!.ports.length})</p>
+                              <div className="flex flex-wrap gap-1">
+                                {(idb!.ports as number[]).sort((a, b) => a - b).map((p: number) => (
+                                  <Badge key={p} variant="outline" className="text-[9px] font-mono">{p}</Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {idb!.vulns?.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-medium text-red-400 mb-1">Vulnerabilities ({idb!.vulns.length})</p>
+                              <div className="flex flex-wrap gap-1">
+                                {(idb!.vulns as string[]).map((v: string) => (
+                                  <a key={v} href={`https://nvd.nist.gov/vuln/detail/${v}`} target="_blank" rel="noopener noreferrer">
+                                    <Badge variant="destructive" className="text-[9px] hover:opacity-80 cursor-pointer">{v}</Badge>
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {idb!.cpes?.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-medium text-muted-foreground mb-1">Technologies ({idb!.cpes.length})</p>
+                              <div className="flex flex-wrap gap-1">
+                                {(idb!.cpes as string[]).map((cpe: string, i: number) => {
+                                  const parts = cpe.split(":");
+                                  const display = parts.length >= 5 ? `${parts[3]} ${parts[4]}` : cpe;
+                                  return <Badge key={i} variant="secondary" className="text-[9px]">{display}</Badge>;
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {idb!.hostnames?.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-medium text-muted-foreground mb-1">Hostnames</p>
+                              <div className="text-[11px] text-muted-foreground font-mono space-y-0.5">
+                                {(idb!.hostnames as string[]).map((h: string) => <div key={h}>{h}</div>)}
+                              </div>
+                            </div>
+                          )}
+
+                          {idb!.tags?.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {(idb!.tags as string[]).map((t: string) => (
+                                <Badge key={t} variant="secondary" className="text-[9px]">{t}</Badge>
+                              ))}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* EPSS Score */}
+                    {hasEpss && (
+                      <Card className="border-purple-500/10 bg-gradient-to-r from-purple-500/[0.03] to-transparent">
+                        <CardContent className="pt-3 pb-2 px-3">
+                          <div className="flex items-center gap-1.5 mb-2">
+                            <AlertTriangle className="h-3.5 w-3.5 text-purple-400" />
+                            <span className="text-[11px] font-semibold">EPSS Score</span>
+                            <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 ml-auto border-purple-500/20 text-purple-300/70">FIRST.org</Badge>
+                          </div>
+                          <div className="space-y-2">
+                            <div>
+                              <div className="flex justify-between text-[10px] mb-1">
+                                <span className="text-muted-foreground">Exploitation Probability</span>
+                                <span className="font-bold text-purple-400">{((epss!.score as number) * 100).toFixed(2)}%</span>
+                              </div>
+                              <div className="h-2 rounded-full bg-muted/40 overflow-hidden">
+                                <div
+                                  className="h-full rounded-full bg-purple-500 transition-all"
+                                  style={{ width: `${Math.min((epss!.score as number) * 100, 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                            {epss!.percentile != null && (
+                              <div className="flex justify-between text-[10px]">
+                                <span className="text-muted-foreground">Percentile</span>
+                                <span className="font-semibold">{((epss!.percentile as number) * 100).toFixed(1)}%</span>
+                              </div>
+                            )}
+                            {epss!.date && (
+                              <div className="text-[9px] text-muted-foreground/50">Updated: {epss!.date}</div>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </>
+                );
+              })()}
+
               {enrichLoading && (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-6 w-6 animate-spin text-primary" />

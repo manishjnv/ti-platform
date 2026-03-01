@@ -246,6 +246,35 @@ export async function getIntelRelated(itemId: string, limit = 20) {
   return fetcher<import("@/types").RelatedIntelItemEnriched[]>(`/intel/${itemId}/related?limit=${limit}`);
 }
 
+export interface IntelLinkedIOC {
+  id: string;
+  value: string;
+  ioc_type: string;
+  risk_score: number;
+  first_seen: string | null;
+  last_seen: string | null;
+  sighting_count: number;
+  tags: string[];
+  geo: string[];
+  source_names: string[];
+  relationship: string;
+  country_code: string | null;
+  country: string | null;
+  asn: string | null;
+  as_name: string | null;
+  ports: number[];
+  vulns: string[];
+  cpes: string[];
+  hostnames: string[];
+  internetdb_tags: string[];
+  epss_score: number | null;
+  epss_percentile: number | null;
+}
+
+export async function getIntelIOCs(itemId: string, limit = 50) {
+  return fetcher<IntelLinkedIOC[]>(`/intel/${itemId}/iocs?limit=${limit}`);
+}
+
 export async function getGraphStats() {
   return fetcher<import("@/types").GraphStatsResponse>("/graph/stats");
 }
