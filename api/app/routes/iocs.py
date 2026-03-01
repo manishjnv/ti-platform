@@ -272,14 +272,12 @@ async def ioc_stats(
     continent_rows = (await db.execute(continent_q)).all()
     continent_dist = [{"name": r.continent, "code": r.continent_code, "count": r.cnt} for r in continent_rows]
 
-    # Enrichment coverage — ioc_type is a PG enum (asset_type), need explicit cast
-    ip_cast = text("'ip'::asset_type")
+    # Enrichment coverage — ioc_type is a PG enum (asset_type), use raw SQL
     enriched_count = (await db.execute(
-        select(func.count()).select_from(IOC)
-        .where(IOC.ioc_type == ip_cast, IOC.enriched_at.isnot(None))
+        text("SELECT count(*) FROM iocs WHERE ioc_type = 'ip' AND enriched_at IS NOT NULL")
     )).scalar() or 0
     ip_total = (await db.execute(
-        select(func.count()).select_from(IOC).where(IOC.ioc_type == ip_cast)
+        text("SELECT count(*) FROM iocs WHERE ioc_type = 'ip'")
     )).scalar() or 0
 
     return {
