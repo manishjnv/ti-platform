@@ -575,8 +575,8 @@ export function GraphExplorer({
                 >
                   {node.label.length > 32 ? node.label.slice(0, 30) + "…" : node.label}
                 </text>
-                {/* Risk score badge */}
-                {node.risk_score != null && node.risk_score > 0 && (
+                {/* Risk score badge – only on hover / selected */}
+                {isHighlighted && node.risk_score != null && node.risk_score > 0 && (
                   <g transform={`translate(${r - 1},${-r - 2})`}>
                     <rect
                       width={24}
