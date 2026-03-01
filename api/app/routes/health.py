@@ -109,15 +109,12 @@ async def status_bar():
         from app.core.database import engine
         from app.models.models import IntelItem, FeedSyncState
         from datetime import timedelta
-        import logging
-        logger = logging.getLogger(__name__)
 
         async with engine.connect() as conn:
             # Total intel
             total_intel = (await conn.execute(
                 select(func.count()).select_from(IntelItem)
             )).scalar() or 0
-            logger.info(f"status_bar: total_intel={total_intel}")
 
             # Last 24h
             day_ago = datetime.now(timezone.utc) - timedelta(days=1)
@@ -126,40 +123,28 @@ async def status_bar():
                     IntelItem.ingested_at >= day_ago
                 )
             )).scalar() or 0
-            logger.info(f"status_bar: intel_24h={intel_24h}")
 
-            # Critical / high counts
+            # Critical / high counts (use raw SQL — severity is a custom PG enum)
             critical_count = (await conn.execute(
-                select(func.count()).select_from(IntelItem).where(
-                    IntelItem.severity == "critical"
-                )
+                text("SELECT count(*) FROM intel_items WHERE severity = 'critical'")
             )).scalar() or 0
-            logger.info(f"status_bar: critical_count={critical_count}")
             high_count = (await conn.execute(
-                select(func.count()).select_from(IntelItem).where(
-                    IntelItem.severity == "high"
-                )
+                text("SELECT count(*) FROM intel_items WHERE severity = 'high'")
             )).scalar() or 0
-            logger.info(f"status_bar: high_count={high_count}")
 
             # Feed stats
-            feeds_rows = (await conn.execute(
-                select(
-                    func.count().label("total"),
-                    func.count().filter(
-                        FeedSyncState.status.in_(["success", "running"])
-                    ).label("active"),
-                    func.max(FeedSyncState.last_success).label("last_success"),
-                ).select_from(FeedSyncState)
-            )).one()
-            total_feeds = feeds_rows.total or 0
-            active_feeds = feeds_rows.active or 0
-            if feeds_rows.last_success:
-                last_feed_at = feeds_rows.last_success.isoformat()
-            logger.info(f"status_bar: total_feeds={total_feeds}, active_feeds={active_feeds}, last_feed_at={last_feed_at}")
-    except Exception as e:
-        import traceback
-        logging.getLogger(__name__).error(f"status_bar stats error: {e}\n{traceback.format_exc()}")
+            feeds_row = (await conn.execute(text(
+                "SELECT count(*) AS total,"
+                " count(*) FILTER (WHERE status IN ('success','running')) AS active,"
+                " max(last_success) AS last_success"
+                " FROM feed_sync_state"
+            ))).one()
+            total_feeds = feeds_row.total or 0
+            active_feeds = feeds_row.active or 0
+            if feeds_row.last_success:
+                last_feed_at = feeds_row.last_success.isoformat()
+    except Exception:
+        pass
 
 
     payload = StatusBarResponse(
