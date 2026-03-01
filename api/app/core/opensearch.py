@@ -71,3 +71,24 @@ def delete_index() -> None:
     """Delete the index (for testing/reset)."""
     if opensearch_client.indices.exists(index=INDEX_NAME):
         opensearch_client.indices.delete(index=INDEX_NAME)
+
+
+def rebuild_index() -> dict:
+    """Delete and recreate the index with the proper mapping from the mapping file.
+
+    This fixes the mapping mismatch where keyword fields were auto-detected as text.
+    After calling this, all data must be re-indexed from PostgreSQL.
+    """
+    existed = opensearch_client.indices.exists(index=INDEX_NAME)
+    if existed:
+        opensearch_client.indices.delete(index=INDEX_NAME)
+
+    mapping_path = Path(__file__).resolve().parents[3] / "opensearch" / "intel-items-mapping.json"
+    if mapping_path.exists():
+        with open(mapping_path) as f:
+            body = json.load(f)
+    else:
+        raise FileNotFoundError(f"Mapping file not found: {mapping_path}")
+
+    opensearch_client.indices.create(index=INDEX_NAME, body=body)
+    return {"status": "rebuilt", "index": INDEX_NAME, "previously_existed": existed}

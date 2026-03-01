@@ -115,25 +115,38 @@ def _build_query(
     filters = []
 
     # Main query — use match on detected type or multi_match
+    # NOTE: live index has keyword fields mapped as text + .keyword sub-field,
+    # so term queries must target the .keyword sub-field for exact matches.
     if detected_type == "cve":
-        must.append({"term": {"cve_ids": query.upper()}})
+        must.append({
+            "bool": {
+                "should": [
+                    {"term": {"cve_ids.keyword": query.upper()}},
+                    {"match_phrase": {"title": query.upper()}},
+                    {"match_phrase": {"description": query.upper()}},
+                ],
+                "minimum_should_match": 1,
+            }
+        })
     elif detected_type == "ip":
         must.append({
             "bool": {
                 "should": [
-                    {"term": {"source_ref": query}},
-                    {"match": {"title": query}},
-                    {"match": {"description": query}},
-                ]
+                    {"term": {"source_ref.keyword": query}},
+                    {"match_phrase": {"title": query}},
+                    {"match_phrase": {"description": query}},
+                ],
+                "minimum_should_match": 1,
             }
         })
     elif detected_type in ("hash_md5", "hash_sha1", "hash_sha256"):
         must.append({
             "bool": {
                 "should": [
-                    {"term": {"source_ref": query.lower()}},
-                    {"match": {"description": query}},
-                ]
+                    {"term": {"source_ref.keyword": query.lower()}},
+                    {"match_phrase": {"description": query}},
+                ],
+                "minimum_should_match": 1,
             }
         })
     else:
@@ -144,23 +157,23 @@ def _build_query(
                     "title^3",
                     "summary^2",
                     "description",
-                    "cve_ids^4",
-                    "tags^2",
-                    "source_ref",
-                    "affected_products",
+                    "cve_ids.keyword^4",
+                    "tags.keyword^2",
+                    "source_ref.keyword",
+                    "affected_products.keyword",
                 ],
                 "type": "best_fields",
                 "fuzziness": "AUTO",
             }
         })
 
-    # Filters
+    # Filters — use .keyword sub-field for exact match on text-mapped fields
     if feed_type:
-        filters.append({"term": {"feed_type": feed_type}})
+        filters.append({"term": {"feed_type.keyword": feed_type}})
     if severity:
-        filters.append({"term": {"severity": severity}})
+        filters.append({"term": {"severity.keyword": severity}})
     if asset_type:
-        filters.append({"term": {"asset_type": asset_type}})
+        filters.append({"term": {"asset_type.keyword": asset_type}})
 
     # Date range
     if date_from or date_to:

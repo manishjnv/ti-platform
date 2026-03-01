@@ -232,3 +232,99 @@ async def get_setup_status(
         "checklist": checklist,
         "ready": all(c["status"] in ("configured", "optional") for c in checklist),
     }
+
+
+@router.post("/admin/reindex")
+async def reindex_opensearch(
+    user: Annotated[User, Depends(require_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Rebuild the OpenSearch index with correct mapping and re-index all intel items.
+
+    Fixes mapping mismatches where keyword fields were auto-detected as text.
+    This operation may take a few minutes for large datasets.
+    """
+    import math
+    from sqlalchemy import select, func
+    from app.core.opensearch import rebuild_index, bulk_index_items
+    from app.core.redis import invalidate_pattern
+    from app.models.models import IntelItem
+
+    # 1. Rebuild index with proper mapping
+    rebuild_result = rebuild_index()
+
+    # 2. Re-index all items from PostgreSQL in batches
+    total = (await db.execute(select(func.count()).select_from(IntelItem))).scalar() or 0
+    batch_size = 500
+    pages = max(1, math.ceil(total / batch_size))
+    indexed = 0
+    errors = 0
+
+    for page in range(pages):
+        rows = (await db.execute(
+            select(IntelItem)
+            .order_by(IntelItem.ingested_at.asc())
+            .offset(page * batch_size)
+            .limit(batch_size)
+        )).scalars().all()
+
+        if not rows:
+            break
+
+        docs = []
+        for item in rows:
+            doc = {
+                "id": str(item.id),
+                "title": item.title,
+                "summary": item.summary or "",
+                "description": item.description or "",
+                "ai_summary": item.ai_summary or "",
+                "published_at": item.published_at.isoformat() if item.published_at else None,
+                "ingested_at": item.ingested_at.isoformat() if item.ingested_at else None,
+                "severity": item.severity,
+                "risk_score": item.risk_score,
+                "confidence": item.confidence,
+                "source_name": item.source_name,
+                "source_url": item.source_url or "",
+                "source_ref": item.source_ref or "",
+                "source_reliability": item.source_reliability,
+                "feed_type": item.feed_type,
+                "asset_type": item.asset_type,
+                "tlp": item.tlp or "white",
+                "tags": list(item.tags) if item.tags else [],
+                "geo": list(item.geo) if item.geo else [],
+                "industries": list(item.industries) if item.industries else [],
+                "cve_ids": list(item.cve_ids) if item.cve_ids else [],
+                "affected_products": list(item.affected_products) if item.affected_products else [],
+                "is_kev": item.is_kev or False,
+                "source_hash": item.source_hash or "",
+            }
+            docs.append(doc)
+
+        result = bulk_index_items(docs)
+        indexed += result.get("indexed", 0)
+        if result.get("errors"):
+            errors += 1
+
+    await log_audit(
+        db,
+        user_id=str(user.id),
+        action="opensearch_reindex",
+        details={
+            "total_items": total,
+            "indexed": indexed,
+            "batch_errors": errors,
+        },
+    )
+
+    # Flush all search caches so new mapping takes effect
+    await invalidate_pattern("iw:search:*")
+    await invalidate_pattern("iw:dashboard:*")
+    await invalidate_pattern("iw:status_bar*")
+
+    return {
+        "rebuild": rebuild_result,
+        "total_items": total,
+        "indexed": indexed,
+        "batch_errors": errors,
+    }
