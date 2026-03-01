@@ -8,8 +8,9 @@ from fastapi import APIRouter, Depends
 
 from app.middleware.auth import require_viewer
 from app.models.models import User
-from app.schemas import SearchRequest, SearchResponse
+from app.schemas import SearchRequest, SearchResponse, LiveLookupRequest, LiveLookupResponse
 from app.services.search import global_search, search_aggregations
+from app.services.live_lookup import live_lookup
 
 router = APIRouter(prefix="/search", tags=["search"])
 
@@ -41,3 +42,13 @@ async def search_stats(
 ):
     """Aggregation stats for search UI (type distribution, severity, sources)."""
     return await search_aggregations()
+
+
+@router.post("/live-lookup", response_model=LiveLookupResponse)
+async def search_live_lookup(
+    request: LiveLookupRequest,
+    user: Annotated[User, Depends(require_viewer)],
+):
+    """Live internet lookup — queries external APIs (NVD, VT, Shodan, AbuseIPDB, OTX, URLhaus, web)
+    based on auto-detected IOC type. Returns structured results with optional AI summary."""
+    return await live_lookup(request.query)

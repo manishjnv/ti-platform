@@ -103,6 +103,34 @@ export async function getSearchStats(): Promise<SearchAggStats> {
   return fetcher<SearchAggStats>("/search/stats");
 }
 
+export interface LiveLookupResult {
+  source: string;
+  type: string;
+  title: string;
+  description: string;
+  severity: string;
+  risk_score: number;
+  confidence: number;
+  [key: string]: unknown;
+}
+
+export interface LiveLookupResponse {
+  query: string;
+  detected_type: string | null;
+  timestamp: string;
+  sources_queried: string[];
+  results: LiveLookupResult[];
+  ai_summary: string | null;
+  errors: string[];
+}
+
+export async function liveLookup(query: string): Promise<LiveLookupResponse> {
+  return fetcher<LiveLookupResponse>("/search/live-lookup", {
+    method: "POST",
+    body: JSON.stringify({ query }),
+  });
+}
+
 // ─── Dashboard ──────────────────────────────────────────
 export async function getDashboard() {
   return fetcher<import("@/types").DashboardData>("/dashboard");

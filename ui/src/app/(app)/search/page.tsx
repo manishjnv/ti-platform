@@ -12,8 +12,11 @@ import type { SearchFilters, IntelItem } from "@/types";
 import {
   getSearchStats,
   enrichIOC,
+  liveLookup,
   type SearchAggStats,
   type IOCEnrichmentResult,
+  type LiveLookupResult,
+  type LiveLookupResponse,
 } from "@/lib/api";
 import {
   Search as SearchIcon,
@@ -41,6 +44,9 @@ import {
   Filter,
   BarChart3,
   Eye,
+  Wifi,
+  Sparkles,
+  Radio,
 } from "lucide-react";
 
 /* ── Constants ────────────────────────────────────────── */
@@ -135,6 +141,10 @@ export default function SearchPage() {
   const [enrichData, setEnrichData] = useState<IOCEnrichmentResult | null>(null);
   const [enrichLoading, setEnrichLoading] = useState(false);
 
+  // Live internet lookup
+  const [liveResult, setLiveResult] = useState<LiveLookupResponse | null>(null);
+  const [liveLoading, setLiveLoading] = useState(false);
+
   // Debounced search
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -226,10 +236,26 @@ export default function SearchPage() {
     }
   };
 
+  const handleLiveLookup = async () => {
+    const q = (debouncedQuery || query).trim();
+    if (!q) return;
+    setLiveLoading(true);
+    setLiveResult(null);
+    try {
+      const data = await liveLookup(q);
+      setLiveResult(data);
+    } catch {
+      setLiveResult({ query: q, detected_type: null, timestamp: new Date().toISOString(), sources_queried: [], results: [], ai_summary: null, errors: ["Live lookup failed. Try again later."] });
+    } finally {
+      setLiveLoading(false);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       setDebouncedQuery(query);
       doSearch(1, query);
+      setLiveResult(null);
     }
   };
 
@@ -501,6 +527,22 @@ export default function SearchPage() {
                 </Badge>
               )}
             </div>
+            {searchResult.results.length > 0 && (
+              <Button
+                onClick={handleLiveLookup}
+                disabled={liveLoading}
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-[11px] h-7"
+              >
+                {liveLoading ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Wifi className="h-3 w-3" />
+                )}
+                Search Internet
+              </Button>
+            )}
           </div>
 
           {/* Results Table */}
@@ -515,10 +557,23 @@ export default function SearchPage() {
             <Card>
               <CardContent className="py-12 text-center text-muted-foreground">
                 <SearchIcon className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                <p className="text-lg">No results found</p>
-                <p className="text-sm">
-                  Try a different query, adjust filters, or check your IOC format.
+                <p className="text-lg">No results in local database</p>
+                <p className="text-sm mb-4">
+                  This IOC wasn&apos;t found in ingested feeds. Search the internet for live intelligence.
                 </p>
+                <Button
+                  onClick={handleLiveLookup}
+                  disabled={liveLoading}
+                  className="gap-2"
+                  variant="outline"
+                >
+                  {liveLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Wifi className="h-4 w-4" />
+                  )}
+                  Search Internet (NVD, VT, Shodan, AbuseIPDB, OTX…)
+                </Button>
               </CardContent>
             </Card>
           ) : (
@@ -700,8 +755,224 @@ export default function SearchPage() {
         </div>
       )}
 
+      {/* Live Internet Lookup Results */}
+      {liveResult && !liveLoading && (
+        <div className="space-y-3">
+          {/* Live results header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Radio className="h-4 w-4 text-green-400" />
+              <span className="text-sm font-semibold">Internet Intelligence</span>
+              {liveResult.detected_type && (
+                <Badge variant="secondary" className="text-[10px]">
+                  {liveResult.detected_type}
+                </Badge>
+              )}
+              <span className="text-[10px] text-muted-foreground">
+                {liveResult.results.length} result{liveResult.results.length !== 1 ? "s" : ""} from{" "}
+                {liveResult.sources_queried.length} source{liveResult.sources_queried.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+            <button
+              onClick={() => setLiveResult(null)}
+              className="p-1 rounded hover:bg-muted/40 transition-colors"
+              title="Dismiss live results"
+            >
+              <X className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
+          </div>
+
+          {/* Sources queried */}
+          <div className="flex flex-wrap gap-1.5">
+            {liveResult.sources_queried.map((src) => (
+              <Badge key={src} variant="outline" className="text-[9px] gap-1">
+                <Globe className="h-2.5 w-2.5" />
+                {src}
+              </Badge>
+            ))}
+          </div>
+
+          {/* Errors */}
+          {liveResult.errors.length > 0 && (
+            <div className="space-y-1">
+              {liveResult.errors.map((err, i) => (
+                <div key={i} className="text-xs text-yellow-400 bg-yellow-400/10 rounded px-3 py-1.5 flex items-center gap-2">
+                  <AlertCircle className="h-3 w-3 shrink-0" />
+                  {err}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* AI Summary */}
+          {liveResult.ai_summary && (
+            <Card className="border-purple-500/30 bg-purple-500/5">
+              <CardContent className="py-3 px-4">
+                <div className="flex items-start gap-2">
+                  <Sparkles className="h-4 w-4 text-purple-400 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-[11px] font-semibold text-purple-300 mb-1">AI Summary</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      {liveResult.ai_summary}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Result cards */}
+          {liveResult.results.length > 0 ? (
+            <div className="space-y-2">
+              {liveResult.results.map((r, idx) => {
+                const sevColor = SEVERITY_COLORS[r.severity?.toLowerCase()] || SEVERITY_COLORS.unknown;
+                return (
+                  <Card key={idx} className="hover:border-border/60 transition-colors">
+                    <CardContent className="py-3 px-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1 space-y-1.5">
+                          {/* Title row */}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Badge className="text-[9px] bg-blue-500/20 text-blue-400 border-blue-500/30">
+                              {r.source}
+                            </Badge>
+                            <Badge className="text-[9px]" style={{ backgroundColor: `${sevColor}20`, color: sevColor, borderColor: `${sevColor}40` }}>
+                              {r.severity}
+                            </Badge>
+                            {r.type && (
+                              <Badge variant="outline" className="text-[9px]">
+                                {r.type}
+                              </Badge>
+                            )}
+                            <span className="text-sm font-medium truncate">{r.title}</span>
+                          </div>
+
+                          {/* Description */}
+                          {r.description && (
+                            <p className="text-xs text-muted-foreground line-clamp-3">
+                              {r.description}
+                            </p>
+                          )}
+
+                          {/* Extra data fields */}
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px]">
+                            {r.risk_score > 0 && (
+                              <span className="flex items-center gap-1">
+                                <TrendingUp className="h-3 w-3" style={{ color: sevColor }} />
+                                Risk: <strong>{r.risk_score}</strong>/100
+                              </span>
+                            )}
+                            {r.confidence > 0 && (
+                              <span className="text-muted-foreground">
+                                Confidence: {r.confidence}%
+                              </span>
+                            )}
+                            {(r as any).abuse_score !== undefined && (
+                              <span className="text-muted-foreground">
+                                Abuse Score: {(r as any).abuse_score}%
+                              </span>
+                            )}
+                            {(r as any).country && (
+                              <span className="text-muted-foreground">
+                                Country: {(r as any).country}
+                              </span>
+                            )}
+                            {(r as any).isp && (
+                              <span className="text-muted-foreground">
+                                ISP: {(r as any).isp}
+                              </span>
+                            )}
+                            {(r as any).detection_ratio && (
+                              <span className="text-muted-foreground">
+                                Detection: {(r as any).detection_ratio}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* CVE IDs / Tags / Ports */}
+                          <div className="flex flex-wrap gap-1">
+                            {((r as any).cve_ids || []).slice(0, 8).map((c: string) => (
+                              <Badge key={c} variant="destructive" className="text-[9px]">{c}</Badge>
+                            ))}
+                            {((r as any).tags || []).slice(0, 8).map((t: string) => (
+                              <Badge key={t} variant="secondary" className="text-[9px]">{t}</Badge>
+                            ))}
+                            {((r as any).ports || []).slice(0, 12).map((p: number) => (
+                              <Badge key={p} variant="outline" className="text-[9px] font-mono">{p}</Badge>
+                            ))}
+                            {((r as any).vulns || []).slice(0, 6).map((v: string) => (
+                              <Badge key={v} variant="destructive" className="text-[9px]">{v}</Badge>
+                            ))}
+                          </div>
+
+                          {/* References / URLs */}
+                          {((r as any).references || []).length > 0 && (
+                            <div className="flex flex-wrap gap-2 pt-1">
+                              {((r as any).references as string[]).slice(0, 4).map((url, ui) => (
+                                <a
+                                  key={ui}
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[10px] text-primary hover:underline flex items-center gap-0.5 truncate max-w-[250px]"
+                                >
+                                  <ExternalLink className="h-2.5 w-2.5 shrink-0" />
+                                  {url.replace(/^https?:\/\//, "").slice(0, 45)}
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Risk score indicator */}
+                        {r.risk_score > 0 && (
+                          <div className="shrink-0 flex flex-col items-center">
+                            <div
+                              className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold border-2"
+                              style={{ borderColor: sevColor, color: sevColor }}
+                            >
+                              {r.risk_score}
+                            </div>
+                            <span className="text-[9px] text-muted-foreground mt-0.5">risk</span>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          ) : liveResult.errors.length === 0 ? (
+            <Card>
+              <CardContent className="py-8 text-center text-muted-foreground">
+                <SearchIcon className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">No live intelligence found for this query</p>
+              </CardContent>
+            </Card>
+          ) : null}
+        </div>
+      )}
+
+      {/* Live lookup loading state */}
+      {liveLoading && (
+        <Card>
+          <CardContent className="py-10 flex flex-col items-center justify-center gap-3">
+            <div className="relative">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <Wifi className="h-3.5 w-3.5 text-primary absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+            </div>
+            <div className="text-center">
+              <p className="text-sm font-medium">Searching the Internet…</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Querying NVD, VirusTotal, Shodan, AbuseIPDB, OTX, URLhaus…
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Empty state */}
-      {!searchResult && !searchLoading && (
+      {!searchResult && !searchLoading && !liveResult && !liveLoading && (
         <Card>
           <CardContent className="py-16 text-center">
             <Target className="h-16 w-16 mx-auto mb-4 text-muted-foreground/20" />

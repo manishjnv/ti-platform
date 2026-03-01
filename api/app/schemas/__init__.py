@@ -149,6 +149,30 @@ class SearchResponse(BaseModel):
     detected_type: str | None = None
 
 
+class LiveLookupRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=500)
+
+
+class LiveLookupResult(BaseModel):
+    source: str
+    type: str
+    title: str
+    description: str = ""
+    severity: str = "unknown"
+    risk_score: int = 0
+    confidence: int = 50
+
+
+class LiveLookupResponse(BaseModel):
+    query: str
+    detected_type: str | None = None
+    timestamp: str
+    sources_queried: list[str] = Field(default_factory=list)
+    results: list[dict] = Field(default_factory=list)
+    ai_summary: str | None = None
+    errors: list[str] = Field(default_factory=list)
+
+
 # ─── Dashboard ───────────────────────────────────────────
 class SeverityCount(BaseModel):
     severity: str
