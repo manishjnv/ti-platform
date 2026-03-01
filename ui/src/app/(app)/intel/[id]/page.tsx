@@ -1222,7 +1222,7 @@ export default function IntelDetailPage() {
               <div className="rounded-lg border bg-card p-3">
                 <p className="text-[10px] text-muted-foreground">IOC Types</p>
                 <div className="flex flex-wrap gap-1 mt-1">
-                  {[...new Set(linkedIOCs.map(i => i.ioc_type))].map(t => (
+                  {Array.from(new Set(linkedIOCs.map(i => i.ioc_type))).map(t => (
                     <Badge key={t} variant="secondary" className="text-[9px]">
                       {t} ({linkedIOCs.filter(i => i.ioc_type === t).length})
                     </Badge>
@@ -1232,7 +1232,7 @@ export default function IntelDetailPage() {
               <div className="rounded-lg border bg-card p-3">
                 <p className="text-[10px] text-muted-foreground">Countries</p>
                 <div className="flex flex-wrap gap-1.5 mt-1">
-                  {[...new Set(linkedIOCs.filter(i => i.country_code).map(i => i.country_code!))].slice(0, 5).map(cc => (
+                  {Array.from(new Set(linkedIOCs.filter(i => i.country_code).map(i => i.country_code!))).slice(0, 5).map(cc => (
                     <span key={cc} className="flex items-center gap-1 text-[10px]">
                       <img src={`https://flagcdn.com/16x12/${cc.toLowerCase()}.png`} alt={cc} className="h-2.5" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
                       {cc}
