@@ -81,12 +81,15 @@ export default function InvestigatePage() {
 
   const handleNodeClick = useCallback(
     (node: GraphNode) => {
+      // Node IDs are prefixed like "intel:uuid", "ioc:uuid" — strip the prefix
+      const rawId = node.id.includes(":") ? node.id.split(":", 2)[1] : node.id;
+
       if (node.type === "intel") {
-        router.push(`/intel/${node.id}`);
+        router.push(`/intel/${rawId}`);
       } else {
-        setQuery(node.id);
+        setQuery(rawId);
         setEntityType(node.type);
-        explore(node.id, node.type, depth);
+        explore(rawId, node.type, depth);
       }
     },
     [router, explore, depth]
