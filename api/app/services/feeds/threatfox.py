@@ -1,6 +1,6 @@
 """ThreatFox (abuse.ch) feed connector — malware IOCs (C2, botnet, payload).
 
-Free API, no key required.
+Free, no API key required. Uses the JSON export endpoint.
 Docs: https://threatfox.abuse.ch/api/
 """
 
@@ -14,7 +14,8 @@ from app.services.feeds.base import BaseFeedConnector
 
 logger = get_logger(__name__)
 
-THREATFOX_API_URL = "https://threatfox-api.abuse.ch/api/v1/"
+# The POST API returns 401 from some IPs; the export endpoint is always free
+THREATFOX_EXPORT_URL = "https://threatfox.abuse.ch/export/json/recent/"
 
 # Map ThreatFox ioc_type → our asset_type enum
 _TYPE_MAP = {
@@ -37,17 +38,19 @@ class ThreatFoxConnector(BaseFeedConnector):
     SOURCE_RELIABILITY = 80
 
     async def fetch(self, last_cursor: str | None = None) -> list[dict]:
-        """Fetch recent IOCs from ThreatFox (last 7 days)."""
-        payload = {"query": "get_iocs", "days": 7}
-        response = await self.client.post(THREATFOX_API_URL, json=payload)
+        """Fetch recent IOCs from ThreatFox JSON export."""
+        response = await self.client.get(THREATFOX_EXPORT_URL)
         response.raise_for_status()
         data = response.json()
 
-        if data.get("query_status") != "ok":
-            logger.warning("threatfox_query_failed", status=data.get("query_status"))
-            return []
+        # Export format: {id_str: [list_of_ioc_dicts], ...}
+        items = []
+        for ioc_id, entries in data.items():
+            if isinstance(entries, list):
+                for entry in entries:
+                    entry["id"] = ioc_id
+                    items.append(entry)
 
-        items = data.get("data", [])
         logger.info("threatfox_fetch", total=len(items))
 
         # Incremental: filter by first_seen > last_cursor
@@ -83,7 +86,8 @@ class ThreatFoxConnector(BaseFeedConnector):
     def normalize(self, raw_items: list[dict]) -> list[dict]:
         items = []
         for raw in raw_items:
-            ioc_value = raw.get("ioc", "")
+            # Export uses "ioc_value", API uses "ioc" — support both
+            ioc_value = raw.get("ioc_value") or raw.get("ioc", "")
             if not ioc_value:
                 continue
 
@@ -95,8 +99,12 @@ class ThreatFoxConnector(BaseFeedConnector):
             malware = raw.get("malware_printable", "unknown")
             confidence = raw.get("confidence_level", 50) or 50
 
+            # Tags: export returns comma-separated string, API returns list
             tags_raw = raw.get("tags") or []
-            tags = list(tags_raw) if isinstance(tags_raw, list) else []
+            if isinstance(tags_raw, str):
+                tags = [t.strip() for t in tags_raw.split(",") if t.strip()]
+            else:
+                tags = list(tags_raw)
             tags.append("threatfox")
             if malware and malware != "unknown":
                 tags.append(malware.lower().replace(" ", "_"))

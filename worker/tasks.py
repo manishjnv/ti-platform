@@ -1011,24 +1011,25 @@ def enrich_ips_internetdb(batch_size: int = 100) -> dict:
                 continue
 
             # Store the InternetDB result in context JSONB
+            import json as _json
+            payload = _json.dumps({
+                "internetdb": {
+                    "ports": data.get("ports", []),
+                    "vulns": data.get("vulns", []),
+                    "hostnames": data.get("hostnames", []),
+                    "cpes": data.get("cpes", []),
+                    "tags": data.get("tags", []),
+                    "enriched_at": datetime.now(timezone.utc).isoformat(),
+                }
+            })
             session.execute(
                 sa_text(
                     "UPDATE iocs SET "
-                    "context = jsonb_set(COALESCE(context, '{}'), '{internetdb}', :payload::jsonb), "
+                    "context = COALESCE(context, '{}')::jsonb || :payload::jsonb, "
                     "updated_at = NOW() "
                     "WHERE id = :ioc_id"
                 ),
-                {
-                    "ioc_id": str(ioc_id),
-                    "payload": __import__("json").dumps({
-                        "ports": data.get("ports", []),
-                        "vulns": data.get("vulns", []),
-                        "hostnames": data.get("hostnames", []),
-                        "cpes": data.get("cpes", []),
-                        "tags": data.get("tags", []),
-                        "enriched_at": datetime.now(timezone.utc).isoformat(),
-                    }),
-                },
+                {"ioc_id": str(ioc_id), "payload": payload},
             )
 
             # If vulns found, boost risk score
@@ -1211,21 +1212,25 @@ def enrich_epss_scores(batch_size: int = 5000) -> dict:
                 epss_prob = epss_map[cve_value]
                 epss_score = round(epss_prob * 100, 2)
                 new_risk = min(100, round(current_risk * 0.6 + epss_score * 0.4))
+                import json as _json
+                epss_payload = _json.dumps({
+                    "epss": {
+                        "score": epss_score,
+                        "percentile": round(epss_prob, 6),
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                })
                 session.execute(
                     sa_text(
                         "UPDATE iocs SET risk_score = :risk, "
-                        "context = jsonb_set(COALESCE(context, '{}'), '{epss}', :payload::jsonb), "
+                        "context = COALESCE(context, '{}')::jsonb || :payload::jsonb, "
                         "updated_at = NOW() "
                         "WHERE id = :ioc_id"
                     ),
                     {
                         "risk": new_risk,
                         "ioc_id": str(ioc_id),
-                        "payload": __import__("json").dumps({
-                            "score": epss_score,
-                            "percentile": round(epss_prob, 6),
-                            "updated_at": datetime.now(timezone.utc).isoformat(),
-                        }),
+                        "payload": epss_payload,
                     },
                 )
                 ioc_updated += 1
