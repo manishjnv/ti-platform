@@ -114,14 +114,14 @@ def _build_query(
     must = []
     filters = []
 
-    # Main query — use match on detected type or multi_match
-    # NOTE: live index has keyword fields mapped as text + .keyword sub-field,
-    # so term queries must target the .keyword sub-field for exact matches.
+    # Main query — use match on detected type or multi_match.
+    # After index rebuild, keyword fields (cve_ids, source_ref, tags, etc.)
+    # are properly mapped as keyword type — use term queries on bare field names.
     if detected_type == "cve":
         must.append({
             "bool": {
                 "should": [
-                    {"term": {"cve_ids.keyword": query.upper()}},
+                    {"term": {"cve_ids": query.upper()}},
                     {"match_phrase": {"title": query.upper()}},
                     {"match_phrase": {"description": query.upper()}},
                 ],
@@ -132,7 +132,7 @@ def _build_query(
         must.append({
             "bool": {
                 "should": [
-                    {"term": {"source_ref.keyword": query}},
+                    {"term": {"source_ref": query}},
                     {"match_phrase": {"title": query}},
                     {"match_phrase": {"description": query}},
                 ],
@@ -143,37 +143,42 @@ def _build_query(
         must.append({
             "bool": {
                 "should": [
-                    {"term": {"source_ref.keyword": query.lower()}},
+                    {"term": {"source_ref": query.lower()}},
                     {"match_phrase": {"description": query}},
                 ],
                 "minimum_should_match": 1,
             }
         })
     else:
+        # For generic queries, search text fields with multi_match (supports
+        # fuzziness) and keyword fields with separate term/wildcard clauses.
         must.append({
-            "multi_match": {
-                "query": query,
-                "fields": [
-                    "title^3",
-                    "summary^2",
-                    "description",
-                    "cve_ids.keyword^4",
-                    "tags.keyword^2",
-                    "source_ref.keyword",
-                    "affected_products.keyword",
+            "bool": {
+                "should": [
+                    {
+                        "multi_match": {
+                            "query": query,
+                            "fields": ["title^3", "summary^2", "description"],
+                            "type": "best_fields",
+                            "fuzziness": "AUTO",
+                        }
+                    },
+                    {"term": {"cve_ids": {"value": query.upper(), "boost": 4}}},
+                    {"term": {"tags": {"value": query, "boost": 2}}},
+                    {"term": {"source_ref": query}},
+                    {"term": {"affected_products": query}},
                 ],
-                "type": "best_fields",
-                "fuzziness": "AUTO",
+                "minimum_should_match": 1,
             }
         })
 
-    # Filters — use .keyword sub-field for exact match on text-mapped fields
+    # Filters — keyword fields use bare field names
     if feed_type:
-        filters.append({"term": {"feed_type.keyword": feed_type}})
+        filters.append({"term": {"feed_type": feed_type}})
     if severity:
-        filters.append({"term": {"severity.keyword": severity}})
+        filters.append({"term": {"severity": severity}})
     if asset_type:
-        filters.append({"term": {"asset_type.keyword": asset_type}})
+        filters.append({"term": {"asset_type": asset_type}})
 
     # Date range
     if date_from or date_to:

@@ -80,7 +80,7 @@ async def _search_local_intel(topic: str, max_results: int = 10) -> list[dict]:
         "query": {
             "multi_match": {
                 "query": topic,
-                "fields": ["title^3", "description^2", "cve_ids.keyword", "tags.keyword", "source_name"],
+                "fields": ["title^3", "description^2", "summary"],
                 "type": "best_fields",
                 "fuzziness": "AUTO",
             }
