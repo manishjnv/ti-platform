@@ -230,12 +230,7 @@ export default function DashboardPage() {
             Real-time overview · Last updated {new Date().toLocaleTimeString()}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="gap-1.5 text-xs">
-            <Activity className="h-3 w-3 text-emerald-500" />
-            Live
-          </Badge>
-        </div>
+
       </div>
 
       {/* KPI Stats Row — each stat is clickable */}

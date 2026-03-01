@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useAppStore } from "@/store";
 import { AuthGuard } from "@/components/AuthGuard";
 import { Sidebar } from "@/components/Sidebar";
@@ -14,15 +14,51 @@ import {
   LogOut,
   User,
   Moon,
+  Sun,
 } from "lucide-react";
+import { getStatusBar } from "@/lib/api";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { fetchUser, user, performLogout } = useAppStore();
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [darkMode, setDarkMode] = useState(true);
+  const [liveOk, setLiveOk] = useState<boolean | null>(null);
 
   useEffect(() => {
     fetchUser();
   }, [fetchUser]);
+
+  // Theme toggle
+  const toggleTheme = useCallback(() => {
+    const next = !darkMode;
+    setDarkMode(next);
+    document.documentElement.classList.toggle("dark", next);
+    localStorage.setItem("theme", next ? "dark" : "light");
+  }, [darkMode]);
+
+  // Restore saved theme
+  useEffect(() => {
+    const saved = localStorage.getItem("theme");
+    const preferDark = saved ? saved === "dark" : true;
+    setDarkMode(preferDark);
+    document.documentElement.classList.toggle("dark", preferDark);
+  }, []);
+
+  // Live status polling
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const d = await getStatusBar();
+        if (!cancelled) setLiveOk(d.status === "ok" && d.active_feeds > 0);
+      } catch {
+        if (!cancelled) setLiveOk(false);
+      }
+    };
+    poll();
+    const id = setInterval(poll, 30_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
 
   const handleLogout = async () => {
     // Clear app session + CF Access cookies via API
@@ -61,18 +97,34 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
           {/* Right: actions */}
           <div className="flex items-center gap-2">
-            {/* Live indicator */}
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-green-500/10 text-green-400 text-[10px] font-medium">
+            {/* Live indicator — data-driven */}
+            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors ${
+              liveOk === null
+                ? "bg-muted/20 text-muted-foreground"
+                : liveOk
+                  ? "bg-green-500/10 text-green-400"
+                  : "bg-amber-500/10 text-amber-400"
+            }`}>
               <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                {liveOk !== false && (
+                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                    liveOk ? "bg-green-400" : "bg-muted-foreground"
+                  }`} />
+                )}
+                <span className={`relative inline-flex rounded-full h-2 w-2 ${
+                  liveOk === null ? "bg-muted-foreground" : liveOk ? "bg-green-500" : "bg-amber-500"
+                }`} />
               </span>
-              Live
+              {liveOk === null ? "..." : liveOk ? "Live" : "Degraded"}
             </div>
 
             {/* Theme toggle */}
-            <button className="p-1.5 rounded-md hover:bg-muted/40 transition-colors text-muted-foreground">
-              <Moon className="h-4 w-4" />
+            <button
+              onClick={toggleTheme}
+              className="p-1.5 rounded-md hover:bg-muted/40 transition-colors text-muted-foreground"
+              title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {darkMode ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
             </button>
 
             {/* Notifications */}

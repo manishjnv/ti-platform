@@ -86,15 +86,15 @@ export function HeaderStatusBar() {
           <div className="bg-popover border border-border/50 rounded-lg shadow-xl px-3 py-2 text-[10px] whitespace-nowrap">
             <div className="flex items-center gap-2 mb-1">
               <span className={data.postgres ? "text-emerald-400" : "text-red-400"}>●</span>
-              PostgreSQL
+              Database
             </div>
             <div className="flex items-center gap-2 mb-1">
               <span className={data.redis ? "text-emerald-400" : "text-red-400"}>●</span>
-              Redis
+              Cache
             </div>
             <div className="flex items-center gap-2">
               <span className={data.opensearch ? "text-emerald-400" : "text-red-400"}>●</span>
-              OpenSearch
+              Search Index
             </div>
           </div>
         </div>
@@ -108,7 +108,7 @@ export function HeaderStatusBar() {
         <span className="text-foreground">{data.total_intel.toLocaleString()}</span>
         Intel
         {data.intel_24h > 0 && (
-          <span className="text-emerald-400 ml-0.5">+{data.intel_24h}</span>
+          <span className="text-emerald-400 ml-0.5">24h +{data.intel_24h.toLocaleString()}</span>
         )}
       </div>
 
