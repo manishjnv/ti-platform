@@ -33,12 +33,12 @@ def setup_schedules():
         scheduler.cancel(job)
 
     # ─── Feed Ingestion Schedules ─────────────────────────
-    # CISA KEV — every 5 minutes
+    # CISA KEV — every 60 minutes (public feed, updates ~1x/day)
     scheduler.schedule(
         scheduled_time=datetime.now(timezone.utc),
         func="worker.tasks.ingest_feed",
         args=["cisa_kev"],
-        interval=timedelta(minutes=5).total_seconds(),
+        interval=timedelta(minutes=60).total_seconds(),
         queue_name="high",
         meta={"feed": "cisa_kev"},
     )
@@ -53,12 +53,12 @@ def setup_schedules():
         meta={"feed": "nvd"},
     )
 
-    # URLhaus — every 5 minutes
+    # URLhaus — every 30 minutes (public feed, reasonable polling)
     scheduler.schedule(
         scheduled_time=datetime.now(timezone.utc),
         func="worker.tasks.ingest_feed",
         args=["urlhaus"],
-        interval=timedelta(minutes=5).total_seconds(),
+        interval=timedelta(minutes=30).total_seconds(),
         queue_name="high",
         meta={"feed": "urlhaus"},
     )
@@ -83,22 +83,22 @@ def setup_schedules():
         meta={"feed": "otx"},
     )
 
-    # VirusTotal — every 15 minutes (free tier: 500 req/day)
+    # VirusTotal — every 60 minutes (free tier: 500 req/day, 4 req/min)
     scheduler.schedule(
         scheduled_time=datetime.now(timezone.utc),
         func="worker.tasks.ingest_feed",
         args=["virustotal"],
-        interval=timedelta(minutes=15).total_seconds(),
+        interval=timedelta(minutes=60).total_seconds(),
         queue_name="default",
         meta={"feed": "virustotal"},
     )
 
-    # Shodan — every 30 minutes (free tier: 1 req/sec)
+    # Shodan — every 12 hours (free tier: ~100 credits/month ≈ 3/day)
     scheduler.schedule(
         scheduled_time=datetime.now(timezone.utc),
         func="worker.tasks.ingest_feed",
         args=["shodan"],
-        interval=timedelta(minutes=30).total_seconds(),
+        interval=timedelta(hours=12).total_seconds(),
         queue_name="low",
         meta={"feed": "shodan"},
     )
