@@ -201,6 +201,9 @@ Scheduler ──► Redis (enqueues jobs only)
 | `idx_iocs_type` | `iocs` | B-tree | Filter by IOC type |
 | `idx_iocs_risk` | `iocs` | B-tree (desc) | Rank by IOC risk score |
 | `idx_iocs_value_trgm` | `iocs` | GIN (trigram) | Fuzzy IOC value search |
+| `idx_iocs_country_code` | `iocs` | B-tree | Filter by country (IPinfo enrichment) |
+| `idx_iocs_asn` | `iocs` | B-tree | Filter by ASN (IPinfo enrichment) |
+| `idx_iocs_enriched_at` | `iocs` | Partial B-tree | Find un-enriched IPs (WHERE enriched_at IS NULL) |
 | `idx_attack_tactic` | `attack_techniques` | B-tree | Filter techniques by tactic phase |
 | `idx_attack_parent` | `attack_techniques` | Partial B-tree | Sub-technique→parent lookups |
 | `idx_attack_name_trgm` | `attack_techniques` | GIN (trigram) | Fuzzy technique name search |
@@ -470,7 +473,7 @@ class BaseFeedConnector(ABC):
         await self.store(items)  # bulk upsert + index
 ```
 
-### Schedule (14 jobs)
+### Schedule (15 jobs)
 
 | Job | Interval | Queue | Priority |
 | --- | -------- | ----- | -------- |
@@ -488,10 +491,11 @@ class BaseFeedConnector(ABC):
 | Relationship Builder | 15 min | low | Low (discover shared IOC/CVE/technique edges) |
 | IOC Extraction | 10 min | low | Low (extract IOCs from intel items) |
 | Notification Eval | 5 min | low | Low (evaluate rules, create in-app alerts) |
+| IPinfo Enrichment | 10 min | low | Low (enrich IP IOCs with ASN/geo data) |
 
 ### Scheduler Lifecycle
 
-The scheduler registers `SIGTERM` + `atexit` handlers that **cancel all scheduled jobs and remove stale Redis instance keys** on shutdown. This prevents ghost jobs after `docker compose restart` or `redis-cli FLUSHALL`. On next startup, `setup_schedules()` re-registers all 14 jobs cleanly.
+The scheduler registers `SIGTERM` + `atexit` handlers that **cancel all scheduled jobs and remove stale Redis instance keys** on shutdown. This prevents ghost jobs after `docker compose restart` or `redis-cli FLUSHALL`. On next startup, `setup_schedules()` re-registers all 15 jobs cleanly.
 
 ---
 

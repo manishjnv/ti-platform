@@ -122,6 +122,15 @@ CREATE TABLE iocs (
     geo TEXT[] NOT NULL DEFAULT '{}',
     source_names TEXT[] NOT NULL DEFAULT '{}',
     context JSONB DEFAULT '{}',
+    -- IPinfo Lite enrichment
+    asn VARCHAR(20),
+    as_name VARCHAR(200),
+    as_domain VARCHAR(200),
+    country_code VARCHAR(5),
+    country VARCHAR(100),
+    continent_code VARCHAR(5),
+    continent VARCHAR(50),
+    enriched_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(value, ioc_type)
@@ -131,6 +140,9 @@ CREATE INDEX idx_iocs_value ON iocs(value);
 CREATE INDEX idx_iocs_type ON iocs(ioc_type);
 CREATE INDEX idx_iocs_risk ON iocs(risk_score DESC);
 CREATE INDEX idx_iocs_value_trgm ON iocs USING GIN(value gin_trgm_ops);
+CREATE INDEX idx_iocs_country_code ON iocs(country_code) WHERE country_code IS NOT NULL;
+CREATE INDEX idx_iocs_asn ON iocs(asn) WHERE asn IS NOT NULL;
+CREATE INDEX idx_iocs_enriched_at ON iocs(enriched_at) WHERE enriched_at IS NULL;
 
 -- =============================================
 -- Intel-IOC Link Table

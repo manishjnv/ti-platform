@@ -742,3 +742,220 @@ def _prepare_os_docs(items: list[dict]) -> list[dict]:
         }
         docs.append(doc)
     return docs
+
+
+# ── IPinfo Lite IP Enrichment ────────────────────────────
+
+# Country-code → continent mapping (ISO 3166 / UN M49 groupings)
+_CC_CONTINENT: dict[str, tuple[str, str]] = {
+    "AF": ("AS", "Asia"), "AX": ("EU", "Europe"), "AL": ("EU", "Europe"), "DZ": ("AF", "Africa"),
+    "AS": ("OC", "Oceania"), "AD": ("EU", "Europe"), "AO": ("AF", "Africa"), "AI": ("NA", "North America"),
+    "AQ": ("AN", "Antarctica"), "AG": ("NA", "North America"), "AR": ("SA", "South America"),
+    "AM": ("AS", "Asia"), "AW": ("NA", "North America"), "AU": ("OC", "Oceania"), "AT": ("EU", "Europe"),
+    "AZ": ("AS", "Asia"), "BS": ("NA", "North America"), "BH": ("AS", "Asia"), "BD": ("AS", "Asia"),
+    "BB": ("NA", "North America"), "BY": ("EU", "Europe"), "BE": ("EU", "Europe"), "BZ": ("NA", "North America"),
+    "BJ": ("AF", "Africa"), "BM": ("NA", "North America"), "BT": ("AS", "Asia"), "BO": ("SA", "South America"),
+    "BA": ("EU", "Europe"), "BW": ("AF", "Africa"), "BR": ("SA", "South America"), "BN": ("AS", "Asia"),
+    "BG": ("EU", "Europe"), "BF": ("AF", "Africa"), "BI": ("AF", "Africa"), "KH": ("AS", "Asia"),
+    "CM": ("AF", "Africa"), "CA": ("NA", "North America"), "CV": ("AF", "Africa"), "KY": ("NA", "North America"),
+    "CF": ("AF", "Africa"), "TD": ("AF", "Africa"), "CL": ("SA", "South America"), "CN": ("AS", "Asia"),
+    "CO": ("SA", "South America"), "KM": ("AF", "Africa"), "CG": ("AF", "Africa"), "CD": ("AF", "Africa"),
+    "CR": ("NA", "North America"), "CI": ("AF", "Africa"), "HR": ("EU", "Europe"), "CU": ("NA", "North America"),
+    "CY": ("EU", "Europe"), "CZ": ("EU", "Europe"), "DK": ("EU", "Europe"), "DJ": ("AF", "Africa"),
+    "DM": ("NA", "North America"), "DO": ("NA", "North America"), "EC": ("SA", "South America"),
+    "EG": ("AF", "Africa"), "SV": ("NA", "North America"), "GQ": ("AF", "Africa"), "ER": ("AF", "Africa"),
+    "EE": ("EU", "Europe"), "ET": ("AF", "Africa"), "FJ": ("OC", "Oceania"), "FI": ("EU", "Europe"),
+    "FR": ("EU", "Europe"), "GA": ("AF", "Africa"), "GM": ("AF", "Africa"), "GE": ("AS", "Asia"),
+    "DE": ("EU", "Europe"), "GH": ("AF", "Africa"), "GR": ("EU", "Europe"), "GD": ("NA", "North America"),
+    "GT": ("NA", "North America"), "GN": ("AF", "Africa"), "GW": ("AF", "Africa"), "GY": ("SA", "South America"),
+    "HT": ("NA", "North America"), "HN": ("NA", "North America"), "HK": ("AS", "Asia"), "HU": ("EU", "Europe"),
+    "IS": ("EU", "Europe"), "IN": ("AS", "Asia"), "ID": ("AS", "Asia"), "IR": ("AS", "Asia"),
+    "IQ": ("AS", "Asia"), "IE": ("EU", "Europe"), "IL": ("AS", "Asia"), "IT": ("EU", "Europe"),
+    "JM": ("NA", "North America"), "JP": ("AS", "Asia"), "JO": ("AS", "Asia"), "KZ": ("AS", "Asia"),
+    "KE": ("AF", "Africa"), "KI": ("OC", "Oceania"), "KP": ("AS", "Asia"), "KR": ("AS", "Asia"),
+    "KW": ("AS", "Asia"), "KG": ("AS", "Asia"), "LA": ("AS", "Asia"), "LV": ("EU", "Europe"),
+    "LB": ("AS", "Asia"), "LS": ("AF", "Africa"), "LR": ("AF", "Africa"), "LY": ("AF", "Africa"),
+    "LI": ("EU", "Europe"), "LT": ("EU", "Europe"), "LU": ("EU", "Europe"), "MO": ("AS", "Asia"),
+    "MK": ("EU", "Europe"), "MG": ("AF", "Africa"), "MW": ("AF", "Africa"), "MY": ("AS", "Asia"),
+    "MV": ("AS", "Asia"), "ML": ("AF", "Africa"), "MT": ("EU", "Europe"), "MH": ("OC", "Oceania"),
+    "MR": ("AF", "Africa"), "MU": ("AF", "Africa"), "MX": ("NA", "North America"), "FM": ("OC", "Oceania"),
+    "MD": ("EU", "Europe"), "MC": ("EU", "Europe"), "MN": ("AS", "Asia"), "ME": ("EU", "Europe"),
+    "MA": ("AF", "Africa"), "MZ": ("AF", "Africa"), "MM": ("AS", "Asia"), "NA": ("AF", "Africa"),
+    "NR": ("OC", "Oceania"), "NP": ("AS", "Asia"), "NL": ("EU", "Europe"), "NZ": ("OC", "Oceania"),
+    "NI": ("NA", "North America"), "NE": ("AF", "Africa"), "NG": ("AF", "Africa"), "NO": ("EU", "Europe"),
+    "OM": ("AS", "Asia"), "PK": ("AS", "Asia"), "PW": ("OC", "Oceania"), "PS": ("AS", "Asia"),
+    "PA": ("NA", "North America"), "PG": ("OC", "Oceania"), "PY": ("SA", "South America"),
+    "PE": ("SA", "South America"), "PH": ("AS", "Asia"), "PL": ("EU", "Europe"), "PT": ("EU", "Europe"),
+    "QA": ("AS", "Asia"), "RO": ("EU", "Europe"), "RU": ("EU", "Europe"), "RW": ("AF", "Africa"),
+    "SA": ("AS", "Asia"), "SN": ("AF", "Africa"), "RS": ("EU", "Europe"), "SC": ("AF", "Africa"),
+    "SL": ("AF", "Africa"), "SG": ("AS", "Asia"), "SK": ("EU", "Europe"), "SI": ("EU", "Europe"),
+    "SB": ("OC", "Oceania"), "SO": ("AF", "Africa"), "ZA": ("AF", "Africa"), "ES": ("EU", "Europe"),
+    "LK": ("AS", "Asia"), "SD": ("AF", "Africa"), "SR": ("SA", "South America"), "SZ": ("AF", "Africa"),
+    "SE": ("EU", "Europe"), "CH": ("EU", "Europe"), "SY": ("AS", "Asia"), "TW": ("AS", "Asia"),
+    "TJ": ("AS", "Asia"), "TZ": ("AF", "Africa"), "TH": ("AS", "Asia"), "TL": ("AS", "Asia"),
+    "TG": ("AF", "Africa"), "TO": ("OC", "Oceania"), "TT": ("NA", "North America"), "TN": ("AF", "Africa"),
+    "TR": ("AS", "Asia"), "TM": ("AS", "Asia"), "TV": ("OC", "Oceania"), "UG": ("AF", "Africa"),
+    "UA": ("EU", "Europe"), "AE": ("AS", "Asia"), "GB": ("EU", "Europe"), "US": ("NA", "North America"),
+    "UY": ("SA", "South America"), "UZ": ("AS", "Asia"), "VU": ("OC", "Oceania"), "VE": ("SA", "South America"),
+    "VN": ("AS", "Asia"), "YE": ("AS", "Asia"), "ZM": ("AF", "Africa"), "ZW": ("AF", "Africa"),
+}
+
+# ISO 3166 country-code → full country name
+_CC_NAMES: dict[str, str] = {
+    "AF": "Afghanistan", "AL": "Albania", "DZ": "Algeria", "AD": "Andorra", "AO": "Angola",
+    "AG": "Antigua and Barbuda", "AR": "Argentina", "AM": "Armenia", "AU": "Australia",
+    "AT": "Austria", "AZ": "Azerbaijan", "BS": "Bahamas", "BH": "Bahrain", "BD": "Bangladesh",
+    "BB": "Barbados", "BY": "Belarus", "BE": "Belgium", "BZ": "Belize", "BJ": "Benin",
+    "BT": "Bhutan", "BO": "Bolivia", "BA": "Bosnia and Herzegovina", "BW": "Botswana",
+    "BR": "Brazil", "BN": "Brunei", "BG": "Bulgaria", "BF": "Burkina Faso", "BI": "Burundi",
+    "KH": "Cambodia", "CM": "Cameroon", "CA": "Canada", "CV": "Cape Verde", "CF": "Central African Republic",
+    "TD": "Chad", "CL": "Chile", "CN": "China", "CO": "Colombia", "KM": "Comoros",
+    "CG": "Congo", "CD": "DR Congo", "CR": "Costa Rica", "CI": "Ivory Coast", "HR": "Croatia",
+    "CU": "Cuba", "CY": "Cyprus", "CZ": "Czech Republic", "DK": "Denmark", "DJ": "Djibouti",
+    "DM": "Dominica", "DO": "Dominican Republic", "EC": "Ecuador", "EG": "Egypt",
+    "SV": "El Salvador", "GQ": "Equatorial Guinea", "ER": "Eritrea", "EE": "Estonia",
+    "ET": "Ethiopia", "FJ": "Fiji", "FI": "Finland", "FR": "France", "GA": "Gabon", "GM": "Gambia",
+    "GE": "Georgia", "DE": "Germany", "GH": "Ghana", "GR": "Greece", "GD": "Grenada",
+    "GT": "Guatemala", "GN": "Guinea", "GW": "Guinea-Bissau", "GY": "Guyana", "HT": "Haiti",
+    "HN": "Honduras", "HK": "Hong Kong", "HU": "Hungary", "IS": "Iceland", "IN": "India",
+    "ID": "Indonesia", "IR": "Iran", "IQ": "Iraq", "IE": "Ireland", "IL": "Israel", "IT": "Italy",
+    "JM": "Jamaica", "JP": "Japan", "JO": "Jordan", "KZ": "Kazakhstan", "KE": "Kenya",
+    "KI": "Kiribati", "KP": "North Korea", "KR": "South Korea", "KW": "Kuwait", "KG": "Kyrgyzstan",
+    "LA": "Laos", "LV": "Latvia", "LB": "Lebanon", "LS": "Lesotho", "LR": "Liberia", "LY": "Libya",
+    "LI": "Liechtenstein", "LT": "Lithuania", "LU": "Luxembourg", "MO": "Macau", "MK": "North Macedonia",
+    "MG": "Madagascar", "MW": "Malawi", "MY": "Malaysia", "MV": "Maldives", "ML": "Mali",
+    "MT": "Malta", "MH": "Marshall Islands", "MR": "Mauritania", "MU": "Mauritius", "MX": "Mexico",
+    "FM": "Micronesia", "MD": "Moldova", "MC": "Monaco", "MN": "Mongolia", "ME": "Montenegro",
+    "MA": "Morocco", "MZ": "Mozambique", "MM": "Myanmar", "NA": "Namibia", "NR": "Nauru",
+    "NP": "Nepal", "NL": "Netherlands", "NZ": "New Zealand", "NI": "Nicaragua", "NE": "Niger",
+    "NG": "Nigeria", "NO": "Norway", "OM": "Oman", "PK": "Pakistan", "PW": "Palau",
+    "PS": "Palestine", "PA": "Panama", "PG": "Papua New Guinea", "PY": "Paraguay", "PE": "Peru",
+    "PH": "Philippines", "PL": "Poland", "PT": "Portugal", "QA": "Qatar", "RO": "Romania",
+    "RU": "Russia", "RW": "Rwanda", "SA": "Saudi Arabia", "SN": "Senegal", "RS": "Serbia",
+    "SC": "Seychelles", "SL": "Sierra Leone", "SG": "Singapore", "SK": "Slovakia", "SI": "Slovenia",
+    "SB": "Solomon Islands", "SO": "Somalia", "ZA": "South Africa", "ES": "Spain", "LK": "Sri Lanka",
+    "SD": "Sudan", "SR": "Suriname", "SZ": "Eswatini", "SE": "Sweden", "CH": "Switzerland",
+    "SY": "Syria", "TW": "Taiwan", "TJ": "Tajikistan", "TZ": "Tanzania", "TH": "Thailand",
+    "TL": "Timor-Leste", "TG": "Togo", "TO": "Tonga", "TT": "Trinidad and Tobago", "TN": "Tunisia",
+    "TR": "Turkey", "TM": "Turkmenistan", "TV": "Tuvalu", "UG": "Uganda", "UA": "Ukraine",
+    "AE": "United Arab Emirates", "GB": "United Kingdom", "US": "United States", "UY": "Uruguay",
+    "UZ": "Uzbekistan", "VU": "Vanuatu", "VE": "Venezuela", "VN": "Vietnam", "YE": "Yemen",
+    "ZM": "Zambia", "ZW": "Zimbabwe",
+}
+
+IPINFO_BASE = "https://ipinfo.io"
+IPINFO_TIMEOUT = 10
+
+
+def enrich_ips_ipinfo(batch_size: int = 100) -> dict:
+    """Batch-enrich IP-type IOCs with ASN/geo data from IPinfo.
+
+    Picks up to `batch_size` IP IOCs that have NOT been enriched yet
+    (enriched_at IS NULL) and calls the IPinfo API for each.
+    """
+    from app.models.models import IOC as IOCModel
+
+    logger.info("ipinfo_enrichment_start", batch_size=batch_size)
+    session = SyncSession()
+
+    try:
+        ips = session.execute(
+            select(IOCModel)
+            .where(IOCModel.ioc_type == "ip", IOCModel.enriched_at.is_(None))
+            .order_by(IOCModel.created_at.asc())
+            .limit(batch_size)
+        ).scalars().all()
+
+        if not ips:
+            logger.info("ipinfo_enrichment_skip", reason="no unenriched IPs")
+            return {"enriched": 0, "errors": 0}
+
+        enriched = 0
+        errors = 0
+        token = settings.ipinfo_token
+
+        for ioc in ips:
+            data = _run_async(_ipinfo_lookup(ioc.value, token))
+            if data is None:
+                errors += 1
+                # Mark as enriched to avoid infinite retry loop
+                ioc.enriched_at = datetime.now(timezone.utc)
+                continue
+
+            cc = data.get("country", "")
+            continent_info = _CC_CONTINENT.get(cc, ("", ""))
+
+            ioc.asn = data.get("asn", "")[:20] or None
+            ioc.as_name = data.get("as_name", "")[:200] or None
+            ioc.as_domain = data.get("as_domain", "")[:200] or None
+            ioc.country_code = cc[:5] or None
+            ioc.country = (data.get("country_name") or _CC_NAMES.get(cc, ""))[:100] or None
+            ioc.continent_code = continent_info[0][:5] or None
+            ioc.continent = continent_info[1][:50] or None
+            ioc.enriched_at = datetime.now(timezone.utc)
+
+            # Also update the geo array if country not already present
+            if ioc.country and ioc.country not in (ioc.geo or []):
+                ioc.geo = list(ioc.geo or []) + [ioc.country]
+
+            enriched += 1
+
+        session.commit()
+        logger.info("ipinfo_enrichment_complete", enriched=enriched, errors=errors, total=len(ips))
+        return {"enriched": enriched, "errors": errors, "total": len(ips)}
+
+    except Exception as e:
+        logger.error("ipinfo_enrichment_error", error=str(e))
+        session.rollback()
+        return {"error": str(e)}
+    finally:
+        session.close()
+
+
+async def _ipinfo_lookup(ip: str, token: str = "") -> dict | None:
+    """Call IPinfo API for a single IP. Returns parsed dict or None on error."""
+    import httpx
+
+    url = f"{IPINFO_BASE}/{ip}"
+    params = {}
+    if token:
+        params["token"] = token
+
+    try:
+        async with httpx.AsyncClient(timeout=IPINFO_TIMEOUT) as client:
+            resp = await client.get(url, params=params)
+            if resp.status_code == 429:
+                logger.warning("ipinfo_rate_limited", ip=ip)
+                return None
+            if resp.status_code != 200:
+                logger.debug("ipinfo_http_error", ip=ip, status=resp.status_code)
+                return None
+
+            data = resp.json()
+
+            # Parse the "org" field — looks like "AS4766 Korea Telecom"
+            org_raw = data.get("org", "")
+            asn = ""
+            as_name = ""
+            if org_raw.startswith("AS"):
+                parts = org_raw.split(" ", 1)
+                asn = parts[0]
+                as_name = parts[1] if len(parts) > 1 else ""
+
+            as_domain = data.get("hostname", "")
+
+            return {
+                "ip": data.get("ip", ip),
+                "asn": asn,
+                "as_name": as_name,
+                "as_domain": as_domain,
+                "country": data.get("country", ""),  # 2-letter code
+                "country_name": _CC_NAMES.get(data.get("country", ""), ""),
+                "city": data.get("city", ""),
+                "region": data.get("region", ""),
+                "loc": data.get("loc", ""),  # "lat,lng"
+            }
+
+    except Exception as e:
+        logger.debug("ipinfo_lookup_error", ip=ip, error=str(e))
+        return None

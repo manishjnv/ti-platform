@@ -220,6 +220,14 @@ function HotIOCsStrip({
                     context: {},
                     created_at: null,
                     linked_intel_count: 0,
+                    asn: null,
+                    as_name: null,
+                    as_domain: null,
+                    country_code: null,
+                    country: null,
+                    continent_code: null,
+                    continent: null,
+                    enriched_at: null,
                   } as IOCItem)
                 }
                 className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted/20 hover:bg-muted/40 transition-colors text-left group min-w-0"
@@ -544,8 +552,33 @@ export default function IOCDatabasePage() {
                 </div>
               )}
 
-              {/* Geo */}
-              {stats.geo_distribution.length > 0 && (
+              {/* Country distribution (IPinfo enrichment) */}
+              {stats.country_distribution && stats.country_distribution.length > 0 ? (
+                <div>
+                  <p className="text-[10px] font-semibold text-muted-foreground mb-1 flex items-center gap-1">
+                    <Globe className="h-2.5 w-2.5" /> Countries
+                    {stats.enrichment_coverage && (
+                      <span className="ml-auto text-[8px] opacity-60">
+                        {stats.enrichment_coverage.enriched}/{stats.enrichment_coverage.total_ips} IPs enriched
+                      </span>
+                    )}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {stats.country_distribution.slice(0, 10).map((c) => (
+                      <span key={c.name} className="text-[9px] text-muted-foreground flex items-center gap-0.5">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={`https://flagcdn.com/16x12/${c.name.toLowerCase()}.png`}
+                          alt={c.name}
+                          className="h-2.5 inline"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                        />
+                        {c.name} <span className="font-semibold text-foreground/70">{c.count}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : stats.geo_distribution.length > 0 ? (
                 <div>
                   <p className="text-[10px] font-semibold text-muted-foreground mb-1 flex items-center gap-1">
                     <MapPin className="h-2.5 w-2.5" /> Geo
@@ -555,6 +588,22 @@ export default function IOCDatabasePage() {
                       <span key={g.name} className="text-[9px] text-muted-foreground">
                         {g.name} <span className="font-semibold text-foreground/70">{g.count}</span>
                       </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {/* ASN distribution */}
+              {stats.asn_distribution && stats.asn_distribution.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-semibold text-muted-foreground mb-1 flex items-center gap-1">
+                    <Server className="h-2.5 w-2.5" /> Top ASNs
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {stats.asn_distribution.slice(0, 6).map((a) => (
+                      <Badge key={a.name} variant="outline" className="text-[8px] px-1.5 py-0 h-4 border-cyan-500/20 text-cyan-300/80">
+                        {a.name} <span className="ml-1 opacity-50">{a.count}</span>
+                      </Badge>
                     ))}
                   </div>
                 </div>
@@ -658,7 +707,9 @@ export default function IOCDatabasePage() {
                   <th className="text-center py-2 px-3 text-muted-foreground font-medium cursor-pointer select-none hidden sm:table-cell" onClick={() => handleSort("linked_intel_count")}>
                     <span className="flex items-center justify-center">Intel<SortIcon col="linked_intel_count" /></span>
                   </th>
-                  <th className="text-left py-2 px-3 text-muted-foreground font-medium hidden lg:table-cell">Tags / Geo</th>
+                  <th className="text-left py-2 px-3 text-muted-foreground font-medium hidden lg:table-cell cursor-pointer select-none" onClick={() => handleSort("country")}>
+                    <span className="flex items-center">Location<SortIcon col="country" /></span>
+                  </th>
                   <th className="text-left py-2 px-3 text-muted-foreground font-medium hidden md:table-cell">Sources</th>
                   <th className="text-left py-2 px-3 text-muted-foreground font-medium cursor-pointer select-none hidden sm:table-cell" onClick={() => handleSort("created_at")}>
                     <span className="flex items-center">Published<SortIcon col="created_at" /></span>
@@ -737,23 +788,36 @@ export default function IOCDatabasePage() {
                         )}
                       </td>
 
-                      {/* Tags + Geo */}
+                      {/* Location / ASN */}
                       <td className="py-1.5 px-3 hidden lg:table-cell">
-                        <div className="flex flex-wrap gap-0.5 max-w-[180px]">
-                          {ioc.tags.slice(0, 3).map((t) => (
-                            <Badge key={t} variant="outline" className="text-[8px] px-1 py-0 h-3.5 border-primary/15 text-muted-foreground">
-                              {t}
-                            </Badge>
-                          ))}
-                          {ioc.tags.length > 3 && (
-                            <span className="text-[8px] text-muted-foreground/50">+{ioc.tags.length - 3}</span>
-                          )}
-                          {ioc.geo.length > 0 && (
-                            <span className="text-[8px] text-muted-foreground/60 flex items-center gap-0.5">
-                              <MapPin className="h-2 w-2" />{ioc.geo.slice(0, 2).join(", ")}
+                        {ioc.country_code ? (
+                          <div className="flex flex-col gap-0.5 max-w-[180px]">
+                            <span className="text-[10px] flex items-center gap-1">
+                              <img
+                                src={`https://flagcdn.com/16x12/${ioc.country_code.toLowerCase()}.png`}
+                                alt={ioc.country_code}
+                                width={16}
+                                height={12}
+                                className="inline-block"
+                              />
+                              <span className="font-medium">{ioc.country}</span>
+                              <span className="text-muted-foreground/50">{ioc.continent_code}</span>
                             </span>
-                          )}
-                        </div>
+                            {ioc.asn && (
+                              <span className="text-[9px] text-muted-foreground truncate" title={`${ioc.asn} — ${ioc.as_name}`}>
+                                {ioc.asn} {ioc.as_name}
+                              </span>
+                            )}
+                          </div>
+                        ) : ioc.ioc_type === "ip" ? (
+                          <span className="text-[9px] text-muted-foreground/40 italic">enriching…</span>
+                        ) : ioc.geo.length > 0 ? (
+                          <span className="text-[9px] text-muted-foreground flex items-center gap-0.5">
+                            <MapPin className="h-2 w-2" />{ioc.geo.slice(0, 2).join(", ")}
+                          </span>
+                        ) : (
+                          <span className="text-[9px] text-muted-foreground/30">—</span>
+                        )}
                       </td>
 
                       {/* Sources */}

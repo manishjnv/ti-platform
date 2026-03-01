@@ -427,6 +427,15 @@ export interface IOCItem {
   context: Record<string, unknown>;
   created_at: string | null;
   linked_intel_count: number;
+  // IPinfo enrichment
+  asn: string | null;
+  as_name: string | null;
+  as_domain: string | null;
+  country_code: string | null;
+  country: string | null;
+  continent_code: string | null;
+  continent: string | null;
+  enriched_at: string | null;
 }
 
 export interface IOCListResponse {
@@ -458,6 +467,11 @@ export interface IOCStatsResponse {
   }>;
   tag_distribution: Array<{ name: string; count: number }>;
   geo_distribution: Array<{ name: string; count: number }>;
+  // IPinfo enrichment stats
+  country_distribution: Array<{ name: string; code: string; count: number }>;
+  asn_distribution: Array<{ asn: string; name: string; count: number }>;
+  continent_distribution: Array<{ name: string; code: string; count: number }>;
+  enrichment_coverage: { enriched: number; total_ips: number };
 }
 
 export async function getIOCs(params: {
@@ -468,6 +482,8 @@ export async function getIOCs(params: {
   min_risk?: number;
   max_risk?: number;
   source?: string;
+  country_code?: string;
+  asn?: string;
   sort_by?: string;
   sort_dir?: string;
 } = {}): Promise<IOCListResponse> {

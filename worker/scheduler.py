@@ -35,7 +35,7 @@ redis_conn = Redis.from_url(settings.redis_url)
 scheduler = Scheduler(queue_name="default", connection=redis_conn)
 
 # ── Constants ────────────────────────────────────────────
-EXPECTED_JOB_COUNT = 14          # total scheduled jobs we register
+EXPECTED_JOB_COUNT = 15          # total scheduled jobs we register
 WATCHDOG_INTERVAL = 120          # seconds between health checks
 HEARTBEAT_KEY = "scheduler:heartbeat"
 HEARTBEAT_TTL = 300              # seconds — expires if scheduler dies
@@ -247,6 +247,16 @@ def setup_schedules():
         interval=timedelta(minutes=5).total_seconds(),
         queue_name="low",
         meta={"task": "notification_eval"},
+    )
+
+    # ─── IPinfo IP Enrichment — every 10 minutes ────────
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc) + timedelta(minutes=3),
+        func="worker.tasks.enrich_ips_ipinfo",
+        kwargs={"batch_size": 100},
+        interval=timedelta(minutes=10).total_seconds(),
+        queue_name="low",
+        meta={"task": "ipinfo_enrichment"},
     )
 
     print(f"Scheduled {len(list(scheduler.get_jobs()))} jobs")

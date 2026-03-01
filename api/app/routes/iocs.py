@@ -29,7 +29,9 @@ async def list_iocs(
     min_risk: int | None = Query(None, ge=0, le=100),
     max_risk: int | None = Query(None, ge=0, le=100),
     source: str | None = Query(None, max_length=100),
-    sort_by: str = Query("last_seen", pattern="^(value|ioc_type|risk_score|first_seen|last_seen|sighting_count|created_at|linked_intel_count)$"),
+    country_code: str | None = Query(None, max_length=5),
+    asn: str | None = Query(None, max_length=20),
+    sort_by: str = Query("last_seen", pattern="^(value|ioc_type|risk_score|first_seen|last_seen|sighting_count|created_at|linked_intel_count|country|asn)$"),
     sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
 ):
     """Paginated, filterable list of real IOCs from the iocs table."""
@@ -76,6 +78,14 @@ async def list_iocs(
         base = base.where(IOC.source_names.any(source))
         count_q = count_q.where(IOC.source_names.any(source))
 
+    if country_code:
+        base = base.where(IOC.country_code == country_code.upper())
+        count_q = count_q.where(IOC.country_code == country_code.upper())
+
+    if asn:
+        base = base.where(IOC.asn == asn.upper())
+        count_q = count_q.where(IOC.asn == asn.upper())
+
     # ── Count ────────────────────────────────────────────
     total = (await db.execute(count_q)).scalar() or 0
     pages = max(1, math.ceil(total / page_size))
@@ -106,6 +116,15 @@ async def list_iocs(
             "context": r.IOC.context or {},
             "created_at": r.IOC.created_at.isoformat() if r.IOC.created_at else None,
             "linked_intel_count": r.linked_intel_count,
+            # IPinfo enrichment
+            "asn": r.IOC.asn,
+            "as_name": r.IOC.as_name,
+            "as_domain": r.IOC.as_domain,
+            "country_code": r.IOC.country_code,
+            "country": r.IOC.country,
+            "continent_code": r.IOC.continent_code,
+            "continent": r.IOC.continent,
+            "enriched_at": r.IOC.enriched_at.isoformat() if r.IOC.enriched_at else None,
         }
         for r in rows
     ]
@@ -220,6 +239,48 @@ async def ioc_stats(
     geo_rows = (await db.execute(geo_q)).all()
     geo_dist = [{"name": r.g, "count": r.cnt} for r in geo_rows]
 
+    # ── IPinfo enrichment stats ──────────────────────────
+    # Country distribution (top 15, from enriched IPs)
+    country_q = (
+        select(IOC.country, IOC.country_code, func.count().label("cnt"))
+        .where(IOC.country.isnot(None))
+        .group_by(IOC.country, IOC.country_code)
+        .order_by(desc("cnt"))
+        .limit(15)
+    )
+    country_rows = (await db.execute(country_q)).all()
+    country_dist = [{"name": r.country, "code": r.country_code, "count": r.cnt} for r in country_rows]
+
+    # ASN distribution (top 15)
+    asn_q = (
+        select(IOC.asn, IOC.as_name, func.count().label("cnt"))
+        .where(IOC.asn.isnot(None))
+        .group_by(IOC.asn, IOC.as_name)
+        .order_by(desc("cnt"))
+        .limit(15)
+    )
+    asn_rows = (await db.execute(asn_q)).all()
+    asn_dist = [{"asn": r.asn, "name": r.as_name or r.asn, "count": r.cnt} for r in asn_rows]
+
+    # Continent distribution
+    continent_q = (
+        select(IOC.continent, IOC.continent_code, func.count().label("cnt"))
+        .where(IOC.continent.isnot(None))
+        .group_by(IOC.continent, IOC.continent_code)
+        .order_by(desc("cnt"))
+    )
+    continent_rows = (await db.execute(continent_q)).all()
+    continent_dist = [{"name": r.continent, "code": r.continent_code, "count": r.cnt} for r in continent_rows]
+
+    # Enrichment coverage
+    enriched_count = (await db.execute(
+        select(func.count()).select_from(IOC)
+        .where(IOC.ioc_type == "ip", IOC.enriched_at.isnot(None))
+    )).scalar() or 0
+    ip_total = (await db.execute(
+        select(func.count()).select_from(IOC).where(IOC.ioc_type == "ip")
+    )).scalar() or 0
+
     return {
         "total_iocs": total,
         "type_distribution": type_dist,
@@ -232,6 +293,10 @@ async def ioc_stats(
         "top_risky": top_risky,
         "tag_distribution": tag_dist,
         "geo_distribution": geo_dist,
+        "country_distribution": country_dist,
+        "asn_distribution": asn_dist,
+        "continent_distribution": continent_dist,
+        "enrichment_coverage": {"enriched": enriched_count, "total_ips": ip_total},
     }
 
 

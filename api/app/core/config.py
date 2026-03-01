@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     otx_api_key: str = ""
     virustotal_api_key: str = ""
     shodan_api_key: str = ""
+    ipinfo_token: str = ""  # IPinfo Lite — free tier (50k/month)
 
     # AI — OpenAI-compatible endpoint (Groq, Google Gemini, OpenAI, etc.)
     ai_api_url: str = "https://api.groq.com/openai/v1/chat/completions"

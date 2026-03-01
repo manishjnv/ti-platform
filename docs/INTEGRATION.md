@@ -59,6 +59,7 @@ Future phases will add **STIX/TAXII ingestion** for standards-compliant sharing.
 | VulnCheck | Exploit Intel | 🔲 Planned | — | Free tier |
 | Exploit-DB | Exploits | 🔲 Planned | — | No |
 | Shodan | CVE/Exploit | ✅ **Live** | `feeds/shodan.py` | Free (CVEDB) |
+| IPinfo Lite | IP Geo/ASN | ✅ **Live** | `worker/tasks.py` | Free tier (50k/mo) |
 | Censys | Asset Exposure | 🔲 Planned | — | Free tier |
 | MITRE ATT&CK | TTPs | 🔲 Planned | — | No |
 | Malpedia | Malware Families | 🔲 Planned | — | No |

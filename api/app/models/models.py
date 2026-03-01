@@ -105,6 +105,15 @@ class IOC(Base):
     geo: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
     source_names: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
     context: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    # IPinfo Lite enrichment
+    asn: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    as_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    as_domain: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    country_code: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    continent_code: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    continent: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    enriched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
