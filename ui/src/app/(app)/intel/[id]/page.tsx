@@ -825,7 +825,7 @@ export default function IntelDetailPage() {
                   />
                 )}
                 <TimelineEvent
-                  date={item.updated_at}
+                  date={item.updated_at ?? ""}
                   title="Last Updated"
                   description="Most recent update"
                   type="update"
