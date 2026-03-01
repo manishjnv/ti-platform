@@ -81,7 +81,7 @@ async def health_check():
 @router.get("/status/bar", response_model=StatusBarResponse)
 async def status_bar():
     """Lightweight header status bar — health + quick counts (cached 60s)."""
-    ck = cache_key("status_bar_v2")
+    ck = cache_key("status_bar_v3")
     cached = await get_cached(ck)
     if cached:
         return cached

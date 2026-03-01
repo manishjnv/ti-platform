@@ -111,7 +111,7 @@ async def get_attack_matrix(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Return ATT&CK matrix heatmap data — techniques grouped by tactic with intel counts."""
-    ck = cache_key("attack_matrix_v2")
+    ck = cache_key("attack_matrix_v3")
     cached = await get_cached(ck)
     if cached:
         return cached
