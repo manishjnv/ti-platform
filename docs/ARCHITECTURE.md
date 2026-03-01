@@ -257,10 +257,10 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 | **Models** | `api/app/models/` | SQLAlchemy ORM model definitions |
 | **Schemas** | `api/app/schemas/` | Pydantic v2 request/response schemas |
 | **Routes** | `api/app/routes/` | Thin route handlers — validate, delegate to service, return response |
-| **Services** | `api/app/services/` | All business logic: auth, database access, scoring, search, AI, export, MITRE ATT&CK, graph, notifications, reports, domain config, feed connectors |
+| **Services** | `api/app/services/` | All business logic: auth, database access, scoring, search, AI, export, MITRE ATT&CK, graph, notifications, reports, domain config, live internet lookup, feed connectors |
 | **Feeds** | `api/app/services/feeds/` | Plugin-based feed connectors (inherit from `BaseFeedConnector`) |
 
-### Endpoint Map (46 endpoints across 10 route files)
+### Endpoint Map (47 endpoints across 10 route files)
 
 | Method | Endpoint | Auth | Handler | Service |
 | ------ | -------- | ---- | ------- | ------- |
@@ -282,6 +282,7 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 | `GET` | `/api/v1/intel/{id}/related` | Viewer | `routes/intel.py` | `services/database.py` |
 | `POST` | `/api/v1/search` | Viewer | `routes/search.py` | `services/search.py` |
 | `GET` | `/api/v1/search/stats` | Viewer | `routes/search.py` | `services/search.py` |
+| `POST` | `/api/v1/search/live-lookup` | Viewer | `routes/search.py` | `services/live_lookup.py` |
 | `GET` | `/api/v1/feeds/status` | Viewer | `routes/admin.py` | `services/database.py` |
 | `POST` | `/api/v1/feeds/{feed_name}/trigger` | Admin | `routes/admin.py` | `services/feeds/*` |
 | `POST` | `/api/v1/feeds/trigger-all` | Admin | `routes/admin.py` | `services/feeds/*` |
@@ -583,19 +584,19 @@ GitHub Actions
 
 ## Codebase Metrics
 
-> Last updated: **2026-03-02** (Enhanced Search Page + aggregation stats)
+> Last updated: **2026-03-02** (Live Internet Lookup + Enhanced Search Page)
 
 ### Lines of Code by Category
 
 | Category | Lines | Files | Description |
 | -------- | -----: | -----: | ----------- |
-| Python (API + Worker) | 10,443 | 50 | FastAPI routes, services, models, schemas, feeds, worker tasks |
-| TypeScript/TSX (UI) | 13,906 | 49 | Next.js pages, components, store, types, API client |
+| Python (API + Worker) | 11,275 | 51 | FastAPI routes, services, models, schemas, feeds, worker tasks, live lookup |
+| TypeScript/TSX (UI) | 14,235 | 49 | Next.js pages, components, store, types, API client |
 | Markdown (Docs) | 2,747 | 7 | Architecture, roadmap, instructions, integration, technology |
 | Config (JSON/YAML/CSS/TOML) | 517 | 8 | package.json, tailwind, tsconfig, docker-compose, OpenSearch mapping |
 | SQL (Schema + Migrations) | 468 | 3 | PostgreSQL + TimescaleDB DDL, indexes, materialized views |
 | Docker | 262 | 5 | Multi-stage Dockerfiles (API, UI, Worker), compose files |
-| **TOTAL** | **~19,315** | **~122** | |
+| **TOTAL** | **~20,500** | **~123** | |
 
 ### Documentation Breakdown
 
@@ -603,7 +604,7 @@ GitHub Actions
 | ---- | -----: | ------- |
 | docs/ROADMAP.md | 784 | 7-phase feature roadmap with implementation details |
 | docs/Instruction.md | 514 | Development rules, UI guidelines, mandatory checklists |
-| docs/ARCHITECTURE.md | ~540 | System architecture, DB schema (41 indexes), API endpoints (46) |
+| docs/ARCHITECTURE.md | ~647 | System architecture, DB schema (41 indexes), API endpoints (47) |
 | docs/INTEGRATION.md | 382 | Feed connector specs, API integration patterns |
 | docs/TECHNOLOGY.md | 218 | Tech stack decisions and rationale |
 | README.md | 157 | Project overview, quick start, deployment |
@@ -620,6 +621,7 @@ GitHub Actions
 | 2026-02-28 | Phase 1.4 — Report Generation (templates, AI summary, export) | ~18,800 |
 | 2026-02-28 | Phase 1.5 — VirusTotal & Shodan Connectors | ~19,315 |
 | 2026-03-01 | Phase 1.6 — AI Web Research & Enhanced Report Sections | ~19,800 |
+| 2026-03-02 | Live Internet Lookup (12+ external API sources, AI summary) | ~20,500 |
 
 ---
 
@@ -627,6 +629,7 @@ GitHub Actions
 
 | Date | Change |
 | ---- | ------ |
+| 2026-03-02 | Live Internet Lookup: `services/live_lookup.py` (832 lines) — type-aware external API querying (NVD, AbuseIPDB, VirusTotal, Shodan, URLhaus, OTX, CISA KEV, DuckDuckGo); IOC auto-detection routes to appropriate sources (CVE→NVD+KEV+Web, IP→AbuseIPDB+VT+Shodan, Domain→VT+Shodan+Web, Hash→VT, URL→VT+URLhaus, Email→Web, Keyword→NVD+OTX+Web); AI summary synthesis via Groq; Redis caching (10 min TTL); `POST /search/live-lookup` endpoint; search page "Search Internet" button (zero-results + results header); live results display with source badges, AI summary card, severity-colored result cards, risk scores, references, CVE IDs, ports, tags |
 | 2026-03-02 | Enhanced Search Page: fix ResponseValidationError (optional `updated_at`), add `GET /search/stats` aggregation endpoint, sortable columns (7 fields), debounced search (400ms), type/severity/feed filter pills from live stats, collapsible donut+bar charts, copy-to-clipboard, VT/Shodan enrichment slide-over panel with backdrop, intel summary card, empty-state example queries + feature highlight cards; worker+admin reindex now index `updated_at`, `ai_summary` |
 | 2026-03-02 | Enhanced status bar: 10 widgets (health, threat gauge, intel count, crit/high, KEV, sparkline, last feed, ATT&CK %, search stats, admin quick actions); API extended with avg_risk_score, kev_count, attack_coverage_pct, searches_today, sparkline (24h hourly bins via generate_series); data-driven Live indicator; theme toggle; scheduler auto-cleanup on SIGTERM/atexit |
 | 2026-03-01 | Phase 1.6 AI Web Research: `services/research.py` (NVD, OTX, DuckDuckGo, OpenSearch live research), enhanced templates (11 sections: timeline, confirmation, exploitability, PoC availability, impacted tech, affected orgs), `generate_ai_sections` now research-backed |
