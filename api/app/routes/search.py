@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends
 from app.middleware.auth import require_viewer
 from app.models.models import User
 from app.schemas import SearchRequest, SearchResponse
-from app.services.search import global_search
+from app.services.search import global_search, search_aggregations
 
 router = APIRouter(prefix="/search", tags=["search"])
 
@@ -29,5 +29,15 @@ async def search(
         date_to=request.date_to.isoformat() if request.date_to else None,
         page=request.page,
         page_size=request.page_size,
+        sort_by=request.sort_by,
+        sort_dir=request.sort_dir,
     )
     return result
+
+
+@router.get("/stats")
+async def search_stats(
+    user: Annotated[User, Depends(require_viewer)],
+):
+    """Aggregation stats for search UI (type distribution, severity, sources)."""
+    return await search_aggregations()

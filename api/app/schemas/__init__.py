@@ -88,7 +88,7 @@ class IntelItemResponse(IntelItemBase):
 
     id: uuid.UUID
     ingested_at: datetime
-    updated_at: datetime
+    updated_at: datetime | None = None
     ai_summary: str | None = None
     ai_summary_at: datetime | None = None
     source_hash: str
@@ -135,6 +135,8 @@ class SearchRequest(BaseModel):
     date_to: datetime | None = None
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=20, ge=1, le=100)
+    sort_by: str = Field(default="risk_score", pattern="^(risk_score|published_at|ingested_at|severity|confidence|source_reliability|title)$")
+    sort_dir: str = Field(default="desc", pattern="^(asc|desc)$")
 
 
 class SearchResponse(BaseModel):

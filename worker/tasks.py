@@ -717,6 +717,8 @@ def _prepare_os_docs(items: list[dict]) -> list[dict]:
             "description": item.get("description", ""),
             "published_at": item.get("published_at").isoformat() if item.get("published_at") else None,
             "ingested_at": item.get("ingested_at").isoformat() if item.get("ingested_at") else None,
+            "updated_at": item.get("updated_at").isoformat() if item.get("updated_at") else item.get("ingested_at").isoformat() if item.get("ingested_at") else None,
+            "ai_summary": item.get("ai_summary", ""),
             "severity": item.get("severity", "unknown"),
             "risk_score": item.get("risk_score", 0),
             "confidence": item.get("confidence", 50),

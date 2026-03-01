@@ -281,6 +281,7 @@ async def reindex_opensearch(
                 "ai_summary": item.ai_summary or "",
                 "published_at": item.published_at.isoformat() if item.published_at else None,
                 "ingested_at": item.ingested_at.isoformat() if item.ingested_at else None,
+                "updated_at": item.updated_at.isoformat() if item.updated_at else (item.ingested_at.isoformat() if item.ingested_at else None),
                 "severity": item.severity,
                 "risk_score": item.risk_score,
                 "confidence": item.confidence,
@@ -296,7 +297,10 @@ async def reindex_opensearch(
                 "industries": list(item.industries) if item.industries else [],
                 "cve_ids": list(item.cve_ids) if item.cve_ids else [],
                 "affected_products": list(item.affected_products) if item.affected_products else [],
+                "related_ioc_count": item.related_ioc_count or 0,
                 "is_kev": item.is_kev or False,
+                "exploit_available": item.exploit_available or False,
+                "exploitability_score": item.exploitability_score,
                 "source_hash": item.source_hash or "",
             }
             docs.append(doc)

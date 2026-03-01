@@ -5,7 +5,7 @@ export interface IntelItem {
   description: string | null;
   published_at: string | null;
   ingested_at: string;
-  updated_at: string;
+  updated_at: string | null;
   severity: Severity;
   risk_score: number;
   confidence: number;
@@ -255,6 +255,8 @@ export interface SearchFilters {
   date_to?: string;
   page: number;
   page_size: number;
+  sort_by?: string;
+  sort_dir?: 'asc' | 'desc';
 }
 
 // ─── MITRE ATT&CK ──────────────────────────────────────

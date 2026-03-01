@@ -44,13 +44,15 @@ async def global_search(
     date_to: str | None = None,
     page: int = 1,
     page_size: int = 20,
+    sort_by: str = "risk_score",
+    sort_dir: str = "desc",
 ) -> dict:
     """Execute a global search across intel items.
 
     Returns paginated results with detected IOC type.
     """
     # Check cache
-    ck = cache_key("search", query, feed_type, severity, asset_type, page, page_size)
+    ck = cache_key("search", query, feed_type, severity, asset_type, page, page_size, sort_by, sort_dir)
     cached = await get_cached(ck)
     if cached:
         return cached
@@ -60,7 +62,8 @@ async def global_search(
 
     # Build OpenSearch query
     os_query = _build_query(
-        query, detected_type, feed_type, severity, asset_type, date_from, date_to
+        query, detected_type, feed_type, severity, asset_type, date_from, date_to,
+        sort_by, sort_dir,
     )
 
     try:
@@ -101,6 +104,63 @@ async def global_search(
     return response
 
 
+async def search_aggregations() -> dict:
+    """Return aggregation stats from OpenSearch for filters/charts."""
+    from app.core.opensearch import opensearch_client, INDEX_NAME
+
+    ck = cache_key("search_aggs")
+    cached = await get_cached(ck)
+    if cached:
+        return cached
+
+    body = {
+        "size": 0,
+        "aggs": {
+            "type_distribution": {"terms": {"field": "asset_type", "size": 20}},
+            "severity_distribution": {"terms": {"field": "severity", "size": 10}},
+            "feed_distribution": {"terms": {"field": "feed_type", "size": 20}},
+            "source_distribution": {"terms": {"field": "source_name", "size": 20}},
+            "risk_stats": {"stats": {"field": "risk_score"}},
+            "kev_count": {"filter": {"term": {"is_kev": True}}},
+        },
+    }
+
+    try:
+        result = opensearch_client.search(index=INDEX_NAME, body=body)
+    except Exception as e:
+        logger.error("search_aggs_error", error=str(e))
+        return {"type_distribution": [], "severity_distribution": [], "feed_distribution": [],
+                "source_distribution": [], "total": 0, "avg_risk": 0, "kev_count": 0}
+
+    aggs = result.get("aggregations", {})
+    total = result.get("hits", {}).get("total", {}).get("value", 0)
+
+    response = {
+        "type_distribution": [
+            {"name": b["key"], "count": b["doc_count"]}
+            for b in aggs.get("type_distribution", {}).get("buckets", [])
+        ],
+        "severity_distribution": [
+            {"name": b["key"], "count": b["doc_count"]}
+            for b in aggs.get("severity_distribution", {}).get("buckets", [])
+        ],
+        "feed_distribution": [
+            {"name": b["key"], "count": b["doc_count"]}
+            for b in aggs.get("feed_distribution", {}).get("buckets", [])
+        ],
+        "source_distribution": [
+            {"name": b["key"], "count": b["doc_count"]}
+            for b in aggs.get("source_distribution", {}).get("buckets", [])
+        ],
+        "total": total,
+        "avg_risk": round(aggs.get("risk_stats", {}).get("avg", 0) or 0, 1),
+        "kev_count": aggs.get("kev_count", {}).get("doc_count", 0),
+    }
+
+    await set_cached(ck, response, ttl=300)
+    return response
+
+
 def _build_query(
     query: str,
     detected_type: str | None,
@@ -109,6 +169,8 @@ def _build_query(
     asset_type: str | None,
     date_from: str | None,
     date_to: str | None,
+    sort_by: str = "risk_score",
+    sort_dir: str = "desc",
 ) -> dict:
     """Build an OpenSearch query body."""
     must = []
@@ -189,6 +251,12 @@ def _build_query(
             date_range["lte"] = date_to
         filters.append({"range": {"published_at": date_range}})
 
+    # Sort — title uses .keyword sub-field for alphabetic sort
+    sort_field = "title.keyword" if sort_by == "title" else sort_by
+    sort_list = [{sort_field: {"order": sort_dir}}]
+    if sort_by != "ingested_at":
+        sort_list.append({"ingested_at": {"order": "desc"}})
+
     return {
         "query": {
             "bool": {
@@ -196,10 +264,7 @@ def _build_query(
                 "filter": filters,
             }
         },
-        "sort": [
-            {"risk_score": {"order": "desc"}},
-            {"ingested_at": {"order": "desc"}},
-        ],
+        "sort": sort_list,
         "highlight": {
             "fields": {
                 "title": {},

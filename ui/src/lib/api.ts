@@ -89,6 +89,20 @@ export async function searchIntel(body: import("@/types").SearchFilters) {
   });
 }
 
+export interface SearchAggStats {
+  type_distribution: Array<{ name: string; count: number }>;
+  severity_distribution: Array<{ name: string; count: number }>;
+  feed_distribution: Array<{ name: string; count: number }>;
+  source_distribution: Array<{ name: string; count: number }>;
+  total: number;
+  avg_risk: number;
+  kev_count: number;
+}
+
+export async function getSearchStats(): Promise<SearchAggStats> {
+  return fetcher<SearchAggStats>("/search/stats");
+}
+
 // ─── Dashboard ──────────────────────────────────────────
 export async function getDashboard() {
   return fetcher<import("@/types").DashboardData>("/dashboard");
