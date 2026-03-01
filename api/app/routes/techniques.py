@@ -19,6 +19,7 @@ from app.schemas import (
     AttackMatrixTactic,
     AttackTechniqueListResponse,
     AttackTechniqueResponse,
+    DetectionGap,
     IntelAttackLinkResponse,
 )
 from app.services.mitre import TACTIC_ORDER, TACTIC_LABELS
@@ -110,19 +111,25 @@ async def get_attack_matrix(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Return ATT&CK matrix heatmap data — techniques grouped by tactic with intel counts."""
-    ck = cache_key("attack_matrix")
+    ck = cache_key("attack_matrix_v2")
     cached = await get_cached(ck)
     if cached:
         return cached
 
-    # Get all parent techniques with their intel counts and max risk scores
+    # Get all parent techniques with their intel counts, max risk, and severity breakdown
     stmt = (
         select(
             AttackTechnique.id,
             AttackTechnique.name,
             AttackTechnique.tactic,
+            AttackTechnique.platforms,
+            AttackTechnique.url,
             func.count(IntelAttackLink.intel_id).label("count"),
             func.coalesce(func.max(IntelItem.risk_score), 0).label("max_risk"),
+            func.count(case((IntelItem.severity == "critical", 1), else_=None)).label("sev_critical"),
+            func.count(case((IntelItem.severity == "high", 1), else_=None)).label("sev_high"),
+            func.count(case((IntelItem.severity == "medium", 1), else_=None)).label("sev_medium"),
+            func.count(case((IntelItem.severity == "low", 1), else_=None)).label("sev_low"),
         )
         .outerjoin(IntelAttackLink, IntelAttackLink.technique_id == AttackTechnique.id)
         .outerjoin(
@@ -131,7 +138,7 @@ async def get_attack_matrix(
             & (IntelItem.ingested_at == IntelAttackLink.intel_ingested_at),
         )
         .where(AttackTechnique.is_subtechnique == False)  # noqa: E712
-        .group_by(AttackTechnique.id, AttackTechnique.name, AttackTechnique.tactic)
+        .group_by(AttackTechnique.id, AttackTechnique.name, AttackTechnique.tactic, AttackTechnique.platforms, AttackTechnique.url)
         .order_by(AttackTechnique.id)
     )
 
@@ -140,34 +147,70 @@ async def get_attack_matrix(
 
     # Group by tactic
     tactic_map: dict[str, list[AttackMatrixCell]] = {}
+    unmapped_techniques: list[tuple] = []  # for detection gaps
     total_mapped = 0
     for row in rows:
+        severity_counts = {}
+        if row.sev_critical > 0:
+            severity_counts["critical"] = row.sev_critical
+        if row.sev_high > 0:
+            severity_counts["high"] = row.sev_high
+        if row.sev_medium > 0:
+            severity_counts["medium"] = row.sev_medium
+        if row.sev_low > 0:
+            severity_counts["low"] = row.sev_low
+
         cell = AttackMatrixCell(
             id=row.id,
             name=row.name,
             count=row.count,
             max_risk=row.max_risk,
+            severity_counts=severity_counts,
         )
         if row.count > 0:
             total_mapped += 1
+        else:
+            unmapped_techniques.append(row)
         tactic_map.setdefault(row.tactic, []).append(cell)
 
-    # Build ordered tactics list
+    # Build ordered tactics list with per-tactic coverage
     tactics = []
     for tactic_key in TACTIC_ORDER:
         if tactic_key in tactic_map:
+            techs = tactic_map[tactic_key]
             tactics.append(
                 AttackMatrixTactic(
                     tactic=tactic_key,
                     label=TACTIC_LABELS.get(tactic_key, tactic_key),
-                    techniques=tactic_map[tactic_key],
+                    techniques=techs,
+                    mapped=sum(1 for t in techs if t.count > 0),
+                    total=len(techs),
                 )
             )
+
+    # Detection gaps: top unmapped techniques from high-priority tactics
+    # Priority: initial-access, execution, persistence, privilege-escalation, defense-evasion, lateral-movement, impact
+    priority_tactics = {"initial-access", "execution", "persistence", "privilege-escalation", "defense-evasion", "lateral-movement", "impact"}
+    gap_priority = [r for r in unmapped_techniques if r.tactic in priority_tactics]
+    gap_rest = [r for r in unmapped_techniques if r.tactic not in priority_tactics]
+    gaps_sorted = gap_priority + gap_rest
+    detection_gaps = [
+        DetectionGap(
+            id=r.id,
+            name=r.name,
+            tactic=r.tactic,
+            tactic_label=TACTIC_LABELS.get(r.tactic, r.tactic),
+            platforms=r.platforms or [],
+            url=r.url,
+        )
+        for r in gaps_sorted[:20]
+    ]
 
     response = AttackMatrixResponse(
         tactics=tactics,
         total_techniques=len(rows),
         total_mapped=total_mapped,
+        detection_gaps=detection_gaps,
     )
 
     await set_cached(ck, response.model_dump(), ttl=120)

@@ -85,6 +85,7 @@ export interface StatusBarData {
   avg_risk_score: number;
   kev_count: number;
   attack_coverage_pct: number;
+  attack_coverage_prev_pct: number;
   searches_today: number;
   sparkline: number[];
 }
@@ -286,18 +287,31 @@ export interface AttackMatrixCell {
   name: string;
   count: number;
   max_risk: number;
+  severity_counts: Record<string, number>;
 }
 
 export interface AttackMatrixTactic {
   tactic: string;
   label: string;
   techniques: AttackMatrixCell[];
+  mapped: number;
+  total: number;
+}
+
+export interface DetectionGap {
+  id: string;
+  name: string;
+  tactic: string;
+  tactic_label: string;
+  platforms: string[];
+  url: string | null;
 }
 
 export interface AttackMatrixResponse {
   tactics: AttackMatrixTactic[];
   total_techniques: number;
   total_mapped: number;
+  detection_gaps: DetectionGap[];
 }
 
 export interface IntelAttackLink {

@@ -13,6 +13,7 @@ import type {
   AttackMatrixResponse,
   AttackTechniqueListResponse,
   AttackTechnique,
+  DetectionGap,
 } from "@/types";
 import {
   Shield,
@@ -23,7 +24,148 @@ import {
   ChevronRight,
   Eye,
   Activity,
+  AlertTriangle,
 } from "lucide-react";
+
+/* ─── Coverage Progress Ring (SVG donut) ──────────────── */
+function CoverageRing({
+  pct,
+  mapped,
+  total,
+  onClick,
+}: {
+  pct: number;
+  mapped: number;
+  total: number;
+  onClick?: () => void;
+}) {
+  const r = 38;
+  const stroke = 6;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (pct / 100) * circ;
+  // Gradient color based on coverage
+  const ringColor =
+    pct >= 50 ? "stroke-emerald-500" : pct >= 25 ? "stroke-amber-500" : pct >= 10 ? "stroke-orange-500" : "stroke-red-500";
+
+  return (
+    <Card
+      className="cursor-pointer hover:bg-accent/50 transition-colors relative overflow-hidden"
+      onClick={onClick}
+    >
+      <CardContent className="pt-4 pb-3 flex items-center gap-4">
+        <div className="relative w-[90px] h-[90px] shrink-0">
+          <svg
+            width="90"
+            height="90"
+            viewBox="0 0 90 90"
+            className="transform -rotate-90"
+          >
+            {/* Track */}
+            <circle
+              cx="45"
+              cy="45"
+              r={r}
+              fill="none"
+              strokeWidth={stroke}
+              className="stroke-muted/20"
+            />
+            {/* Progress */}
+            <circle
+              cx="45"
+              cy="45"
+              r={r}
+              fill="none"
+              strokeWidth={stroke}
+              strokeDasharray={circ}
+              strokeDashoffset={offset}
+              strokeLinecap="round"
+              className={cn("transition-all duration-1000 ease-out", ringColor)}
+            />
+          </svg>
+          {/* Center text */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-lg font-bold leading-none">{pct.toFixed(1)}%</span>
+            <span className="text-[9px] text-muted-foreground mt-0.5">coverage</span>
+          </div>
+        </div>
+        <div className="min-w-0">
+          <div className="text-sm font-semibold">ATT&CK Coverage</div>
+          <div className="text-xs text-muted-foreground mt-0.5">
+            <span className="text-primary font-bold">{mapped}</span> / {total} techniques mapped
+          </div>
+          <div className="text-[10px] text-muted-foreground mt-1 opacity-60">
+            {total - mapped} gaps remaining
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ─── Detection Gaps Card ─────────────────────────────── */
+function DetectionGapsCard({ gaps }: { gaps: DetectionGap[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const shown = expanded ? gaps : gaps.slice(0, 8);
+
+  if (gaps.length === 0) return null;
+
+  return (
+    <Card className="border-orange-500/20">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 text-orange-500" />
+          Detection Gaps
+          <Badge variant="secondary" className="text-[10px] ml-auto">
+            {gaps.length} unmapped
+          </Badge>
+        </CardTitle>
+        <p className="text-[10px] text-muted-foreground">
+          High-priority techniques without intel coverage — prioritize these for improved detection
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-1">
+        {shown.map((gap) => (
+          <Link
+            key={gap.id}
+            href={`/techniques/${gap.id}`}
+            className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/30 transition-colors group"
+          >
+            <Badge variant="outline" className="font-mono text-[9px] shrink-0">
+              {gap.id}
+            </Badge>
+            <span className="text-xs truncate flex-1 group-hover:text-primary transition-colors">
+              {gap.name}
+            </span>
+            <Badge
+              variant="secondary"
+              className="text-[9px] shrink-0 capitalize"
+            >
+              {gap.tactic_label}
+            </Badge>
+            {gap.platforms.length > 0 && (
+              <div className="hidden md:flex gap-0.5">
+                {gap.platforms.slice(0, 2).map((p) => (
+                  <span key={p} className="text-[8px] text-muted-foreground/60">
+                    {p}
+                  </span>
+                ))}
+              </div>
+            )}
+            <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+          </Link>
+        ))}
+        {gaps.length > 8 && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="w-full text-center text-[10px] text-primary hover:underline py-1"
+          >
+            {expanded ? "Show fewer" : `Show all ${gaps.length} gaps`}
+          </button>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function TechniquesPage() {
   const [matrixData, setMatrixData] = useState<AttackMatrixResponse | null>(null);
@@ -64,6 +206,11 @@ export default function TechniquesPage() {
 
   if (loading && !matrixData) return <Loading text="Loading MITRE ATT&CK data..." />;
 
+  const covPct =
+    matrixData && matrixData.total_techniques > 0
+      ? (matrixData.total_mapped / matrixData.total_techniques) * 100
+      : 0;
+
   return (
     <div className="p-4 md:p-6 space-y-6">
       {/* Header */}
@@ -87,55 +234,86 @@ export default function TechniquesPage() {
         </a>
       </div>
 
-      {/* Stats Cards */}
+      {/* Stats Cards — Coverage Ring + Stats Row */}
       {matrixData && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_1fr] gap-3">
+          {/* Coverage Ring (spans 1 col on mobile, 1 on desktop) */}
+          <CoverageRing
+            pct={covPct}
+            mapped={matrixData.total_mapped}
+            total={matrixData.total_techniques}
+            onClick={() => {
+              setView("list");
+              setSelectedTactic("");
+              setSearchTerm("");
+              setHasIntelFilter(true);
+            }}
+          />
           <Card
             className="cursor-pointer hover:bg-accent/50 transition-colors"
-            onClick={() => { setView("list"); setSelectedTactic(""); setSearchTerm(""); setHasIntelFilter(false); }}
+            onClick={() => {
+              setView("list");
+              setSelectedTactic("");
+              setSearchTerm("");
+              setHasIntelFilter(false);
+            }}
           >
             <CardContent className="pt-4 pb-3">
-              <div className="text-2xl font-bold">{matrixData.total_techniques}</div>
-              <div className="text-xs text-muted-foreground">Total Techniques</div>
-            </CardContent>
-          </Card>
-          <Card
-            className="cursor-pointer hover:bg-accent/50 transition-colors"
-            onClick={() => { setView("list"); setSelectedTactic(""); setSearchTerm(""); setHasIntelFilter(true); }}
-          >
-            <CardContent className="pt-4 pb-3">
-              <div className="text-2xl font-bold text-primary">{matrixData.total_mapped}</div>
-              <div className="text-xs text-muted-foreground">With Intel Hits</div>
-            </CardContent>
-          </Card>
-          <Card
-            className="cursor-pointer hover:bg-accent/50 transition-colors"
-            onClick={() => { setView("matrix"); }}
-          >
-            <CardContent className="pt-4 pb-3">
-              <div className="text-2xl font-bold">{matrixData.tactics.length}</div>
-              <div className="text-xs text-muted-foreground">Tactics Covered</div>
-            </CardContent>
-          </Card>
-          <Card
-            className="cursor-pointer hover:bg-accent/50 transition-colors"
-            onClick={() => { setView("list"); setSelectedTactic(""); setSearchTerm(""); setHasIntelFilter(true); }}
-          >
-            <CardContent className="pt-4 pb-3">
-              <div className="text-2xl font-bold text-orange-400">
-                {matrixData.total_techniques > 0
-                  ? ((matrixData.total_mapped / matrixData.total_techniques) * 100).toFixed(1)
-                  : 0}%
+              <div className="text-2xl font-bold">
+                {matrixData.total_techniques}
               </div>
-              <div className="text-xs text-muted-foreground">Coverage</div>
+              <div className="text-xs text-muted-foreground">
+                Total Techniques
+              </div>
+            </CardContent>
+          </Card>
+          <Card
+            className="cursor-pointer hover:bg-accent/50 transition-colors"
+            onClick={() => {
+              setView("list");
+              setSelectedTactic("");
+              setSearchTerm("");
+              setHasIntelFilter(true);
+            }}
+          >
+            <CardContent className="pt-4 pb-3">
+              <div className="text-2xl font-bold text-primary">
+                {matrixData.total_mapped}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                With Intel Hits
+              </div>
+            </CardContent>
+          </Card>
+          <Card
+            className="cursor-pointer hover:bg-accent/50 transition-colors"
+            onClick={() => {
+              setView("matrix");
+            }}
+          >
+            <CardContent className="pt-4 pb-3">
+              <div className="text-2xl font-bold">
+                {matrixData.tactics.length}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Tactics Covered
+              </div>
             </CardContent>
           </Card>
         </div>
       )}
 
+      {/* Detection Gaps */}
+      {matrixData && matrixData.detection_gaps.length > 0 && (
+        <DetectionGapsCard gaps={matrixData.detection_gaps} />
+      )}
+
       {/* View Toggle + Search */}
       <div className="flex items-center gap-3 flex-wrap">
-        <Tabs value={view} onValueChange={(v) => setView(v as "matrix" | "list")}>
+        <Tabs
+          value={view}
+          onValueChange={(v) => setView(v as "matrix" | "list")}
+        >
           <TabsList>
             <TabsTrigger value="matrix" className="gap-1.5">
               <Grid3X3 className="h-3.5 w-3.5" /> Matrix
@@ -187,7 +365,9 @@ export default function TechniquesPage() {
                 {listData.tactics.map((t) => (
                   <button
                     key={t}
-                    onClick={() => setSelectedTactic(t === selectedTactic ? "" : t)}
+                    onClick={() =>
+                      setSelectedTactic(t === selectedTactic ? "" : t)
+                    }
                     className={cn(
                       "text-[10px] px-2 py-1 rounded-full border transition-colors",
                       t === selectedTactic

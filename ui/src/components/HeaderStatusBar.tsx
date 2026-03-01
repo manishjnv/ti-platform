@@ -11,6 +11,9 @@ import {
   Grid3X3,
   Search,
   Shield,
+  TrendingUp,
+  TrendingDown,
+  Minus,
 } from "lucide-react";
 import { getStatusBar } from "@/lib/api";
 import type { StatusBarData } from "@/types";
@@ -266,13 +269,19 @@ export function HeaderStatusBar() {
         </>
       )}
 
-      {/* 8 ── ATT&CK Coverage ────────────────────────── */}
+      {/* 8 ── ATT&CK Coverage + Trend ────────────────── */}
       <Link href="/techniques" className="no-underline">
-        <Pill className="bg-violet-50 dark:bg-violet-500/10 border-violet-200/60 dark:border-violet-500/20 text-violet-700 dark:text-violet-300 shadow-violet-500/10 dark:shadow-violet-500/5 hover:bg-violet-100 dark:hover:bg-violet-500/15 transition-colors cursor-pointer" title="MITRE ATT&CK technique coverage">
+        <Pill className="bg-violet-50 dark:bg-violet-500/10 border-violet-200/60 dark:border-violet-500/20 text-violet-700 dark:text-violet-300 shadow-violet-500/10 dark:shadow-violet-500/5 hover:bg-violet-100 dark:hover:bg-violet-500/15 transition-colors cursor-pointer" title={`MITRE ATT&CK technique coverage${data.attack_coverage_prev_pct > 0 ? ` (was ${data.attack_coverage_prev_pct}% 7d ago)` : ""}`}>
           <IconBox className="bg-violet-500/15 dark:bg-violet-500/20">
             <Grid3X3 className="h-2.5 w-2.5 text-violet-600 dark:text-violet-400" />
           </IconBox>
           <span className="font-bold tabular-nums">{data.attack_coverage_pct}%</span>
+          {data.attack_coverage_prev_pct > 0 && (() => {
+            const diff = +(data.attack_coverage_pct - data.attack_coverage_prev_pct).toFixed(1);
+            if (diff > 0) return <TrendingUp className="h-2.5 w-2.5 text-emerald-500" />;
+            if (diff < 0) return <TrendingDown className="h-2.5 w-2.5 text-red-400" />;
+            return <Minus className="h-2.5 w-2.5 opacity-40" />;
+          })()}
         </Pill>
       </Link>
 

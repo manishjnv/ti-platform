@@ -286,6 +286,7 @@ class AttackMatrixCell(BaseModel):
     name: str
     count: int = 0
     max_risk: int = 0
+    severity_counts: dict[str, int] = {}  # {"critical": 2, "high": 5, ...}
 
 
 class AttackMatrixTactic(BaseModel):
@@ -293,12 +294,25 @@ class AttackMatrixTactic(BaseModel):
     tactic: str
     label: str
     techniques: list[AttackMatrixCell]
+    mapped: int = 0   # techniques with intel hits
+    total: int = 0    # total techniques in this tactic
+
+
+class DetectionGap(BaseModel):
+    """An unmapped high-priority technique."""
+    id: str
+    name: str
+    tactic: str
+    tactic_label: str
+    platforms: list[str] = []
+    url: str | None = None
 
 
 class AttackMatrixResponse(BaseModel):
     tactics: list[AttackMatrixTactic]
     total_techniques: int
     total_mapped: int
+    detection_gaps: list[DetectionGap] = []  # top unmapped techniques
 
 
 class IntelAttackLinkResponse(BaseModel):

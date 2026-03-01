@@ -35,6 +35,7 @@ class StatusBarResponse(BaseModel):
     avg_risk_score: float
     kev_count: int
     attack_coverage_pct: float
+    attack_coverage_prev_pct: float  # coverage 7 days ago for trend
     searches_today: int
     sparkline: list[int]  # 24 hourly bins (oldest → newest)
 
@@ -109,6 +110,7 @@ async def status_bar():
     active_feeds = total_feeds = kev_count = searches_today = 0
     avg_risk_score = 0.0
     attack_coverage_pct = 0.0
+    attack_coverage_prev_pct = 0.0
     last_feed_at: str | None = None
     sparkline: list[int] = []
 
@@ -162,6 +164,17 @@ async def status_bar():
             linked = cov_row.linked or 0
             attack_coverage_pct = round(linked / max(total_tech, 1) * 100, 1)
 
+            # ATT&CK coverage 7 days ago (for trend arrow)
+            prev_row = (await conn.execute(text(
+                "SELECT count(DISTINCT t.id) AS linked"
+                " FROM attack_techniques t"
+                " JOIN intel_attack_links l ON l.technique_id = t.id"
+                " JOIN intel_items i ON i.id = l.intel_id AND i.ingested_at = l.intel_ingested_at"
+                " WHERE t.is_subtechnique = false AND l.created_at <= (now() - interval '7 days')"
+            ))).one()
+            prev_linked = prev_row.linked or 0
+            attack_coverage_prev_pct = round(prev_linked / max(total_tech, 1) * 100, 1)
+
             # Searches today (audit_log action = 'search')
             searches_today = (await conn.execute(text(
                 "SELECT count(*) FROM audit_log"
@@ -204,6 +217,7 @@ async def status_bar():
         avg_risk_score=avg_risk_score,
         kev_count=kev_count,
         attack_coverage_pct=attack_coverage_pct,
+        attack_coverage_prev_pct=attack_coverage_prev_pct,
         searches_today=searches_today,
         sparkline=sparkline,
     )
