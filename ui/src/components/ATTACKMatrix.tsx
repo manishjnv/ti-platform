@@ -4,9 +4,7 @@ import React, { useState, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import type { AttackMatrixResponse, AttackMatrixCell } from "@/types";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Shield, ExternalLink, Eye, Filter, X, Download } from "lucide-react";
+import { Filter, X, Download } from "lucide-react";
 
 interface ATTACKMatrixProps {
   data: AttackMatrixResponse;
@@ -123,7 +121,6 @@ function exportNavigatorLayer(data: AttackMatrixResponse) {
 }
 
 export function ATTACKMatrix({ data }: ATTACKMatrixProps) {
-  const [selectedCell, setSelectedCell] = useState<AttackMatrixCell | null>(null);
   const [hoveredCell, setHoveredCell] = useState<AttackMatrixCell | null>(null);
   const [selectedTactic, setSelectedTactic] = useState<string | null>(null);
   const [filterWithHits, setFilterWithHits] = useState(false);
@@ -306,19 +303,8 @@ export function ATTACKMatrix({ data }: ATTACKMatrixProps) {
                         href={`/techniques/${tech.id}`}
                         className={cn(
                           "block px-1.5 py-1 text-[10px] leading-tight rounded border border-transparent cursor-pointer transition-all duration-150",
-                          cellColor(tech.count, tech.max_risk),
-                          selectedCell?.id === tech.id &&
-                            "ring-1 ring-primary border-primary/50"
+                          cellColor(tech.count, tech.max_risk)
                         )}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setSelectedCell(
-                            selectedCell?.id === tech.id ? null : tech
-                          );
-                        }}
-                        onDoubleClick={() => {
-                          window.location.href = `/techniques/${tech.id}`;
-                        }}
                       >
                         <div className="font-mono text-[9px] opacity-60">
                           {tech.id}
@@ -338,12 +324,12 @@ export function ATTACKMatrix({ data }: ATTACKMatrixProps) {
 
                       {/* Rich hover tooltip */}
                       {hoveredCell?.id === tech.id && tech.count > 0 && (
-                        <div className="absolute z-50 left-full ml-2 top-0 pointer-events-none">
-                          <div className="bg-popover border border-border/60 rounded-lg shadow-xl px-3 py-2 space-y-1.5 min-w-[160px]">
-                            <div className="text-[10px] font-semibold truncate max-w-[180px]">
+                        <div className="absolute z-[100] left-full ml-2 top-0 pointer-events-none">
+                          <div className="bg-zinc-900 border border-zinc-600 rounded-lg shadow-2xl shadow-black/60 px-3 py-2.5 space-y-1.5 min-w-[180px] backdrop-blur-none ring-1 ring-white/10">
+                            <div className="text-[11px] font-semibold text-zinc-100 truncate max-w-[200px]">
                               {tech.id}: {tech.name}
                             </div>
-                            <div className="flex items-center gap-2 text-[9px] text-muted-foreground">
+                            <div className="flex items-center gap-2 text-[10px] text-zinc-400">
                               <span>
                                 {tech.count} mapping
                                 {tech.count !== 1 ? "s" : ""}
@@ -357,8 +343,8 @@ export function ATTACKMatrix({ data }: ATTACKMatrixProps) {
                                   counts={tech.severity_counts}
                                 />
                               )}
-                            <div className="text-[8px] text-muted-foreground/60 pt-0.5">
-                              Click to select • Double-click to view
+                            <div className="text-[9px] text-zinc-500 pt-1 border-t border-zinc-700/60 mt-1">
+                              Click to view details
                             </div>
                           </div>
                         </div>
@@ -372,99 +358,7 @@ export function ATTACKMatrix({ data }: ATTACKMatrixProps) {
         </div>
       </div>
 
-      {/* Selected technique detail panel */}
-      {selectedCell && (
-        <Card className="border-primary/30">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Badge variant="outline" className="font-mono text-xs">
-                  {selectedCell.id}
-                </Badge>
-                {selectedCell.name}
-              </CardTitle>
-              <button
-                onClick={() => setSelectedCell(null)}
-                className="p-1 rounded hover:bg-muted/40 text-muted-foreground"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </CardHeader>
-          <CardContent className="text-sm space-y-3">
-            <div className="flex items-center gap-4 flex-wrap">
-              <span className="text-muted-foreground">Intel Mappings:</span>
-              <Badge
-                variant={
-                  selectedCell.count > 0 ? "default" : "secondary"
-                }
-              >
-                {selectedCell.count}
-              </Badge>
-              <span className="text-muted-foreground">Max Risk:</span>
-              <Badge
-                variant={
-                  selectedCell.max_risk >= 80
-                    ? "destructive"
-                    : selectedCell.max_risk >= 60
-                    ? "default"
-                    : "secondary"
-                }
-              >
-                {selectedCell.max_risk}
-              </Badge>
-              {/* Severity breakdown inline */}
-              {selectedCell.severity_counts &&
-                Object.keys(selectedCell.severity_counts).length > 0 && (
-                  <div className="flex items-center gap-2">
-                    {(
-                      [
-                        ["critical", "bg-red-500", "text-red-500"],
-                        ["high", "bg-orange-500", "text-orange-500"],
-                        ["medium", "bg-yellow-500", "text-yellow-500"],
-                        ["low", "bg-blue-500", "text-blue-500"],
-                      ] as const
-                    ).map(
-                      ([sev, dot, txt]) =>
-                        (selectedCell.severity_counts[sev] || 0) > 0 && (
-                          <span
-                            key={sev}
-                            className="flex items-center gap-1 text-xs"
-                          >
-                            <span
-                              className={cn(
-                                "w-1.5 h-1.5 rounded-full",
-                                dot
-                              )}
-                            />
-                            <span className={cn("font-semibold", txt)}>
-                              {selectedCell.severity_counts[sev]}
-                            </span>
-                          </span>
-                        )
-                    )}
-                  </div>
-                )}
-            </div>
-            <div className="flex items-center gap-4">
-              <Link
-                href={`/techniques/${selectedCell.id}`}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors"
-              >
-                <Eye className="h-3 w-3" /> View Full Details
-              </Link>
-              <a
-                href={`https://attack.mitre.org/techniques/${selectedCell.id.replace(".", "/")}/`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:underline inline-flex items-center gap-1 text-xs"
-              >
-                <ExternalLink className="h-3 w-3" /> MITRE ATT&CK
-              </a>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Selected technique detail panel removed — cells now navigate directly */}
     </div>
   );
 }
