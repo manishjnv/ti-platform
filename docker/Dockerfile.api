@@ -23,6 +23,7 @@ COPY --from=builder /install /usr/local
 COPY api/ ./api/
 COPY worker/ ./worker/
 COPY db/ ./db/
+COPY opensearch/ ./opensearch/
 
 EXPOSE 8000
 
