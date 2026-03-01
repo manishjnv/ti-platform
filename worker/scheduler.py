@@ -29,20 +29,12 @@ scheduler = Scheduler(queue_name="default", connection=redis_conn)
 
 
 def _cleanup_on_exit(*args):
-    """Cancel all scheduled jobs and remove stale instance keys on shutdown.
-
-    This prevents ghost jobs that never re-fire after a Redis FLUSHALL or
-    scheduler restart.
+    """Log shutdown. Jobs are re-created on every startup by setup_schedules(),
+    so we do NOT cancel them here — that causes a race condition where a
+    restarting container's atexit handler wipes jobs the new instance just
+    registered.
     """
-    try:
-        for job in scheduler.get_jobs():
-            scheduler.cancel(job)
-        # Remove scheduler instance keys so next startup is clean
-        for key in redis_conn.keys("rq:scheduler_instance:*"):
-            redis_conn.delete(key)
-        print("Scheduler cleanup complete — cancelled all jobs")
-    except Exception as e:
-        print(f"Scheduler cleanup error: {e}")
+    print("Scheduler shutting down")
 
 
 # Register cleanup for normal exit and SIGTERM (docker stop)
