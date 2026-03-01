@@ -6,6 +6,7 @@ import { AuthGuard } from "@/components/AuthGuard";
 import { Sidebar } from "@/components/Sidebar";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { NotificationBell } from "@/components/NotificationBell";
+import { HeaderStatusBar } from "@/components/HeaderStatusBar";
 import {
   Search,
   ChevronDown,
@@ -36,10 +37,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <Sidebar />
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Top header bar */}
-          <header className="h-12 shrink-0 border-b border-border/40 bg-card/80 backdrop-blur-sm flex items-center justify-between px-4 lg:px-6">
+          <header className="h-12 shrink-0 border-b border-border/40 bg-card/80 backdrop-blur-sm flex items-center gap-4 px-4 lg:px-6">
           {/* Left: breadcrumb / search */}
-          <div className="flex items-center gap-3 flex-1">
-            <div className="relative max-w-sm w-full">
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="relative max-w-sm w-full lg:w-64">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <input
                 type="text"
@@ -51,6 +52,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </kbd>
             </div>
           </div>
+
+          {/* Center: status bar */}
+          <div className="hidden lg:flex items-center flex-1 justify-center">
+            <HeaderStatusBar />
+          </div>
+          <div className="flex-1 lg:hidden" />
 
           {/* Right: actions */}
           <div className="flex items-center gap-2">

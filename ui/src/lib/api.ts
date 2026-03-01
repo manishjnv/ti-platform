@@ -120,6 +120,10 @@ export async function getHealth() {
   return fetcher<{ status: string; version: string }>("/health");
 }
 
+export async function getStatusBar() {
+  return fetcher<import("@/types").StatusBarData>("/status/bar");
+}
+
 // ─── Admin ──────────────────────────────────────────────
 export async function triggerFeed(feedName: string) {
   return fetcher<{ status: string; job_id: string }>(`/feeds/${feedName}/trigger`, {

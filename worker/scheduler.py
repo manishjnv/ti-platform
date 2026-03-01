@@ -1,5 +1,7 @@
 """RQ Scheduler configuration — schedules periodic feed ingestion jobs."""
 
+import atexit
+import signal
 import sys
 import os
 
@@ -24,6 +26,36 @@ settings = get_settings()
 
 redis_conn = Redis.from_url(settings.redis_url)
 scheduler = Scheduler(queue_name="default", connection=redis_conn)
+
+
+def _cleanup_on_exit(*args):
+    """Cancel all scheduled jobs and remove stale instance keys on shutdown.
+
+    This prevents ghost jobs that never re-fire after a Redis FLUSHALL or
+    scheduler restart.
+    """
+    try:
+        for job in scheduler.get_jobs():
+            scheduler.cancel(job)
+        # Remove scheduler instance keys so next startup is clean
+        for key in redis_conn.keys("rq:scheduler_instance:*"):
+            redis_conn.delete(key)
+        print("Scheduler cleanup complete — cancelled all jobs")
+    except Exception as e:
+        print(f"Scheduler cleanup error: {e}")
+
+
+# Register cleanup for normal exit and SIGTERM (docker stop)
+atexit.register(_cleanup_on_exit)
+
+
+def _handle_sigterm(signum, frame):
+    """Handle SIGTERM from docker stop — cleanup then exit."""
+    _cleanup_on_exit()
+    sys.exit(0)
+
+
+signal.signal(signal.SIGTERM, _handle_sigterm)
 
 
 def setup_schedules():

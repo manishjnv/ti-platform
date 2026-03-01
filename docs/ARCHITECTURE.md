@@ -265,6 +265,7 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 | Method | Endpoint | Auth | Handler | Service |
 | ------ | -------- | ---- | ------- | ------- |
 | `GET` | `/api/v1/health` | None | `routes/health.py` | — |
+| `GET` | `/api/v1/status/bar` | None | `routes/health.py` | Cached health + quick intel stats for header |
 | `GET` | `/api/v1/auth/config` | None | `routes/auth.py` | `services/auth.py` |
 | `POST` | `/api/v1/auth/login` | None | `routes/auth.py` | `services/auth.py` |
 | `POST` | `/api/v1/auth/logout` | Cookie | `routes/auth.py` | `services/auth.py` |
@@ -366,7 +367,7 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 ```text
 app/layout.tsx (root HTML, dark class)
 ├── login/page.tsx (IntelWatch branded login — SSO or dev bypass)
-└── (app)/layout.tsx (AuthGuard + Sidebar + Header + NotificationBell + ErrorBoundary + main area)
+└── (app)/layout.tsx (AuthGuard + Sidebar + Header + HeaderStatusBar + NotificationBell + ErrorBoundary + main area)
     ├── dashboard/page.tsx
     │   ├── StatCard ×6 (with optional tooltip)
     │   ├── ThreatLevelBar
@@ -394,6 +395,7 @@ Shared Components (14 root + 4 charts + 6 ui primitives):
 ├── EmptyState (no-data guidance per Instruction.md)
 ├── Loading (skeleton-based page loading, no spinners)
 ├── NotificationBell (header bell + dropdown via React Portal)
+├── HeaderStatusBar (system health pill + intel count + critical/high threats + last feed time — polls /status/bar every 30s)
 ├── Sidebar (4-section navigation)
 ├── StatCard, IntelCard, FeedStatusPanel, RankedDataList, ThreatLevelBar
 ├── GraphExplorer (SVG force-directed graph)
@@ -459,13 +461,13 @@ class BaseFeedConnector(ABC):
 
 | Job | Interval | Queue | Priority |
 | --- | -------- | ----- | -------- |
-| CISA KEV | 5 min | high | Critical (exploited vulns) |
-| URLhaus | 5 min | high | High (active malicious URLs) |
+| CISA KEV | 60 min | high | Critical (exploited vulns) |
+| URLhaus | 30 min | high | High (active malicious URLs) |
 | NVD | 15 min | default | Medium (new CVEs) |
 | AbuseIPDB | 15 min | default | Medium (IP reputation) |
-| VirusTotal | 15 min | default | Medium (malware hashes, URLs) |
+| VirusTotal | 60 min | default | Medium (malware hashes, URLs) |
 | OTX | 30 min | low | Medium (campaign intel) |
-| Shodan | 30 min | low | Medium (exposed services) |
+| Shodan | 12 hrs | low | Medium (exposed services) |
 | Dashboard Refresh | 2 min | low | Low (refresh materialized views) |
 | AI Summaries | 5 min | low | Low (enrichment pass) |
 | ATT&CK Sync | 24 hrs | low | Low (refresh STIX data) |
@@ -473,6 +475,10 @@ class BaseFeedConnector(ABC):
 | Relationship Builder | 15 min | low | Low (discover shared IOC/CVE/technique edges) |
 | IOC Extraction | 10 min | low | Low (extract IOCs from intel items) |
 | Notification Eval | 5 min | low | Low (evaluate rules, create in-app alerts) |
+
+### Scheduler Lifecycle
+
+The scheduler registers `SIGTERM` + `atexit` handlers that **cancel all scheduled jobs and remove stale Redis instance keys** on shutdown. This prevents ghost jobs after `docker compose restart` or `redis-cli FLUSHALL`. On next startup, `setup_schedules()` re-registers all 14 jobs cleanly.
 
 ---
 
@@ -610,6 +616,7 @@ GitHub Actions
 
 | Date | Change |
 | ---- | ------ |
+| 2026-03-02 | Header status bar: `GET /status/bar` (health + quick counts, cached 60s), `HeaderStatusBar` component (system health pill, intel count, critical/high badge, last feed time — polls every 30s); scheduler auto-cleanup on SIGTERM/atexit (cancels jobs + removes stale Redis keys); updated schedule intervals in docs |
 | 2026-03-01 | Phase 1.6 AI Web Research: `services/research.py` (NVD, OTX, DuckDuckGo, OpenSearch live research), enhanced templates (11 sections: timeline, confirmation, exploitability, PoC availability, impacted tech, affected orgs), `generate_ai_sections` now research-backed |
 | 2026-03-01 | Intel pages enhancement: advanced filters (KEV, exploit, asset type, keyword search, sort direction), enrichment endpoints (`/intel/{id}/enrichment` AI analysis, `/intel/{id}/related` DB overlap), detail page 5-tab redesign (Overview, ATT&CK, Timeline, Remediation, Related), IntelCard compact data row |
 | 2026-03-02 | Dashboard fixes & competitive enrichments: Reports StatCard href fix (`/intel`→`/reports`), count inflation fix (`count(*)`→`count(DISTINCT id)` in insight queries), expanded TA/malware tag patterns (+DPRK, BeaverTail, luminousmoth, clearfake, plugx, etc. — 18 TAs up from 5), new sections: Intel Ingestion Trend (30-day area chart), Threat Geography (top 15 regions), Target Industries (top 15 sectors), Attack Techniques (phishing, credential theft, etc.), Exploit/EPSS Summary bar (exploit %, KEV %, avg EPSS, high EPSS count) |

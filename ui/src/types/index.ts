@@ -70,6 +70,20 @@ export interface FeedStatus {
   run_count: number;
 }
 
+export interface StatusBarData {
+  status: string;
+  postgres: boolean;
+  redis: boolean;
+  opensearch: boolean;
+  total_intel: number;
+  intel_24h: number;
+  critical_count: number;
+  high_count: number;
+  active_feeds: number;
+  total_feeds: number;
+  last_feed_at: string | null;
+}
+
 export interface DashboardData {
   severity_distribution: SeverityCount[];
   top_risks: IntelItem[];
