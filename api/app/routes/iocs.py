@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, literal, select, or_, desc, asc, text
+from sqlalchemy import func, select, or_, desc, asc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -272,14 +272,14 @@ async def ioc_stats(
     continent_rows = (await db.execute(continent_q)).all()
     continent_dist = [{"name": r.continent, "code": r.continent_code, "count": r.cnt} for r in continent_rows]
 
-    # Enrichment coverage
-    ip_literal = literal("ip")
+    # Enrichment coverage — ioc_type is a PG enum (asset_type), need explicit cast
+    ip_cast = text("'ip'::asset_type")
     enriched_count = (await db.execute(
         select(func.count()).select_from(IOC)
-        .where(IOC.ioc_type == ip_literal, IOC.enriched_at.isnot(None))
+        .where(IOC.ioc_type == ip_cast, IOC.enriched_at.isnot(None))
     )).scalar() or 0
     ip_total = (await db.execute(
-        select(func.count()).select_from(IOC).where(IOC.ioc_type == ip_literal)
+        select(func.count()).select_from(IOC).where(IOC.ioc_type == ip_cast)
     )).scalar() or 0
 
     return {
