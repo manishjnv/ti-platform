@@ -29,8 +29,8 @@ async def list_iocs(
     min_risk: int | None = Query(None, ge=0, le=100),
     max_risk: int | None = Query(None, ge=0, le=100),
     source: str | None = Query(None, max_length=100),
-    sort_by: str = Query("last_seen", regex="^(value|ioc_type|risk_score|first_seen|last_seen|sighting_count|created_at|linked_intel_count)$"),
-    sort_dir: str = Query("desc", regex="^(asc|desc)$"),
+    sort_by: str = Query("last_seen", pattern="^(value|ioc_type|risk_score|first_seen|last_seen|sighting_count|created_at|linked_intel_count)$"),
+    sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
 ):
     """Paginated, filterable list of real IOCs from the iocs table."""
 
