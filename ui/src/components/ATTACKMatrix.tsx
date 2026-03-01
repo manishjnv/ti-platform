@@ -121,7 +121,6 @@ function exportNavigatorLayer(data: AttackMatrixResponse) {
 }
 
 export function ATTACKMatrix({ data }: ATTACKMatrixProps) {
-  const [hoveredCell, setHoveredCell] = useState<AttackMatrixCell | null>(null);
   const [selectedTactic, setSelectedTactic] = useState<string | null>(null);
   const [filterWithHits, setFilterWithHits] = useState(false);
 
@@ -296,8 +295,6 @@ export function ATTACKMatrix({ data }: ATTACKMatrixProps) {
                     <div
                       key={`${tactic.tactic}-${tech.id}`}
                       className="relative group"
-                      onMouseEnter={() => setHoveredCell(tech)}
-                      onMouseLeave={() => setHoveredCell(null)}
                     >
                       <Link
                         href={`/techniques/${tech.id}`}
@@ -322,10 +319,12 @@ export function ATTACKMatrix({ data }: ATTACKMatrixProps) {
                         )}
                       </Link>
 
-                      {/* Rich hover tooltip */}
-                      {hoveredCell?.id === tech.id && tech.count > 0 && (
-                        <div className="absolute z-[100] left-full ml-2 top-0 pointer-events-none">
-                          <div className="bg-zinc-900 border border-zinc-600 rounded-lg shadow-2xl shadow-black/60 px-3 py-2.5 space-y-1.5 min-w-[180px] backdrop-blur-none ring-1 ring-white/10">
+                      {/* Rich hover tooltip — shown via CSS group-hover */}
+                      {tech.count > 0 && (
+                        <div className="absolute z-[100] left-full ml-1 top-0 hidden group-hover:block">
+                          {/* Invisible bridge so cursor can travel from cell to tooltip */}
+                          <div className="absolute -left-2 top-0 w-2 h-full" />
+                          <div className="bg-zinc-900 border border-zinc-600 rounded-lg shadow-2xl shadow-black/60 px-3 py-2.5 space-y-1.5 min-w-[180px] ring-1 ring-white/10">
                             <div className="text-[11px] font-semibold text-zinc-100 truncate max-w-[200px]">
                               {tech.id}: {tech.name}
                             </div>
@@ -343,9 +342,6 @@ export function ATTACKMatrix({ data }: ATTACKMatrixProps) {
                                   counts={tech.severity_counts}
                                 />
                               )}
-                            <div className="text-[9px] text-zinc-500 pt-1 border-t border-zinc-700/60 mt-1">
-                              Click to view details
-                            </div>
                           </div>
                         </div>
                       )}
