@@ -441,6 +441,21 @@ export interface IOCStatsResponse {
   risk_distribution: Record<string, number>;
   source_distribution: Array<{ name: string; count: number }>;
   unique_sources: number;
+  avg_risk_score: number;
+  recent_24h: number;
+  high_risk_count: number;
+  top_risky: Array<{
+    id: string;
+    value: string;
+    ioc_type: string;
+    risk_score: number;
+    tags: string[];
+    source_names: string[];
+    last_seen: string | null;
+    sighting_count: number;
+  }>;
+  tag_distribution: Array<{ name: string; count: number }>;
+  geo_distribution: Array<{ name: string; count: number }>;
 }
 
 export async function getIOCs(params: {
