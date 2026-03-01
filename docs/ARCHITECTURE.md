@@ -626,6 +626,42 @@ GitHub Actions
 
 ---
 
+## Planned Features (Backlog)
+
+> Items below are approved concepts for future implementation. They are not yet built.
+
+### Domain Impersonation Monitoring
+
+Detect lookalike / typosquat domains targeting a configured list of protected brands or assets.
+
+- **Phishing domain detection** — periodic scan of newly registered domains (e.g. via Certificate Transparency logs, WHOIS feeds, DNSTwist) for permutations of monitored domains
+- **Similarity scoring** — Levenshtein / homoglyph / IDN analysis to rank impersonation likelihood
+- **Alert integration** — high-confidence matches auto-create notifications and appear on the dashboard
+- **Takedown tracking** — status field (detected → reported → taken down) with timeline
+- **UI** — dedicated "Domain Watch" page: add protected domains, view alerts, similarity heatmap
+
+### Custom Campaign / Conflict Monitoring
+
+Track specific threat campaigns, military/cyber conflicts, or coordinated operations over time.
+
+- **Campaign workspace** — user-defined campaign with name, description, date range, tags, MITRE TTPs
+- **Auto-collection rules** — keyword/IOC/TTP filters that auto-link new intel items to the campaign
+- **Campaign timeline** — chronological event view aggregating all linked intel, IOCs, and ATT&CK techniques
+- **Collaboration** — shared campaign notes, analyst annotations, TLP-tagged sharing
+- **Templates** — preset campaign profiles for common scenarios (ransomware wave, APT tracking, conflict cyber ops)
+
+### Global Event Intelligence
+
+Real-time monitoring and correlation for large-scale global events (natural disasters, geopolitical crises, major cyber incidents).
+
+- **Event creation** — define an event with region, timeframe, and keyword watchlist
+- **Multi-source aggregation** — pull from all existing feeds + optional RSS / Twitter / Telegram OSINT channels
+- **Impact correlation** — map event timeline against threat activity spikes, IOC surges, and CVE exploitation
+- **Geo overlay** — integrate with Geo View to show affected regions and threat actor origins
+- **Briefing generator** — one-click AI-generated situational awareness briefing for the event
+
+---
+
 ## Revision History
 
 | Date | Change |
