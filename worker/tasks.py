@@ -1025,7 +1025,7 @@ def enrich_ips_internetdb(batch_size: int = 100) -> dict:
             session.execute(
                 sa_text(
                     "UPDATE iocs SET "
-                    "context = COALESCE(context, '{}')::jsonb || :payload::jsonb, "
+                    "context = COALESCE(context, CAST('{}' AS jsonb)) || CAST(:payload AS jsonb), "
                     "updated_at = NOW() "
                     "WHERE id = :ioc_id"
                 ),
@@ -1223,7 +1223,7 @@ def enrich_epss_scores(batch_size: int = 5000) -> dict:
                 session.execute(
                     sa_text(
                         "UPDATE iocs SET risk_score = :risk, "
-                        "context = COALESCE(context, '{}')::jsonb || :payload::jsonb, "
+                        "context = COALESCE(context, CAST('{}' AS jsonb)) || CAST(:payload AS jsonb), "
                         "updated_at = NOW() "
                         "WHERE id = :ioc_id"
                     ),
