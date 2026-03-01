@@ -473,15 +473,17 @@ class BaseFeedConnector(ABC):
         await self.store(items)  # bulk upsert + index
 ```
 
-### Schedule (15 jobs)
+### Schedule (19 jobs)
 
 | Job | Interval | Queue | Priority |
 | --- | -------- | ----- | -------- |
 | CISA KEV | 60 min | high | Critical (exploited vulns) |
 | URLhaus | 30 min | high | High (active malicious URLs) |
+| ThreatFox | 30 min | high | High (malware C2/botnet IOCs) |
 | NVD | 15 min | default | Medium (new CVEs) |
 | AbuseIPDB | 15 min | default | Medium (IP reputation) |
 | VirusTotal | 60 min | default | Medium (malware hashes, URLs) |
+| MalwareBazaar | 30 min | default | Medium (malware file hashes) |
 | OTX | 30 min | low | Medium (campaign intel) |
 | Shodan | 12 hrs | low | Medium (exposed services) |
 | Dashboard Refresh | 2 min | low | Low (refresh materialized views) |
@@ -492,10 +494,12 @@ class BaseFeedConnector(ABC):
 | IOC Extraction | 10 min | low | Low (extract IOCs from intel items) |
 | Notification Eval | 5 min | low | Low (evaluate rules, create in-app alerts) |
 | IPinfo Enrichment | 10 min | low | Low (enrich IP IOCs with ASN/geo data) |
+| Shodan InternetDB | 10 min | low | Low (enrich IPs with ports/vulns/hostnames) |
+| FIRST EPSS Scoring | 24 hrs | low | Low (CVE exploit probability scoring) |
 
 ### Scheduler Lifecycle
 
-The scheduler registers `SIGTERM` + `atexit` handlers that **cancel all scheduled jobs and remove stale Redis instance keys** on shutdown. This prevents ghost jobs after `docker compose restart` or `redis-cli FLUSHALL`. On next startup, `setup_schedules()` re-registers all 15 jobs cleanly.
+The scheduler registers `SIGTERM` + `atexit` handlers that **cancel all scheduled jobs and remove stale Redis instance keys** on shutdown. This prevents ghost jobs after `docker compose restart` or `redis-cli FLUSHALL`. On next startup, `setup_schedules()` re-registers all 19 jobs cleanly.
 
 ---
 

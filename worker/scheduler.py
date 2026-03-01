@@ -35,7 +35,7 @@ redis_conn = Redis.from_url(settings.redis_url)
 scheduler = Scheduler(queue_name="default", connection=redis_conn)
 
 # ── Constants ────────────────────────────────────────────
-EXPECTED_JOB_COUNT = 15          # total scheduled jobs we register
+EXPECTED_JOB_COUNT = 19          # total scheduled jobs we register
 WATCHDOG_INTERVAL = 120          # seconds between health checks
 HEARTBEAT_KEY = "scheduler:heartbeat"
 HEARTBEAT_TTL = 300              # seconds — expires if scheduler dies
@@ -183,6 +183,26 @@ def setup_schedules():
         meta={"feed": "shodan"},
     )
 
+    # ThreatFox — every 30 minutes (abuse.ch, free, no API key)
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc),
+        func="worker.tasks.ingest_feed",
+        args=["threatfox"],
+        interval=timedelta(minutes=30).total_seconds(),
+        queue_name="high",
+        meta={"feed": "threatfox"},
+    )
+
+    # MalwareBazaar — every 30 minutes (abuse.ch, free, no API key)
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc),
+        func="worker.tasks.ingest_feed",
+        args=["malwarebazaar"],
+        interval=timedelta(minutes=30).total_seconds(),
+        queue_name="default",
+        meta={"feed": "malwarebazaar"},
+    )
+
     # ─── Dashboard refresh — every 2 minutes ─────────────
     scheduler.schedule(
         scheduled_time=datetime.now(timezone.utc),
@@ -257,6 +277,26 @@ def setup_schedules():
         interval=timedelta(minutes=10).total_seconds(),
         queue_name="low",
         meta={"task": "ipinfo_enrichment"},
+    )
+
+    # ─── Shodan InternetDB IP Enrichment — every 10 min ──
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc) + timedelta(minutes=4),
+        func="worker.tasks.enrich_ips_internetdb",
+        kwargs={"batch_size": 100},
+        interval=timedelta(minutes=10).total_seconds(),
+        queue_name="low",
+        meta={"task": "internetdb_enrichment"},
+    )
+
+    # ─── FIRST EPSS Scoring — every 24 hours ─────────────
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc) + timedelta(minutes=5),
+        func="worker.tasks.enrich_epss_scores",
+        kwargs={"batch_size": 5000},
+        interval=timedelta(hours=24).total_seconds(),
+        queue_name="low",
+        meta={"task": "epss_scoring"},
     )
 
     print(f"Scheduled {len(list(scheduler.get_jobs()))} jobs")

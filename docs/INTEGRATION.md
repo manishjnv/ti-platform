@@ -48,8 +48,8 @@ Future phases will add **STIX/TAXII ingestion** for standards-compliant sharing.
 | NVD | Vulnerability | ✅ **Live** | `feeds/nvd.py` | Optional |
 | AbuseIPDB | IP Reputation | ✅ **Live** | `feeds/abuseipdb.py` | Yes |
 | AlienVault OTX | Multi-type | ✅ **Live** | `feeds/otx.py` | Yes |
-| ThreatFox | Malware IOC | 🔲 Planned | — | No |
-| MalwareBazaar | File Hashes | 🔲 Planned | — | No |
+| ThreatFox | Malware IOC | ✅ **Live** | `feeds/threatfox.py` | No |
+| MalwareBazaar | File Hashes | ✅ **Live** | `feeds/malwarebazaar.py` | No |
 | Feodo Tracker | Botnet C2 | 🔲 Planned | — | No |
 | Pulsedive | IOC Enrichment | 🔲 Planned | — | Free tier |
 | GreyNoise | Scan Noise | 🔲 Planned | — | Free tier |
@@ -60,6 +60,8 @@ Future phases will add **STIX/TAXII ingestion** for standards-compliant sharing.
 | Exploit-DB | Exploits | 🔲 Planned | — | No |
 | Shodan | CVE/Exploit | ✅ **Live** | `feeds/shodan.py` | Free (CVEDB) |
 | IPinfo Lite | IP Geo/ASN | ✅ **Live** | `worker/tasks.py` | Free tier (50k/mo) |
+| Shodan InternetDB | IP Ports/Vulns | ✅ **Live** | `worker/tasks.py` | No (free) |
+| FIRST EPSS | CVE Exploit Prob | ✅ **Live** | `worker/tasks.py` | No (free) |
 | Censys | Asset Exposure | 🔲 Planned | — | Free tier |
 | MITRE ATT&CK | TTPs | 🔲 Planned | — | No |
 | Malpedia | Malware Families | 🔲 Planned | — | No |

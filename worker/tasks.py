@@ -127,7 +127,7 @@ def ingest_feed(feed_name: str) -> dict:
 
 def ingest_all_feeds() -> list[dict]:
     """Ingest all feeds sequentially."""
-    feeds = ["cisa_kev", "nvd", "urlhaus", "abuseipdb", "otx", "virustotal", "shodan"]
+    feeds = ["cisa_kev", "nvd", "urlhaus", "abuseipdb", "otx", "virustotal", "shodan", "threatfox", "malwarebazaar"]
     results = []
     for feed in feeds:
         result = ingest_feed(feed)
@@ -620,6 +620,8 @@ def _get_connector(feed_name: str):
     from app.services.feeds.otx import OTXConnector
     from app.services.feeds.virustotal import VirusTotalConnector
     from app.services.feeds.shodan import ShodanConnector
+    from app.services.feeds.threatfox import ThreatFoxConnector
+    from app.services.feeds.malwarebazaar import MalwareBazaarConnector
 
     connectors = {
         "nvd": NVDConnector,
@@ -629,6 +631,8 @@ def _get_connector(feed_name: str):
         "otx": OTXConnector,
         "virustotal": VirusTotalConnector,
         "shodan": ShodanConnector,
+        "threatfox": ThreatFoxConnector,
+        "malwarebazaar": MalwareBazaarConnector,
     }
     cls = connectors.get(feed_name)
     return cls() if cls else None
@@ -958,4 +962,314 @@ async def _ipinfo_lookup(ip: str, token: str = "") -> dict | None:
 
     except Exception as e:
         logger.debug("ipinfo_lookup_error", ip=ip, error=str(e))
+        return None
+
+
+# ── Shodan InternetDB IP Enrichment ──────────────────────
+
+INTERNETDB_BASE = "https://internetdb.shodan.io"
+INTERNETDB_TIMEOUT = 10
+
+
+def enrich_ips_internetdb(batch_size: int = 100) -> dict:
+    """Batch-enrich IP-type IOCs with open ports, vulns, hostnames from Shodan InternetDB.
+
+    Completely free — no API key needed.
+    Picks IPs whose context->'internetdb' is NULL (not yet enriched).
+    Stores results in the IOC context JSONB column.
+    """
+    from sqlalchemy import text as sa_text
+
+    logger.info("internetdb_enrichment_start", batch_size=batch_size)
+    session = SyncSession()
+
+    try:
+        # Use raw SQL to avoid Postgres enum cast issue with ioc_type
+        rows = session.execute(
+            sa_text(
+                "SELECT id, value FROM iocs "
+                "WHERE ioc_type = 'ip' "
+                "AND (context->>'internetdb') IS NULL "
+                "ORDER BY created_at ASC "
+                "LIMIT :lim"
+            ),
+            {"lim": batch_size},
+        ).fetchall()
+
+        if not rows:
+            logger.info("internetdb_enrichment_skip", reason="no unenriched IPs")
+            return {"enriched": 0, "errors": 0}
+
+        enriched = 0
+        errors = 0
+
+        for row in rows:
+            ioc_id, ip_value = row[0], row[1]
+            data = _run_async(_internetdb_lookup(ip_value))
+            if data is None:
+                errors += 1
+                continue
+
+            # Store the InternetDB result in context JSONB
+            session.execute(
+                sa_text(
+                    "UPDATE iocs SET "
+                    "context = jsonb_set(COALESCE(context, '{}'), '{internetdb}', :payload::jsonb), "
+                    "updated_at = NOW() "
+                    "WHERE id = :ioc_id"
+                ),
+                {
+                    "ioc_id": str(ioc_id),
+                    "payload": __import__("json").dumps({
+                        "ports": data.get("ports", []),
+                        "vulns": data.get("vulns", []),
+                        "hostnames": data.get("hostnames", []),
+                        "cpes": data.get("cpes", []),
+                        "tags": data.get("tags", []),
+                        "enriched_at": datetime.now(timezone.utc).isoformat(),
+                    }),
+                },
+            )
+
+            # If vulns found, boost risk score
+            vulns = data.get("vulns", [])
+            if vulns:
+                vuln_boost = min(len(vulns) * 5, 30)  # up to +30
+                session.execute(
+                    sa_text(
+                        "UPDATE iocs SET risk_score = LEAST(risk_score + :boost, 100) "
+                        "WHERE id = :ioc_id"
+                    ),
+                    {"boost": vuln_boost, "ioc_id": str(ioc_id)},
+                )
+
+            # Add vulns as tags for searchability
+            if vulns:
+                session.execute(
+                    sa_text(
+                        "UPDATE iocs SET tags = array_cat(tags, :new_tags) "
+                        "WHERE id = :ioc_id"
+                    ),
+                    {"new_tags": vulns[:10], "ioc_id": str(ioc_id)},
+                )
+
+            enriched += 1
+
+        session.commit()
+        logger.info("internetdb_enrichment_complete", enriched=enriched, errors=errors, total=len(rows))
+        return {"enriched": enriched, "errors": errors, "total": len(rows)}
+
+    except Exception as e:
+        logger.error("internetdb_enrichment_error", error=str(e))
+        session.rollback()
+        return {"error": str(e)}
+    finally:
+        session.close()
+
+
+async def _internetdb_lookup(ip: str) -> dict | None:
+    """Query Shodan InternetDB for a single IP."""
+    import httpx
+
+    url = f"{INTERNETDB_BASE}/{ip}"
+    try:
+        async with httpx.AsyncClient(timeout=INTERNETDB_TIMEOUT) as client:
+            resp = await client.get(url)
+            if resp.status_code == 404:
+                # IP not in InternetDB — store empty result
+                return {"ip": ip, "ports": [], "vulns": [], "hostnames": [], "cpes": [], "tags": []}
+            if resp.status_code == 429:
+                logger.warning("internetdb_rate_limited", ip=ip)
+                return None
+            if resp.status_code != 200:
+                return None
+            return resp.json()
+    except Exception as e:
+        logger.debug("internetdb_lookup_error", ip=ip, error=str(e))
+        return None
+
+
+# ── FIRST EPSS Scoring ───────────────────────────────────
+
+EPSS_CSV_URL = "https://epss.cyentia.com/epss_scores-current.csv.gz"
+EPSS_TIMEOUT = 60
+
+
+def enrich_epss_scores(batch_size: int = 5000) -> dict:
+    """Download FIRST EPSS scores and update CVE-type intel items.
+
+    EPSS (Exploit Prediction Scoring System) provides a probability [0-1] that
+    a CVE will be exploited in the next 30 days.  We multiply by 100 and blend
+    into the existing risk_score for CVE intel items.
+
+    Free — no API key needed.
+    Runs once a day; the CSV is ~250 KB gzipped.
+    """
+    import csv
+    import gzip
+    import io
+
+    import httpx
+    from sqlalchemy import text as sa_text
+
+    logger.info("epss_enrichment_start")
+    session = SyncSession()
+
+    try:
+        # 1. Download the EPSS CSV (gzipped)
+        resp = _run_async(_download_epss_csv())
+        if resp is None:
+            return {"error": "Failed to download EPSS CSV"}
+
+        # Parse CSV — first line is a comment, second is header
+        reader = csv.DictReader(io.StringIO(resp))
+        epss_map: dict[str, float] = {}
+        for row in reader:
+            cve = row.get("cve", "").strip()
+            try:
+                score = float(row.get("epss", 0))
+            except (ValueError, TypeError):
+                score = 0.0
+            if cve.startswith("CVE-"):
+                epss_map[cve] = score
+
+        logger.info("epss_csv_parsed", total_cves=len(epss_map))
+
+        if not epss_map:
+            return {"error": "No EPSS scores found in CSV"}
+
+        # 2. Find intel_items that are CVE-related (have cve_ids)
+        #    and update their exploitability_score + risk_score blend
+        updated = 0
+
+        # Get CVE items that could benefit from EPSS scoring
+        rows = session.execute(
+            sa_text(
+                "SELECT id, ingested_at, cve_ids, risk_score, exploitability_score "
+                "FROM intel_items "
+                "WHERE array_length(cve_ids, 1) > 0 "
+                "ORDER BY ingested_at DESC "
+                "LIMIT :lim"
+            ),
+            {"lim": batch_size},
+        ).fetchall()
+
+        for row in rows:
+            item_id, ingested_at, cve_ids, current_risk, current_exploit = (
+                row[0], row[1], row[2], row[3], row[4]
+            )
+
+            # Find the max EPSS score among this item's CVEs
+            max_epss = 0.0
+            for cve in (cve_ids or []):
+                if cve in epss_map:
+                    max_epss = max(max_epss, epss_map[cve])
+
+            if max_epss == 0.0:
+                continue
+
+            # Convert EPSS probability to 0-100 scale
+            epss_score = round(max_epss * 100, 2)
+
+            # Blend EPSS into risk_score: weighted average (60% existing, 40% EPSS)
+            new_risk = min(
+                100,
+                round(current_risk * 0.6 + epss_score * 0.4),
+            )
+
+            session.execute(
+                sa_text(
+                    "UPDATE intel_items SET "
+                    "exploitability_score = :epss, "
+                    "risk_score = :risk "
+                    "WHERE id = :item_id AND ingested_at = :ts"
+                ),
+                {
+                    "epss": epss_score,
+                    "risk": new_risk,
+                    "item_id": str(item_id),
+                    "ts": ingested_at,
+                },
+            )
+            updated += 1
+
+        # 3. Also update IOCs that are CVE-type
+        ioc_rows = session.execute(
+            sa_text(
+                "SELECT id, value, risk_score FROM iocs "
+                "WHERE ioc_type = 'cve' "
+                "ORDER BY created_at DESC "
+                "LIMIT :lim"
+            ),
+            {"lim": batch_size},
+        ).fetchall()
+
+        ioc_updated = 0
+        for row in ioc_rows:
+            ioc_id, cve_value, current_risk = row[0], row[1], row[2]
+            if cve_value in epss_map:
+                epss_prob = epss_map[cve_value]
+                epss_score = round(epss_prob * 100, 2)
+                new_risk = min(100, round(current_risk * 0.6 + epss_score * 0.4))
+                session.execute(
+                    sa_text(
+                        "UPDATE iocs SET risk_score = :risk, "
+                        "context = jsonb_set(COALESCE(context, '{}'), '{epss}', :payload::jsonb), "
+                        "updated_at = NOW() "
+                        "WHERE id = :ioc_id"
+                    ),
+                    {
+                        "risk": new_risk,
+                        "ioc_id": str(ioc_id),
+                        "payload": __import__("json").dumps({
+                            "score": epss_score,
+                            "percentile": round(epss_prob, 6),
+                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                        }),
+                    },
+                )
+                ioc_updated += 1
+
+        session.commit()
+        logger.info(
+            "epss_enrichment_complete",
+            intel_updated=updated,
+            ioc_updated=ioc_updated,
+            total_epss_cves=len(epss_map),
+        )
+        return {
+            "intel_updated": updated,
+            "ioc_updated": ioc_updated,
+            "total_epss_cves": len(epss_map),
+        }
+
+    except Exception as e:
+        logger.error("epss_enrichment_error", error=str(e))
+        session.rollback()
+        return {"error": str(e)}
+    finally:
+        session.close()
+
+
+async def _download_epss_csv() -> str | None:
+    """Download and decompress the EPSS CSV."""
+    import gzip
+
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(timeout=EPSS_TIMEOUT) as client:
+            resp = await client.get(EPSS_CSV_URL)
+            if resp.status_code != 200:
+                logger.error("epss_download_failed", status=resp.status_code)
+                return None
+            # Decompress gzip
+            raw = gzip.decompress(resp.content).decode("utf-8")
+
+            # The file starts with a comment line starting with '#'
+            lines = raw.split("\n")
+            data_lines = [l for l in lines if not l.startswith("#")]
+            return "\n".join(data_lines)
+    except Exception as e:
+        logger.error("epss_download_error", error=str(e))
         return None
