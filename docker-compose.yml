@@ -148,6 +148,12 @@ services:
     command: ["python", "-m", "worker.scheduler"]
     environment:
       <<: *common-env
+    healthcheck:
+      test: ["CMD", "python", "-m", "worker.healthcheck"]
+      interval: 120s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     depends_on:
       redis:
         condition: service_healthy

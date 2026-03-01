@@ -1,9 +1,16 @@
-"""RQ Scheduler configuration — schedules periodic feed ingestion jobs."""
+"""RQ Scheduler configuration — schedules periodic feed ingestion jobs.
+
+Includes a self-healing watchdog that periodically verifies all expected
+jobs exist in Redis and re-registers them if any go missing (prevents the
+silent-death scenario where a Redis flush or race condition leaves 0 jobs).
+"""
 
 import atexit
 import signal
 import sys
 import os
+import threading
+import time
 
 api_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "api")
 if api_dir not in sys.path:
@@ -27,13 +34,19 @@ settings = get_settings()
 redis_conn = Redis.from_url(settings.redis_url)
 scheduler = Scheduler(queue_name="default", connection=redis_conn)
 
+# ── Constants ────────────────────────────────────────────
+EXPECTED_JOB_COUNT = 14          # total scheduled jobs we register
+WATCHDOG_INTERVAL = 120          # seconds between health checks
+HEARTBEAT_KEY = "scheduler:heartbeat"
+HEARTBEAT_TTL = 300              # seconds — expires if scheduler dies
+
+
+_shutdown = threading.Event()
+
 
 def _cleanup_on_exit(*args):
-    """Log shutdown. Jobs are re-created on every startup by setup_schedules(),
-    so we do NOT cancel them here — that causes a race condition where a
-    restarting container's atexit handler wipes jobs the new instance just
-    registered.
-    """
+    """Signal the watchdog to stop and log shutdown."""
+    _shutdown.set()
     print("Scheduler shutting down")
 
 
@@ -48,6 +61,49 @@ def _handle_sigterm(signum, frame):
 
 
 signal.signal(signal.SIGTERM, _handle_sigterm)
+
+
+# ── Heartbeat ────────────────────────────────────────────
+
+def _write_heartbeat():
+    """Write a Redis key proving the scheduler is alive."""
+    try:
+        redis_conn.set(
+            HEARTBEAT_KEY,
+            datetime.now(timezone.utc).isoformat(),
+            ex=HEARTBEAT_TTL,
+        )
+    except Exception:
+        pass  # non-fatal
+
+
+# ── Self-healing Watchdog ────────────────────────────────
+
+def _watchdog_loop():
+    """Background thread: every WATCHDOG_INTERVAL seconds, verify that the
+    expected number of jobs exist in Redis.  If jobs have disappeared
+    (Redis flush, bug, race condition), re-register them automatically.
+    """
+    print(f"Watchdog started — checking every {WATCHDOG_INTERVAL}s for {EXPECTED_JOB_COUNT} jobs")
+    while not _shutdown.is_set():
+        _shutdown.wait(WATCHDOG_INTERVAL)
+        if _shutdown.is_set():
+            break
+        try:
+            _write_heartbeat()
+            current = list(scheduler.get_jobs())
+            if len(current) < EXPECTED_JOB_COUNT:
+                print(
+                    f"WATCHDOG: only {len(current)}/{EXPECTED_JOB_COUNT} jobs in Redis — "
+                    f"re-registering all schedules"
+                )
+                setup_schedules()
+            else:
+                # Periodic health log (every check)
+                pass
+        except Exception as e:
+            print(f"WATCHDOG error: {e}")
+    print("Watchdog stopped")
 
 
 def setup_schedules():
@@ -195,7 +251,22 @@ def setup_schedules():
 
     print(f"Scheduled {len(list(scheduler.get_jobs()))} jobs")
 
+    # Log each registered job for debugging
+    for job in scheduler.get_jobs():
+        func_name = getattr(job, "func_name", "?")
+        meta = getattr(job, "meta", {})
+        label = meta.get("task") or meta.get("feed") or func_name
+        print(f"  → {label} ({func_name})")
+
+    # Write initial heartbeat
+    _write_heartbeat()
+
 
 if __name__ == "__main__":
     setup_schedules()
+
+    # Start self-healing watchdog in background thread
+    watchdog = threading.Thread(target=_watchdog_loop, daemon=True, name="scheduler-watchdog")
+    watchdog.start()
+
     scheduler.run()
