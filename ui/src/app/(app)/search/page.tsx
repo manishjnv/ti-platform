@@ -47,6 +47,12 @@ import {
   Wifi,
   Sparkles,
   Radio,
+  Calendar,
+  User,
+  Package,
+  ChevronRight,
+  FileText,
+  Clock,
 } from "lucide-react";
 
 /* ── Constants ────────────────────────────────────────── */
@@ -144,6 +150,7 @@ export default function SearchPage() {
   // Live internet lookup
   const [liveResult, setLiveResult] = useState<LiveLookupResponse | null>(null);
   const [liveLoading, setLiveLoading] = useState(false);
+  const [liveDetailResult, setLiveDetailResult] = useState<LiveLookupResult | null>(null);
 
   // Debounced search
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -826,8 +833,16 @@ export default function SearchPage() {
             <div className="space-y-2">
               {liveResult.results.map((r, idx) => {
                 const sevColor = SEVERITY_COLORS[r.severity?.toLowerCase()] || SEVERITY_COLORS.unknown;
+                const published = (r as any).published || (r as any).date_added || (r as any).created || (r as any).last_reported || "";
+                const threatActor = (r as any).adversary || ((r as any).threat_classification?.suggested_threat_label) || "";
+                const cveId = (r as any).cve_id || "";
+                const products = (r as any).affected_products || ((r as any).product ? [(r as any).vendor ? `${(r as any).vendor}:${(r as any).product}` : (r as any).product] : []);
                 return (
-                  <Card key={idx} className="hover:border-border/60 transition-colors">
+                  <Card
+                    key={idx}
+                    className="hover:border-primary/40 transition-colors cursor-pointer group"
+                    onClick={() => setLiveDetailResult(r)}
+                  >
                     <CardContent className="py-3 px-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1 space-y-1.5">
@@ -849,93 +864,87 @@ export default function SearchPage() {
 
                           {/* Description */}
                           {r.description && (
-                            <p className="text-xs text-muted-foreground line-clamp-3">
+                            <p className="text-xs text-muted-foreground line-clamp-2">
                               {r.description}
                             </p>
                           )}
 
-                          {/* Extra data fields */}
-                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px]">
-                            {r.risk_score > 0 && (
-                              <span className="flex items-center gap-1">
-                                <TrendingUp className="h-3 w-3" style={{ color: sevColor }} />
-                                Risk: <strong>{r.risk_score}</strong>/100
+                          {/* Key metadata row: Published / Threat Actor / CVE / Products */}
+                          <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-[10px]">
+                            {published && (
+                              <span className="flex items-center gap-1 text-muted-foreground">
+                                <Calendar className="h-3 w-3" />
+                                {new Date(published).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
                               </span>
                             )}
-                            {r.confidence > 0 && (
-                              <span className="text-muted-foreground">
-                                Confidence: {r.confidence}%
+                            {threatActor && (
+                              <span className="flex items-center gap-1 text-orange-400">
+                                <User className="h-3 w-3" />
+                                {threatActor}
                               </span>
                             )}
-                            {(r as any).abuse_score !== undefined && (
-                              <span className="text-muted-foreground">
-                                Abuse Score: {(r as any).abuse_score}%
+                            {cveId && (
+                              <span className="flex items-center gap-1 text-red-400 font-mono">
+                                <ShieldAlert className="h-3 w-3" />
+                                {cveId}
                               </span>
                             )}
-                            {(r as any).country && (
-                              <span className="text-muted-foreground">
-                                Country: {(r as any).country}
-                              </span>
-                            )}
-                            {(r as any).isp && (
-                              <span className="text-muted-foreground">
-                                ISP: {(r as any).isp}
-                              </span>
-                            )}
-                            {(r as any).detection_ratio && (
-                              <span className="text-muted-foreground">
-                                Detection: {(r as any).detection_ratio}
+                            {products.length > 0 && (
+                              <span className="flex items-center gap-1 text-muted-foreground">
+                                <Package className="h-3 w-3" />
+                                {products.slice(0, 3).join(", ")}{products.length > 3 ? ` +${products.length - 3}` : ""}
                               </span>
                             )}
                           </div>
 
-                          {/* CVE IDs / Tags / Ports */}
-                          <div className="flex flex-wrap gap-1">
-                            {((r as any).cve_ids || []).slice(0, 8).map((c: string) => (
-                              <Badge key={c} variant="destructive" className="text-[9px]">{c}</Badge>
-                            ))}
-                            {((r as any).tags || []).slice(0, 8).map((t: string) => (
-                              <Badge key={t} variant="secondary" className="text-[9px]">{t}</Badge>
-                            ))}
-                            {((r as any).ports || []).slice(0, 12).map((p: number) => (
-                              <Badge key={p} variant="outline" className="text-[9px] font-mono">{p}</Badge>
-                            ))}
-                            {((r as any).vulns || []).slice(0, 6).map((v: string) => (
-                              <Badge key={v} variant="destructive" className="text-[9px]">{v}</Badge>
-                            ))}
-                          </div>
-
-                          {/* References / URLs */}
-                          {((r as any).references || []).length > 0 && (
-                            <div className="flex flex-wrap gap-2 pt-1">
-                              {((r as any).references as string[]).slice(0, 4).map((url, ui) => (
-                                <a
-                                  key={ui}
-                                  href={url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-[10px] text-primary hover:underline flex items-center gap-0.5 truncate max-w-[250px]"
-                                >
-                                  <ExternalLink className="h-2.5 w-2.5 shrink-0" />
-                                  {url.replace(/^https?:\/\//, "").slice(0, 45)}
-                                </a>
+                          {/* Tags / Ports / Vulns */}
+                          {(((r as any).tags || []).length > 0 || ((r as any).ports || []).length > 0 || ((r as any).vulns || []).length > 0) && (
+                            <div className="flex flex-wrap gap-1">
+                              {((r as any).tags || []).slice(0, 6).map((t: string) => (
+                                <Badge key={t} variant="secondary" className="text-[9px]">{t}</Badge>
+                              ))}
+                              {((r as any).ports || []).slice(0, 8).map((p: number) => (
+                                <Badge key={p} variant="outline" className="text-[9px] font-mono">{p}</Badge>
+                              ))}
+                              {((r as any).vulns || []).slice(0, 4).map((v: string) => (
+                                <Badge key={v} variant="destructive" className="text-[9px]">{v}</Badge>
                               ))}
                             </div>
                           )}
+
+                          {/* Confidence bar at bottom */}
+                          <div className="flex items-center gap-2 pt-1.5 border-t border-border/30">
+                            <span className="text-[9px] text-muted-foreground w-16">Confidence</span>
+                            <div className="flex-1 h-1.5 rounded-full bg-muted/40 overflow-hidden max-w-[150px]">
+                              <div
+                                className="h-full rounded-full transition-all"
+                                style={{
+                                  width: `${r.confidence}%`,
+                                  backgroundColor: r.confidence >= 80 ? "#22c55e" : r.confidence >= 50 ? "#eab308" : "#6b7280",
+                                }}
+                              />
+                            </div>
+                            <span className="text-[9px] font-medium" style={{ color: r.confidence >= 80 ? "#22c55e" : r.confidence >= 50 ? "#eab308" : "#6b7280" }}>
+                              {r.confidence}%
+                            </span>
+                          </div>
                         </div>
 
-                        {/* Risk score indicator */}
-                        {r.risk_score > 0 && (
-                          <div className="shrink-0 flex flex-col items-center">
-                            <div
-                              className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold border-2"
-                              style={{ borderColor: sevColor, color: sevColor }}
-                            >
-                              {r.risk_score}
-                            </div>
-                            <span className="text-[9px] text-muted-foreground mt-0.5">risk</span>
-                          </div>
-                        )}
+                        {/* Right side: risk score + click indicator */}
+                        <div className="shrink-0 flex flex-col items-center gap-1">
+                          {r.risk_score > 0 && (
+                            <>
+                              <div
+                                className="w-11 h-11 rounded-full flex items-center justify-center text-xs font-bold border-2"
+                                style={{ borderColor: sevColor, color: sevColor }}
+                              >
+                                {r.risk_score}
+                              </div>
+                              <span className="text-[9px] text-muted-foreground">risk</span>
+                            </>
+                          )}
+                          <ChevronRight className="h-4 w-4 text-muted-foreground/30 group-hover:text-primary transition-colors mt-1" />
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -1031,6 +1040,422 @@ export default function SearchPage() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Live Result Detail Slide-over */}
+      {liveDetailResult && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/40 z-40"
+            onClick={() => setLiveDetailResult(null)}
+          />
+          <div className="fixed inset-y-0 right-0 w-full max-w-lg bg-background border-l border-border shadow-2xl z-50 flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <div className="flex items-center gap-2 min-w-0">
+                <FileText className="h-4 w-4 text-primary shrink-0" />
+                <div className="min-w-0">
+                  <span className="text-sm font-semibold truncate block">{liveDetailResult.title}</span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {liveDetailResult.source} &mdash; {liveDetailResult.type}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setLiveDetailResult(null)}
+                className="p-1.5 rounded-lg hover:bg-muted/40 transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* Severity + Risk Score header */}
+              <div className="flex items-center gap-3">
+                {(() => {
+                  const sc = SEVERITY_COLORS[liveDetailResult.severity?.toLowerCase()] || SEVERITY_COLORS.unknown;
+                  return (
+                    <>
+                      <div
+                        className="w-14 h-14 rounded-full flex items-center justify-center text-lg font-bold border-2"
+                        style={{ borderColor: sc, color: sc }}
+                      >
+                        {liveDetailResult.risk_score}
+                      </div>
+                      <div>
+                        <Badge className="text-xs mb-0.5" style={{ backgroundColor: `${sc}20`, color: sc, borderColor: `${sc}40` }}>
+                          {liveDetailResult.severity?.toUpperCase()}
+                        </Badge>
+                        <p className="text-[11px] text-muted-foreground">
+                          Risk Score: {liveDetailResult.risk_score}/100
+                        </p>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Full Description */}
+              <Card>
+                <CardHeader className="pb-1 pt-3 px-4">
+                  <CardTitle className="text-xs font-semibold">Description</CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-3">
+                  <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                    {liveDetailResult.description || "No description available."}
+                  </p>
+                </CardContent>
+              </Card>
+
+              {/* Key Intelligence Fields */}
+              <Card>
+                <CardHeader className="pb-1 pt-3 px-4">
+                  <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+                    <Database className="h-3.5 w-3.5 text-blue-400" />
+                    Intelligence Details
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-3">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
+                    <DetailRow label="Source" value={liveDetailResult.source} />
+                    <DetailRow label="Type" value={liveDetailResult.type} />
+                    <DetailRow label="Severity" value={liveDetailResult.severity} />
+                    <DetailRow label="Confidence" value={`${liveDetailResult.confidence}%`} />
+
+                    {(liveDetailResult as any).cve_id && (
+                      <DetailRow label="CVE ID" value={(liveDetailResult as any).cve_id} />
+                    )}
+                    {(liveDetailResult as any).cvss_score !== undefined && (liveDetailResult as any).cvss_score !== null && (
+                      <DetailRow label="CVSS Score" value={`${(liveDetailResult as any).cvss_score} (${(liveDetailResult as any).cvss_severity || "N/A"})`} />
+                    )}
+                    {(liveDetailResult as any).exploitability_score !== undefined && (
+                      <DetailRow label="Exploitability" value={String((liveDetailResult as any).exploitability_score)} />
+                    )}
+                    {(liveDetailResult as any).exploit_available && (
+                      <DetailRow label="Exploit Available" value="Yes" />
+                    )}
+
+                    {/* Published date */}
+                    {((liveDetailResult as any).published || (liveDetailResult as any).date_added || (liveDetailResult as any).created) && (
+                      <DetailRow
+                        label="Published"
+                        value={new Date((liveDetailResult as any).published || (liveDetailResult as any).date_added || (liveDetailResult as any).created).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                      />
+                    )}
+                    {(liveDetailResult as any).last_modified && (
+                      <DetailRow
+                        label="Last Modified"
+                        value={new Date((liveDetailResult as any).last_modified).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                      />
+                    )}
+
+                    {/* Threat Actor / Adversary */}
+                    {((liveDetailResult as any).adversary || (liveDetailResult as any).threat_classification?.suggested_threat_label) && (
+                      <DetailRow
+                        label="Threat Actor"
+                        value={(liveDetailResult as any).adversary || (liveDetailResult as any).threat_classification?.suggested_threat_label}
+                      />
+                    )}
+
+                    {/* Products */}
+                    {(liveDetailResult as any).vendor && (
+                      <DetailRow label="Vendor" value={(liveDetailResult as any).vendor} />
+                    )}
+                    {(liveDetailResult as any).product && (
+                      <DetailRow label="Product" value={(liveDetailResult as any).product} />
+                    )}
+
+                    {/* IP fields */}
+                    {(liveDetailResult as any).abuse_score !== undefined && (
+                      <DetailRow label="Abuse Score" value={`${(liveDetailResult as any).abuse_score}%`} />
+                    )}
+                    {(liveDetailResult as any).total_reports !== undefined && (
+                      <DetailRow label="Total Reports" value={String((liveDetailResult as any).total_reports)} />
+                    )}
+                    {(liveDetailResult as any).isp && (
+                      <DetailRow label="ISP" value={(liveDetailResult as any).isp} />
+                    )}
+                    {(liveDetailResult as any).country && (
+                      <DetailRow label="Country" value={(liveDetailResult as any).country} />
+                    )}
+                    {(liveDetailResult as any).org && (
+                      <DetailRow label="Organization" value={(liveDetailResult as any).org} />
+                    )}
+                    {(liveDetailResult as any).domain && (
+                      <DetailRow label="Domain" value={(liveDetailResult as any).domain} />
+                    )}
+                    {(liveDetailResult as any).usage_type && (
+                      <DetailRow label="Usage Type" value={(liveDetailResult as any).usage_type} />
+                    )}
+
+                    {/* VT fields */}
+                    {(liveDetailResult as any).malicious !== undefined && (
+                      <DetailRow label="Detection" value={`${(liveDetailResult as any).malicious}/${(liveDetailResult as any).total_engines || 0} engines`} />
+                    )}
+                    {(liveDetailResult as any).reputation !== undefined && (
+                      <DetailRow label="Reputation" value={String((liveDetailResult as any).reputation)} />
+                    )}
+
+                    {/* Hash fields */}
+                    {(liveDetailResult as any).file_name && (
+                      <DetailRow label="File Name" value={(liveDetailResult as any).file_name} />
+                    )}
+                    {(liveDetailResult as any).file_type && (
+                      <DetailRow label="File Type" value={(liveDetailResult as any).file_type} />
+                    )}
+
+                    {/* URLhaus */}
+                    {(liveDetailResult as any).threat_type && (
+                      <DetailRow label="Threat Type" value={(liveDetailResult as any).threat_type} />
+                    )}
+                    {(liveDetailResult as any).url_status && (
+                      <DetailRow label="URL Status" value={(liveDetailResult as any).url_status} />
+                    )}
+
+                    {/* KEV */}
+                    {(liveDetailResult as any).is_kev && (
+                      <DetailRow label="Known Exploited" value="Yes — CISA KEV" />
+                    )}
+                    {(liveDetailResult as any).required_action && (
+                      <DetailRow label="Required Action" value={(liveDetailResult as any).required_action} />
+                    )}
+                    {(liveDetailResult as any).due_date && (
+                      <DetailRow label="Remediation Due" value={(liveDetailResult as any).due_date} />
+                    )}
+                    {(liveDetailResult as any).known_ransomware_use && (liveDetailResult as any).known_ransomware_use !== "Unknown" && (
+                      <DetailRow label="Ransomware Use" value={(liveDetailResult as any).known_ransomware_use} />
+                    )}
+
+                    {/* Shodan */}
+                    {(liveDetailResult as any).services_count > 0 && (
+                      <DetailRow label="Services" value={String((liveDetailResult as any).services_count)} />
+                    )}
+                    {(liveDetailResult as any).city && (
+                      <DetailRow label="City" value={(liveDetailResult as any).city} />
+                    )}
+                    {(liveDetailResult as any).os && (
+                      <DetailRow label="OS" value={(liveDetailResult as any).os} />
+                    )}
+
+                    {/* OTX */}
+                    {(liveDetailResult as any).ioc_count > 0 && (
+                      <DetailRow label="IOC Count" value={String((liveDetailResult as any).ioc_count)} />
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Affected Products */}
+              {((liveDetailResult as any).affected_products || []).length > 0 && (
+                <Card>
+                  <CardHeader className="pb-1 pt-3 px-4">
+                    <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+                      <Package className="h-3.5 w-3.5 text-green-400" />
+                      Affected Products
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-3">
+                    <div className="flex flex-wrap gap-1.5">
+                      {((liveDetailResult as any).affected_products as string[]).map((p, i) => (
+                        <Badge key={i} variant="outline" className="text-[10px] font-mono">
+                          {p}
+                        </Badge>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Ports & Vulnerabilities */}
+              {(((liveDetailResult as any).ports || []).length > 0 || ((liveDetailResult as any).vulns || []).length > 0) && (
+                <Card>
+                  <CardHeader className="pb-1 pt-3 px-4">
+                    <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+                      <Server className="h-3.5 w-3.5 text-orange-400" />
+                      Infrastructure
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-3 space-y-3">
+                    {((liveDetailResult as any).ports || []).length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-medium text-muted-foreground mb-1">
+                          Open Ports ({((liveDetailResult as any).ports as number[]).length})
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {((liveDetailResult as any).ports as number[]).map((p) => (
+                            <Badge key={p} variant="outline" className="text-[9px] font-mono">{p}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {((liveDetailResult as any).vulns || []).length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-medium text-red-400 mb-1">
+                          Vulnerabilities ({((liveDetailResult as any).vulns as string[]).length})
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {((liveDetailResult as any).vulns as string[]).map((v) => (
+                            <Badge key={v} variant="destructive" className="text-[9px]">{v}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {((liveDetailResult as any).hostnames || []).length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-medium text-muted-foreground mb-1">Hostnames</p>
+                        <div className="text-[11px] text-muted-foreground font-mono space-y-0.5">
+                          {((liveDetailResult as any).hostnames as string[]).map((h) => (
+                            <div key={h}>{h}</div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Tags & Categories */}
+              {(((liveDetailResult as any).tags || []).length > 0 || ((liveDetailResult as any).categories || []).length > 0) && (
+                <Card>
+                  <CardHeader className="pb-1 pt-3 px-4">
+                    <CardTitle className="text-xs font-semibold">Tags &amp; Categories</CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-3">
+                    <div className="flex flex-wrap gap-1.5">
+                      {((liveDetailResult as any).tags || []).map((t: string) => (
+                        <Badge key={t} variant="secondary" className="text-[9px]">{t}</Badge>
+                      ))}
+                      {(Array.isArray((liveDetailResult as any).categories)
+                        ? (liveDetailResult as any).categories
+                        : Object.values((liveDetailResult as any).categories || {})
+                      ).map((c: string, i: number) => (
+                        <Badge key={i} variant="outline" className="text-[9px]">{c}</Badge>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* IOC Samples (OTX) */}
+              {((liveDetailResult as any).iocs_sample || []).length > 0 && (
+                <Card>
+                  <CardHeader className="pb-1 pt-3 px-4">
+                    <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+                      <Target className="h-3.5 w-3.5 text-red-400" />
+                      IOC Samples
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-3">
+                    <div className="text-[11px] font-mono text-muted-foreground space-y-0.5">
+                      {((liveDetailResult as any).iocs_sample as string[]).map((ioc, i) => (
+                        <div key={i} className="truncate">{ioc}</div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Payloads (URLhaus) */}
+              {((liveDetailResult as any).payloads || []).length > 0 && (
+                <Card>
+                  <CardHeader className="pb-1 pt-3 px-4">
+                    <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+                      <AlertCircle className="h-3.5 w-3.5 text-red-400" />
+                      Payloads
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-3 space-y-2">
+                    {((liveDetailResult as any).payloads as any[]).map((p, i) => (
+                      <div key={i} className="text-[11px] p-2 rounded bg-muted/30 space-y-0.5">
+                        {p.filename && <div><span className="text-muted-foreground">File:</span> <span className="font-mono">{p.filename}</span></div>}
+                        {p.file_type && <div><span className="text-muted-foreground">Type:</span> {p.file_type}</div>}
+                        {p.signature && <div><span className="text-muted-foreground">Signature:</span> <span className="text-red-400">{p.signature}</span></div>}
+                        {p.virustotal_pct !== undefined && p.virustotal_pct !== null && <div><span className="text-muted-foreground">VT Detection:</span> {p.virustotal_pct}%</div>}
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* References */}
+              {((liveDetailResult as any).references || []).length > 0 && (
+                <Card>
+                  <CardHeader className="pb-1 pt-3 px-4">
+                    <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+                      <ExternalLink className="h-3.5 w-3.5 text-blue-400" />
+                      References
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-3 space-y-1.5">
+                    {((liveDetailResult as any).references as string[]).map((url, i) => (
+                      <a
+                        key={i}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] text-primary hover:underline flex items-center gap-1 truncate"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <ExternalLink className="h-3 w-3 shrink-0" />
+                        {url.replace(/^https?:\/\//, "").slice(0, 80)}
+                      </a>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Single URL (web articles) */}
+              {(liveDetailResult as any).url && !((liveDetailResult as any).references || []).length && (
+                <Card>
+                  <CardContent className="py-3 px-4">
+                    <a
+                      href={(liveDetailResult as any).url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary hover:underline flex items-center gap-1.5"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                      Open source article
+                    </a>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Confidence bar */}
+              <Card>
+                <CardContent className="py-3 px-4">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[11px] font-medium">Confidence Level</span>
+                    <span
+                      className="text-[11px] font-bold"
+                      style={{ color: liveDetailResult.confidence >= 80 ? "#22c55e" : liveDetailResult.confidence >= 50 ? "#eab308" : "#6b7280" }}
+                    >
+                      {liveDetailResult.confidence}%
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full bg-muted/40 overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${liveDetailResult.confidence}%`,
+                        backgroundColor: liveDetailResult.confidence >= 80 ? "#22c55e" : liveDetailResult.confidence >= 50 ? "#eab308" : "#6b7280",
+                      }}
+                    />
+                  </div>
+                  <p className="text-[9px] text-muted-foreground mt-1">
+                    {liveDetailResult.confidence >= 80
+                      ? "High confidence — data from authoritative source"
+                      : liveDetailResult.confidence >= 50
+                        ? "Moderate confidence — cross-reference recommended"
+                        : "Low confidence — unverified open source intelligence"}
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </>
       )}
 
       {/* Enrichment Slide-over Panel with backdrop */}
