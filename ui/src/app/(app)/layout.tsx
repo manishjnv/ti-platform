@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { useAppStore } from "@/store";
 import { AuthGuard } from "@/components/AuthGuard";
 import { Sidebar } from "@/components/Sidebar";
@@ -19,12 +20,39 @@ import {
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { fetchUser, user, performLogout } = useAppStore();
+  const router = useRouter();
+  const searchRef = useRef<HTMLInputElement>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [darkMode, setDarkMode] = useState(true);
+  const [headerQuery, setHeaderQuery] = useState("");
 
   useEffect(() => {
     fetchUser();
   }, [fetchUser]);
+
+  // ⌘K / Ctrl+K → focus header search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  // Header search → navigate to /search?q=...
+  const handleHeaderSearch = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter" && headerQuery.trim()) {
+        router.push(`/search?q=${encodeURIComponent(headerQuery.trim())}`);
+        setHeaderQuery("");
+        searchRef.current?.blur();
+      }
+    },
+    [headerQuery, router]
+  );
 
   // Theme toggle
   const toggleTheme = useCallback(() => {
@@ -62,7 +90,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <div className="relative max-w-sm w-full lg:w-64">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <input
+                ref={searchRef}
                 type="text"
+                value={headerQuery}
+                onChange={(e) => setHeaderQuery(e.target.value)}
+                onKeyDown={handleHeaderSearch}
                 placeholder="Search threats, IOCs, CVEs..."
                 className="w-full h-8 pl-8 pr-3 rounded-md bg-muted/30 border border-border/40 text-xs placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50 focus:bg-muted/50 transition-colors"
               />

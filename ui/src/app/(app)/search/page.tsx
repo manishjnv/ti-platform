@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { useAppStore } from "@/store";
 import { IntelCard } from "@/components/IntelCard";
 import { Pagination } from "@/components/Pagination";
@@ -35,6 +36,7 @@ const TYPE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = 
 
 export default function SearchPage() {
   const { searchResult, searchLoading, executeSearch } = useAppStore();
+  const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
 
@@ -51,6 +53,16 @@ export default function SearchPage() {
     },
     [query, executeSearch]
   );
+
+  // Read ?q= from URL on mount (from header search)
+  useEffect(() => {
+    const q = searchParams.get("q");
+    if (q && q.trim()) {
+      setQuery(q.trim());
+      executeSearch({ query: q.trim(), page: 1, page_size: 20 });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleSearch(1);
