@@ -49,6 +49,7 @@ import type {
   RelatedIntelItemEnriched,
 } from "@/types";
 import * as api from "@/lib/api";
+import { StructuredIntelCards, type StructuredIntelData } from "@/components/StructuredIntelCards";
 
 export default function IntelDetailPage() {
   const params = useParams();
@@ -373,6 +374,38 @@ export default function IntelDetailPage() {
                 <p className="text-sm whitespace-pre-wrap">{item.description}</p>
               </CardContent>
             </Card>
+          )}
+
+          {/* Unified Structured Intel Snapshot */}
+          {enrichment && (
+            <StructuredIntelCards
+              data={{
+                summary: enrichment.executive_summary || item.ai_summary || undefined,
+                threatActors: enrichment.threat_actors.map((ta) => ta.name),
+                affectedProducts: item.affected_products?.length > 0
+                  ? item.affected_products
+                  : enrichment.affected_versions.map((av) => `${av.vendor}:${av.product}`),
+                knownBreaches: enrichment.notable_campaigns.length > 0
+                  ? enrichment.notable_campaigns.map((c) => `${c.name} (${c.date}): ${c.description}`).join(". ")
+                  : null,
+                fixRemediation: enrichment.remediation?.guidance?.length > 0
+                  ? enrichment.remediation.guidance.join(". ")
+                  : null,
+                timeline: enrichment.timeline_events
+                  .filter((e) => e.date)
+                  .sort((a, b) => new Date(a.date!).getTime() - new Date(b.date!).getTime())
+                  .map((e) => ({ date: e.date!, event: e.event })),
+                keyFindings: [
+                  ...(item.is_kev ? ["Listed in CISA Known Exploited Vulnerabilities (KEV)"] : []),
+                  ...(item.exploit_available ? ["Active exploit code is available"] : []),
+                  ...(exploitInfo?.ransomware_use ? ["Associated with ransomware campaigns"] : []),
+                  ...(exploitInfo?.in_the_wild ? ["Actively exploited in the wild"] : []),
+                  ...(item.exploitability_score != null && item.exploitability_score >= 7
+                    ? [`High exploitability score: ${item.exploitability_score}`] : []),
+                ],
+              }}
+              variant="full"
+            />
           )}
 
           {/* Threat Actors */}

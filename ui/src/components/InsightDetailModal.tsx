@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type { InsightDetail, InsightDetailItem } from "@/types";
 import Link from "next/link";
+import { StructuredIntelCards } from "@/components/StructuredIntelCards";
 
 const SEV_COLORS: Record<string, string> = {
   critical: "bg-red-500/15 text-red-400 border-red-500/20",
@@ -137,6 +138,26 @@ export function InsightDetailModal({ open, onClose, type, name }: InsightDetailM
                   </div>
                 </div>
               )}
+
+              {/* Unified Structured Intel Cards */}
+              <StructuredIntelCards
+                data={{
+                  threatActors: type === "threat_actor" ? [name] : undefined,
+                  affectedProducts: s.top_products.map((p) => p.name),
+                  knownBreaches: type === "ransomware"
+                    ? `${name} ransomware — ${s.total_items} associated intel items with average risk ${s.avg_risk}`
+                    : null,
+                  keyFindings: [
+                    `${s.total_items} intelligence item${s.total_items !== 1 ? "s" : ""} linked to this entity`,
+                    ...(s.avg_risk >= 70 ? [`High average risk score: ${s.avg_risk}`] : []),
+                    ...(s.exploit_count > 0 ? [`${s.exploit_count} exploit${s.exploit_count !== 1 ? "s" : ""} associated`] : []),
+                    ...(s.top_cves.length > 0 ? [`${s.top_cves.length} related CVE${s.top_cves.length !== 1 ? "s" : ""}: ${s.top_cves.slice(0, 3).map(c => c.name).join(", ")}`] : []),
+                    ...(s.top_regions.length > 0 ? [`Targets regions: ${s.top_regions.slice(0, 3).map(r => r.name).join(", ")}`] : []),
+                    ...(s.top_industries.length > 0 ? [`Targets industries: ${s.top_industries.slice(0, 3).map(i => i.name).join(", ")}`] : []),
+                  ],
+                }}
+                variant="full"
+              />
 
               {/* Top CVEs */}
               {s.top_cves.length > 0 && (

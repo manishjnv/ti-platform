@@ -19,6 +19,7 @@ import {
   type LiveLookupResponse,
   type AiAnalysis,
 } from "@/lib/api";
+import { StructuredIntelCards, type StructuredIntelData } from "@/components/StructuredIntelCards";
 import {
   Search as SearchIcon,
   Loader2,
@@ -54,11 +55,6 @@ import {
   ChevronRight,
   FileText,
   Clock,
-  Skull,
-  Wrench,
-  Activity,
-  Crosshair,
-  Lightbulb,
 } from "lucide-react";
 
 /* ── Constants ────────────────────────────────────────── */
@@ -819,148 +815,20 @@ export default function SearchPage() {
 
           {/* AI Structured Analysis */}
           {liveResult.ai_analysis ? (
-            <div className="space-y-2">
-              {/* Summary Banner */}
-              <Card className="border-purple-500/30 bg-purple-500/5">
-                <CardContent className="py-3 px-4">
-                  <div className="flex items-start gap-2">
-                    <Sparkles className="h-4 w-4 text-purple-400 mt-0.5 shrink-0" />
-                    <div>
-                      <p className="text-[11px] font-semibold text-purple-300 mb-1">AI Intelligence Summary</p>
-                      <p className="text-xs text-muted-foreground leading-relaxed">
-                        {liveResult.ai_analysis.summary}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Structured Intel Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {/* Threat Actors */}
-                {liveResult.ai_analysis.threat_actors?.length > 0 && (
-                  <Card className="border-orange-500/30 bg-orange-500/5">
-                    <CardContent className="py-2.5 px-3">
-                      <div className="flex items-center gap-1.5 mb-1.5">
-                        <Crosshair className="h-3.5 w-3.5 text-orange-400" />
-                        <span className="text-[10px] font-semibold text-orange-300 uppercase tracking-wider">Threat Actors</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {liveResult.ai_analysis.threat_actors.map((ta, i) => (
-                          <Badge key={i} className="bg-orange-500/20 text-orange-300 border-orange-500/30 text-[10px]">
-                            {ta}
-                          </Badge>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Affected Products */}
-                {liveResult.ai_analysis.affected_products?.length > 0 && (
-                  <Card className="border-cyan-500/30 bg-cyan-500/5">
-                    <CardContent className="py-2.5 px-3">
-                      <div className="flex items-center gap-1.5 mb-1.5">
-                        <Package className="h-3.5 w-3.5 text-cyan-400" />
-                        <span className="text-[10px] font-semibold text-cyan-300 uppercase tracking-wider">Affected Products</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {liveResult.ai_analysis.affected_products.map((p, i) => (
-                          <Badge key={i} className="bg-cyan-500/20 text-cyan-200 border-cyan-500/30 text-[10px]">
-                            {p}
-                          </Badge>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Known Breaches */}
-                {liveResult.ai_analysis.known_breaches && (
-                  <Card className="border-red-500/30 bg-red-500/5">
-                    <CardContent className="py-2.5 px-3">
-                      <div className="flex items-center gap-1.5 mb-1.5">
-                        <Skull className="h-3.5 w-3.5 text-red-400" />
-                        <span className="text-[10px] font-semibold text-red-300 uppercase tracking-wider">Known Breaches</span>
-                      </div>
-                      <p className="text-[11px] text-red-200/80 leading-relaxed">
-                        {liveResult.ai_analysis.known_breaches}
-                      </p>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Fix / Remediation */}
-                {liveResult.ai_analysis.fix_remediation && (
-                  <Card className="border-emerald-500/30 bg-emerald-500/5">
-                    <CardContent className="py-2.5 px-3">
-                      <div className="flex items-center gap-1.5 mb-1.5">
-                        <Wrench className="h-3.5 w-3.5 text-emerald-400" />
-                        <span className="text-[10px] font-semibold text-emerald-300 uppercase tracking-wider">Fix / Remediation</span>
-                      </div>
-                      <p className="text-[11px] text-emerald-200/80 leading-relaxed">
-                        {liveResult.ai_analysis.fix_remediation}
-                      </p>
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
-
-              {/* Timeline */}
-              {liveResult.ai_analysis.timeline?.length > 0 && (
-                <Card className="border-blue-500/30 bg-blue-500/5">
-                  <CardContent className="py-2.5 px-3">
-                    <div className="flex items-center gap-1.5 mb-2">
-                      <Activity className="h-3.5 w-3.5 text-blue-400" />
-                      <span className="text-[10px] font-semibold text-blue-300 uppercase tracking-wider">Event Timeline</span>
-                    </div>
-                    <div className="relative pl-4 space-y-2 border-l border-blue-500/30">
-                      {liveResult.ai_analysis.timeline.map((ev, i) => (
-                        <div key={i} className="relative">
-                          <div className="absolute -left-[calc(1rem+4.5px)] top-1 w-2 h-2 rounded-full bg-blue-400 border border-blue-300" />
-                          <p className="text-[10px] font-mono text-blue-300">{ev.date}</p>
-                          <p className="text-[11px] text-muted-foreground leading-snug">{ev.event}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Key Findings */}
-              {liveResult.ai_analysis.key_findings?.length > 0 && (
-                <Card className="border-amber-500/30 bg-amber-500/5">
-                  <CardContent className="py-2.5 px-3">
-                    <div className="flex items-center gap-1.5 mb-1.5">
-                      <Lightbulb className="h-3.5 w-3.5 text-amber-400" />
-                      <span className="text-[10px] font-semibold text-amber-300 uppercase tracking-wider">Key Findings</span>
-                    </div>
-                    <ul className="space-y-1">
-                      {liveResult.ai_analysis.key_findings.map((f, i) => (
-                        <li key={i} className="text-[11px] text-muted-foreground leading-snug flex items-start gap-1.5">
-                          <span className="text-amber-400 mt-0.5 shrink-0">•</span>
-                          {f}
-                        </li>
-                      ))}
-                    </ul>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
+            <StructuredIntelCards
+              data={{
+                summary: liveResult.ai_analysis.summary,
+                threatActors: liveResult.ai_analysis.threat_actors,
+                affectedProducts: liveResult.ai_analysis.affected_products,
+                knownBreaches: liveResult.ai_analysis.known_breaches,
+                fixRemediation: liveResult.ai_analysis.fix_remediation,
+                timeline: liveResult.ai_analysis.timeline,
+                keyFindings: liveResult.ai_analysis.key_findings,
+              }}
+              variant="full"
+            />
           ) : liveResult.ai_summary ? (
-            <Card className="border-purple-500/30 bg-purple-500/5">
-              <CardContent className="py-3 px-4">
-                <div className="flex items-start gap-2">
-                  <Sparkles className="h-4 w-4 text-purple-400 mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-[11px] font-semibold text-purple-300 mb-1">AI Summary</p>
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      {liveResult.ai_summary}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <StructuredIntelCards data={{ summary: liveResult.ai_summary }} variant="full" />
           ) : null}
 
           {/* Result cards */}
@@ -1245,123 +1113,18 @@ export default function SearchPage() {
 
               {/* AI Structured Intel - shown if we have ai_analysis from the live result context */}
               {liveResult?.ai_analysis && (
-                <div className="space-y-2">
-                  {/* Summary */}
-                  {liveResult.ai_analysis.summary && (
-                    <Card className="border-purple-500/30 bg-purple-500/5">
-                      <CardContent className="py-2.5 px-3">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <Sparkles className="h-3.5 w-3.5 text-purple-400" />
-                          <span className="text-[10px] font-semibold text-purple-300 uppercase tracking-wider">AI Summary</span>
-                        </div>
-                        <p className="text-[11px] text-muted-foreground leading-relaxed">{liveResult.ai_analysis.summary}</p>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-2">
-                    {/* Threat Actors */}
-                    {liveResult.ai_analysis.threat_actors?.length > 0 && (
-                      <Card className="border-orange-500/30 bg-orange-500/5">
-                        <CardContent className="py-2 px-3">
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <Crosshair className="h-3 w-3 text-orange-400" />
-                            <span className="text-[9px] font-semibold text-orange-300 uppercase tracking-wider">Threat Actors</span>
-                          </div>
-                          <div className="flex flex-wrap gap-1">
-                            {liveResult.ai_analysis.threat_actors.map((ta, i) => (
-                              <Badge key={i} className="bg-orange-500/20 text-orange-300 border-orange-500/30 text-[9px]">{ta}</Badge>
-                            ))}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )}
-
-                    {/* Known Breaches */}
-                    {liveResult.ai_analysis.known_breaches && (
-                      <Card className="border-red-500/30 bg-red-500/5">
-                        <CardContent className="py-2 px-3">
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <Skull className="h-3 w-3 text-red-400" />
-                            <span className="text-[9px] font-semibold text-red-300 uppercase tracking-wider">Known Breaches</span>
-                          </div>
-                          <p className="text-[10px] text-red-200/80 leading-relaxed">{liveResult.ai_analysis.known_breaches}</p>
-                        </CardContent>
-                      </Card>
-                    )}
-
-                    {/* Fix / Remediation */}
-                    {liveResult.ai_analysis.fix_remediation && (
-                      <Card className="border-emerald-500/30 bg-emerald-500/5">
-                        <CardContent className="py-2 px-3">
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <Wrench className="h-3 w-3 text-emerald-400" />
-                            <span className="text-[9px] font-semibold text-emerald-300 uppercase tracking-wider">Remediation</span>
-                          </div>
-                          <p className="text-[10px] text-emerald-200/80 leading-relaxed">{liveResult.ai_analysis.fix_remediation}</p>
-                        </CardContent>
-                      </Card>
-                    )}
-
-                    {/* Affected Products */}
-                    {liveResult.ai_analysis.affected_products?.length > 0 && (
-                      <Card className="border-cyan-500/30 bg-cyan-500/5">
-                        <CardContent className="py-2 px-3">
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <Package className="h-3 w-3 text-cyan-400" />
-                            <span className="text-[9px] font-semibold text-cyan-300 uppercase tracking-wider">Affected Products</span>
-                          </div>
-                          <div className="flex flex-wrap gap-1">
-                            {liveResult.ai_analysis.affected_products.map((p, i) => (
-                              <Badge key={i} className="bg-cyan-500/20 text-cyan-200 border-cyan-500/30 text-[9px]">{p}</Badge>
-                            ))}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )}
-                  </div>
-
-                  {/* Timeline */}
-                  {liveResult.ai_analysis.timeline?.length > 0 && (
-                    <Card className="border-blue-500/30 bg-blue-500/5">
-                      <CardContent className="py-2.5 px-3">
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <Activity className="h-3 w-3 text-blue-400" />
-                          <span className="text-[9px] font-semibold text-blue-300 uppercase tracking-wider">Timeline</span>
-                        </div>
-                        <div className="relative pl-3 space-y-1.5 border-l border-blue-500/30">
-                          {liveResult.ai_analysis.timeline.map((ev, i) => (
-                            <div key={i} className="relative">
-                              <div className="absolute -left-[calc(0.75rem+4px)] top-1 w-1.5 h-1.5 rounded-full bg-blue-400" />
-                              <p className="text-[9px] font-mono text-blue-300">{ev.date}</p>
-                              <p className="text-[10px] text-muted-foreground leading-snug">{ev.event}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {/* Key Findings */}
-                  {liveResult.ai_analysis.key_findings?.length > 0 && (
-                    <Card className="border-amber-500/30 bg-amber-500/5">
-                      <CardContent className="py-2.5 px-3">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <Lightbulb className="h-3 w-3 text-amber-400" />
-                          <span className="text-[9px] font-semibold text-amber-300 uppercase tracking-wider">Key Findings</span>
-                        </div>
-                        <ul className="space-y-0.5">
-                          {liveResult.ai_analysis.key_findings.map((f, i) => (
-                            <li key={i} className="text-[10px] text-muted-foreground flex items-start gap-1">
-                              <span className="text-amber-400 shrink-0">•</span>
-                              {f}
-                            </li>
-                          ))}
-                        </ul>
-                      </CardContent>
-                    </Card>
-                  )}
-                </div>
+                <StructuredIntelCards
+                  data={{
+                    summary: liveResult.ai_analysis.summary,
+                    threatActors: liveResult.ai_analysis.threat_actors,
+                    affectedProducts: liveResult.ai_analysis.affected_products,
+                    knownBreaches: liveResult.ai_analysis.known_breaches,
+                    fixRemediation: liveResult.ai_analysis.fix_remediation,
+                    timeline: liveResult.ai_analysis.timeline,
+                    keyFindings: liveResult.ai_analysis.key_findings,
+                  }}
+                  variant="compact"
+                />
               )}
 
               {/* Key Intelligence Fields */}
