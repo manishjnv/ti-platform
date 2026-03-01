@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.middleware.auth import get_current_user
-from app.models.models import User, IOC
+from app.models.models import User, IOC, IntelIOCLink
 from app.services.enrichment import enrich_ioc
 
 router = APIRouter(prefix="/iocs", tags=["iocs"])
@@ -29,12 +29,28 @@ async def list_iocs(
     min_risk: int | None = Query(None, ge=0, le=100),
     max_risk: int | None = Query(None, ge=0, le=100),
     source: str | None = Query(None, max_length=100),
-    sort_by: str = Query("last_seen", regex="^(value|ioc_type|risk_score|first_seen|last_seen|sighting_count)$"),
+    sort_by: str = Query("last_seen", regex="^(value|ioc_type|risk_score|first_seen|last_seen|sighting_count|created_at|linked_intel_count)$"),
     sort_dir: str = Query("desc", regex="^(asc|desc)$"),
 ):
     """Paginated, filterable list of real IOCs from the iocs table."""
 
-    base = select(IOC)
+    # Subquery: count of linked intel items per IOC
+    link_count_sq = (
+        select(
+            IntelIOCLink.ioc_id,
+            func.count().label("link_cnt"),
+        )
+        .group_by(IntelIOCLink.ioc_id)
+        .subquery()
+    )
+
+    base = (
+        select(
+            IOC,
+            func.coalesce(link_count_sq.c.link_cnt, 0).label("linked_intel_count"),
+        )
+        .outerjoin(link_count_sq, IOC.id == link_count_sq.c.ioc_id)
+    )
     count_q = select(func.count()).select_from(IOC)
 
     # ── Filters ──────────────────────────────────────────
@@ -65,26 +81,31 @@ async def list_iocs(
     pages = max(1, math.ceil(total / page_size))
 
     # ── Sort ─────────────────────────────────────────────
-    col = getattr(IOC, sort_by)
-    base = base.order_by(desc(col) if sort_dir == "desc" else asc(col))
+    if sort_by == "linked_intel_count":
+        sort_col = text("linked_intel_count")
+    else:
+        sort_col = getattr(IOC, sort_by)
+    base = base.order_by(desc(sort_col) if sort_dir == "desc" else asc(sort_col))
 
     # ── Paginate ─────────────────────────────────────────
     base = base.offset((page - 1) * page_size).limit(page_size)
-    rows = (await db.execute(base)).scalars().all()
+    rows = (await db.execute(base)).all()
 
     items = [
         {
-            "id": str(r.id),
-            "value": r.value,
-            "ioc_type": r.ioc_type,
-            "risk_score": r.risk_score,
-            "first_seen": r.first_seen.isoformat() if r.first_seen else None,
-            "last_seen": r.last_seen.isoformat() if r.last_seen else None,
-            "sighting_count": r.sighting_count,
-            "tags": r.tags or [],
-            "geo": r.geo or [],
-            "source_names": r.source_names or [],
-            "context": r.context or {},
+            "id": str(r.IOC.id),
+            "value": r.IOC.value,
+            "ioc_type": r.IOC.ioc_type,
+            "risk_score": r.IOC.risk_score,
+            "first_seen": r.IOC.first_seen.isoformat() if r.IOC.first_seen else None,
+            "last_seen": r.IOC.last_seen.isoformat() if r.IOC.last_seen else None,
+            "sighting_count": r.IOC.sighting_count,
+            "tags": r.IOC.tags or [],
+            "geo": r.IOC.geo or [],
+            "source_names": r.IOC.source_names or [],
+            "context": r.IOC.context or {},
+            "created_at": r.IOC.created_at.isoformat() if r.IOC.created_at else None,
+            "linked_intel_count": r.linked_intel_count,
         }
         for r in rows
     ]

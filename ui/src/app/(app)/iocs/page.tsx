@@ -28,6 +28,8 @@ import {
   MapPin,
   Clock,
   ChevronRight,
+  Link2,
+  FileText,
 } from "lucide-react";
 import {
   getIOCs,
@@ -146,7 +148,7 @@ function RiskGauge({ score, size = 48 }: { score: number; size?: number }) {
 
 /* ─── Horizontal Risk Distribution Bar ──────────────────── */
 
-function RiskDistBar({ dist }: { dist: Record<string, number> }) {
+function RiskDistBar({ dist, activeFilter, onFilter }: { dist: Record<string, number>; activeFilter: string | null; onFilter: (level: string | null) => void }) {
   const total = Object.values(dist).reduce((s, v) => s + v, 0);
   if (total === 0) return null;
   const order = ["critical", "high", "medium", "low"] as const;
@@ -158,22 +160,28 @@ function RiskDistBar({ dist }: { dist: Record<string, number> }) {
           return w > 0 ? (
             <div
               key={k}
-              className="h-full transition-all duration-700"
+              className={`h-full transition-all duration-700 cursor-pointer hover:opacity-80 ${activeFilter === k ? "ring-1 ring-white/60" : ""}`}
               style={{ width: `${w}%`, backgroundColor: RISK_COLORS[k] }}
+              onClick={() => onFilter(activeFilter === k ? null : k)}
+              title={`${k}: ${(dist[k] || 0).toLocaleString()} — Click to filter`}
             />
           ) : null;
         })}
       </div>
       <div className="flex gap-3 text-[9px]">
         {order.map((k) => (
-          <span key={k} className="flex items-center gap-1">
+          <button
+            key={k}
+            className={`flex items-center gap-1 hover:opacity-80 transition-opacity ${activeFilter === k ? "opacity-100" : ""}`}
+            onClick={() => onFilter(activeFilter === k ? null : k)}
+          >
             <span
               className="w-1.5 h-1.5 rounded-full inline-block"
               style={{ backgroundColor: RISK_COLORS[k] }}
             />
             <span className="text-muted-foreground capitalize">{k}</span>
             <span className="font-semibold">{(dist[k] || 0).toLocaleString()}</span>
-          </span>
+          </button>
         ))}
       </div>
     </div>
@@ -210,6 +218,8 @@ function HotIOCsStrip({
                     first_seen: null,
                     geo: [],
                     context: {},
+                    created_at: null,
+                    linked_intel_count: 0,
                   } as IOCItem)
                 }
                 className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted/20 hover:bg-muted/40 transition-colors text-left group min-w-0"
@@ -261,7 +271,7 @@ export default function IOCDatabasePage() {
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [riskFilter, setRiskFilter] = useState<string | null>(null);
   const [page, setPage] = useState(1);
-  const [sortBy, setSortBy] = useState("last_seen");
+  const [sortBy, setSortBy] = useState("created_at");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [enrichTarget, setEnrichTarget] = useState<IOCItem | null>(null);
@@ -405,10 +415,13 @@ export default function IOCDatabasePage() {
         )}
       </div>
 
-      {/* ── Stat Cards (compact) ───────────────────────── */}
+      {/* ── Stat Cards (compact, clickable) ───────────── */}
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-          <Card className="bg-blue-500/[0.04] border-blue-500/10">
+          <Card
+            className="bg-blue-500/[0.04] border-blue-500/10 cursor-pointer hover:border-blue-500/30 transition-colors"
+            onClick={() => { setTypeFilter(null); setRiskFilter(null); setSearch(""); }}
+          >
             <CardContent className="p-2.5 flex items-center gap-2.5">
               <div className="p-1.5 rounded-lg bg-blue-500/10">
                 <Database className="h-3.5 w-3.5 text-blue-400" />
@@ -419,7 +432,10 @@ export default function IOCDatabasePage() {
               </div>
             </CardContent>
           </Card>
-          <Card className="bg-red-500/[0.04] border-red-500/10">
+          <Card
+            className="bg-red-500/[0.04] border-red-500/10 cursor-pointer hover:border-red-500/30 transition-colors"
+            onClick={() => { setRiskFilter(riskFilter === "critical" ? null : "critical"); setTypeFilter(null); }}
+          >
             <CardContent className="p-2.5 flex items-center gap-2.5">
               <div className="p-1.5 rounded-lg bg-red-500/10">
                 <AlertTriangle className="h-3.5 w-3.5 text-red-400" />
@@ -430,7 +446,10 @@ export default function IOCDatabasePage() {
               </div>
             </CardContent>
           </Card>
-          <Card className="bg-cyan-500/[0.04] border-cyan-500/10">
+          <Card
+            className="bg-cyan-500/[0.04] border-cyan-500/10 cursor-pointer hover:border-cyan-500/30 transition-colors"
+            onClick={() => { setSortBy("last_seen"); setSortDir("desc"); setRiskFilter(null); setTypeFilter(null); }}
+          >
             <CardContent className="p-2.5 flex items-center gap-2.5">
               <div className="p-1.5 rounded-lg bg-cyan-500/10">
                 <Clock className="h-3.5 w-3.5 text-cyan-400" />
@@ -441,7 +460,10 @@ export default function IOCDatabasePage() {
               </div>
             </CardContent>
           </Card>
-          <Card className="bg-purple-500/[0.04] border-purple-500/10">
+          <Card
+            className="bg-purple-500/[0.04] border-purple-500/10 cursor-pointer hover:border-purple-500/30 transition-colors"
+            onClick={() => { setRiskFilter(null); setTypeFilter(null); }}
+          >
             <CardContent className="p-2.5 flex items-center gap-2.5">
               <div className="p-1.5 rounded-lg bg-purple-500/10">
                 <Eye className="h-3.5 w-3.5 text-purple-400" />
@@ -456,7 +478,7 @@ export default function IOCDatabasePage() {
       )}
 
       {/* ── Risk Distribution Bar ──────────────────────── */}
-      {stats && <RiskDistBar dist={stats.risk_distribution} />}
+      {stats && <RiskDistBar dist={stats.risk_distribution} activeFilter={riskFilter} onFilter={setRiskFilter} />}
 
       {/* ── Visualization Row ──────────────────────────── */}
       {stats && (
@@ -623,7 +645,7 @@ export default function IOCDatabasePage() {
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border/40 bg-muted/20">
-                  <th className="text-left py-2 px-3 text-muted-foreground font-medium w-[40%]">IOC Value</th>
+                  <th className="text-left py-2 px-3 text-muted-foreground font-medium w-[32%]">IOC Value</th>
                   <th className="text-left py-2 px-3 text-muted-foreground font-medium cursor-pointer select-none" onClick={() => handleSort("ioc_type")}>
                     <span className="flex items-center">Type<SortIcon col="ioc_type" /></span>
                   </th>
@@ -633,8 +655,14 @@ export default function IOCDatabasePage() {
                   <th className="text-center py-2 px-3 text-muted-foreground font-medium cursor-pointer select-none" onClick={() => handleSort("sighting_count")}>
                     <span className="flex items-center justify-center">Seen<SortIcon col="sighting_count" /></span>
                   </th>
+                  <th className="text-center py-2 px-3 text-muted-foreground font-medium cursor-pointer select-none hidden sm:table-cell" onClick={() => handleSort("linked_intel_count")}>
+                    <span className="flex items-center justify-center">Intel<SortIcon col="linked_intel_count" /></span>
+                  </th>
                   <th className="text-left py-2 px-3 text-muted-foreground font-medium hidden lg:table-cell">Tags / Geo</th>
                   <th className="text-left py-2 px-3 text-muted-foreground font-medium hidden md:table-cell">Sources</th>
+                  <th className="text-left py-2 px-3 text-muted-foreground font-medium cursor-pointer select-none hidden sm:table-cell" onClick={() => handleSort("created_at")}>
+                    <span className="flex items-center">Published<SortIcon col="created_at" /></span>
+                  </th>
                   <th className="text-left py-2 px-3 text-muted-foreground font-medium cursor-pointer select-none" onClick={() => handleSort("last_seen")}>
                     <span className="flex items-center">Last Seen<SortIcon col="last_seen" /></span>
                   </th>
@@ -693,6 +721,22 @@ export default function IOCDatabasePage() {
                         <span className="font-medium tabular-nums">{ioc.sighting_count}</span>
                       </td>
 
+                      {/* Linked Intel */}
+                      <td className="py-1.5 px-3 text-center hidden sm:table-cell">
+                        {ioc.linked_intel_count > 0 ? (
+                          <a
+                            href={`/intel?search=${encodeURIComponent(ioc.value)}`}
+                            className="inline-flex items-center gap-1 text-[10px] font-semibold text-primary hover:underline"
+                            title={`${ioc.linked_intel_count} linked intel item${ioc.linked_intel_count > 1 ? "s" : ""}`}
+                          >
+                            <FileText className="h-2.5 w-2.5" />
+                            {ioc.linked_intel_count}
+                          </a>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground/30">—</span>
+                        )}
+                      </td>
+
                       {/* Tags + Geo */}
                       <td className="py-1.5 px-3 hidden lg:table-cell">
                         <div className="flex flex-wrap gap-0.5 max-w-[180px]">
@@ -722,6 +766,11 @@ export default function IOCDatabasePage() {
                             <span className="text-[8px] text-muted-foreground/40">+{ioc.source_names.length - 2}</span>
                           )}
                         </div>
+                      </td>
+
+                      {/* Published */}
+                      <td className="py-1.5 px-3 text-muted-foreground text-[10px] whitespace-nowrap hidden sm:table-cell">
+                        {ioc.created_at ? new Date(ioc.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" }) : "—"}
                       </td>
 
                       {/* Last Seen */}

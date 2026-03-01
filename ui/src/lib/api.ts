@@ -425,6 +425,8 @@ export interface IOCItem {
   geo: string[];
   source_names: string[];
   context: Record<string, unknown>;
+  created_at: string | null;
+  linked_intel_count: number;
 }
 
 export interface IOCListResponse {
