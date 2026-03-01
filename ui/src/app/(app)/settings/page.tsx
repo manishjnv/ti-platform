@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -67,7 +68,8 @@ const SECTIONS: SettingSection[] = [
 ];
 
 export default function SettingsPage() {
-  const [activeSection, setActiveSection] = useState("general");
+  const searchParams = useSearchParams();
+  const [activeSection, setActiveSection] = useState(searchParams.get("tab") || "general");
   const [settings, setSettings] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

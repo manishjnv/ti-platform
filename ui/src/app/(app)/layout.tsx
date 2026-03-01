@@ -153,10 +153,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                       </p>
                     </div>
                     <div className="py-1">
-                      <button className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-500 dark:text-muted-foreground hover:bg-gray-100 dark:hover:bg-muted/40 hover:text-gray-900 dark:hover:text-foreground transition-colors">
+                      <button
+                        onClick={() => { setShowUserMenu(false); router.push("/settings"); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-500 dark:text-muted-foreground hover:bg-gray-100 dark:hover:bg-muted/40 hover:text-gray-900 dark:hover:text-foreground transition-colors"
+                      >
                         <User className="h-3.5 w-3.5" /> Profile
                       </button>
-                      <button className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-500 dark:text-muted-foreground hover:bg-gray-100 dark:hover:bg-muted/40 hover:text-gray-900 dark:hover:text-foreground transition-colors">
+                      <button
+                        onClick={() => { setShowUserMenu(false); router.push("/settings?tab=security"); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-500 dark:text-muted-foreground hover:bg-gray-100 dark:hover:bg-muted/40 hover:text-gray-900 dark:hover:text-foreground transition-colors"
+                      >
                         <Shield className="h-3.5 w-3.5" /> Security
                       </button>
                     </div>
