@@ -90,6 +90,15 @@
 .recharts-tooltip-wrapper {
   outline: none !important;
 }
+
+/* Hide scrollbar for horizontal scroll containers */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
 .recharts-default-tooltip {
   background-color: hsl(var(--card)) !important;
   border: 1px solid hsl(var(--border)) !important;

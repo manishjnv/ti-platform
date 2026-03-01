@@ -150,11 +150,13 @@ async def status_bar():
             if feeds_row.last_success:
                 last_feed_at = feeds_row.last_success.isoformat()
 
-            # ATT&CK coverage: techniques with at least one intel link / total
+            # ATT&CK coverage: parent techniques (non-subtechnique) with at least one intel link
             cov_row = (await conn.execute(text(
                 "SELECT"
-                "  (SELECT count(DISTINCT id) FROM attack_techniques) AS total_tech,"
-                "  (SELECT count(DISTINCT technique_id) FROM intel_attack_links) AS linked"
+                "  (SELECT count(DISTINCT id) FROM attack_techniques WHERE is_subtechnique = false) AS total_tech,"
+                "  (SELECT count(DISTINCT t.id) FROM attack_techniques t"
+                "   JOIN intel_attack_links l ON l.technique_id = t.id"
+                "   WHERE t.is_subtechnique = false) AS linked"
             ))).one()
             total_tech = cov_row.total_tech or 1
             linked = cov_row.linked or 0

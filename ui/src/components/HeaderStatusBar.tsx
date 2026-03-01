@@ -152,7 +152,7 @@ export function HeaderStatusBar() {
   const allUp = isOk && data.active_feeds > 0;
 
   return (
-    <div className="flex items-center gap-1.5 flex-wrap">
+    <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
       {/* 1 ── System Health + Live ───────────────────── */}
       <div className="group relative">
         <Pill className={allUp

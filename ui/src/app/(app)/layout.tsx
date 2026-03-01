@@ -108,10 +108,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
 
           {/* Center: status bar */}
-          <div className="hidden lg:flex items-center flex-1 justify-center">
+          <div className="hidden md:flex items-center flex-1 justify-center overflow-hidden">
             <HeaderStatusBar />
           </div>
-          <div className="flex-1 lg:hidden" />
+          <div className="flex-1 md:hidden" />
 
           {/* Right: actions */}
           <div className="flex items-center gap-2">
@@ -183,6 +183,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </header>
+
+        {/* Mobile status bar — compact scrollable strip below header */}
+        <div className="md:hidden shrink-0 border-b border-gray-200/40 dark:border-border/30 bg-white/60 dark:bg-card/60 backdrop-blur-sm px-3 py-1.5 overflow-x-auto scrollbar-none">
+          <HeaderStatusBar />
+        </div>
 
         {/* Main content */}
         <main className="flex-1 overflow-auto">
