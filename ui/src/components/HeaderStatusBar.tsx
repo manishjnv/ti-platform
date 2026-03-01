@@ -9,12 +9,11 @@ import {
   Flame,
   Gauge,
   Grid3X3,
-  Play,
   Search,
   Server,
   Shield,
 } from "lucide-react";
-import { getStatusBar, triggerAllFeeds } from "@/lib/api";
+import { getStatusBar } from "@/lib/api";
 import type { StatusBarData } from "@/types";
 
 /* ─── helpers ─────────────────────────────────────────── */
@@ -62,7 +61,7 @@ function MiniSparkline({ data }: { data: number[] }) {
 }
 
 /* ─── Divider ─────────────────────────────────────────── */
-const Sep = () => <div className="w-px h-4 bg-border/30 shrink-0" />;
+const Sep = () => <div className="w-px h-5 bg-border/30 shrink-0" />;
 
 /* ─── Pill wrapper ────────────────────────────────────── */
 function Pill({
@@ -77,7 +76,7 @@ function Pill({
   return (
     <div
       title={title}
-      className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 ${className}`}
+      className={`flex items-center gap-1 h-7 px-2 rounded-md text-[10px] font-medium shrink-0 ${className}`}
     >
       {children}
     </div>
@@ -85,10 +84,9 @@ function Pill({
 }
 
 /* ─── Main component ──────────────────────────────────── */
-export function HeaderStatusBar({ userRole }: { userRole?: string }) {
+export function HeaderStatusBar() {
   const [data, setData] = useState<StatusBarData | null>(null);
   const [error, setError] = useState(false);
-  const [triggerMsg, setTriggerMsg] = useState<string | null>(null);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -105,18 +103,6 @@ export function HeaderStatusBar({ userRole }: { userRole?: string }) {
     const id = setInterval(fetchStatus, 30_000);
     return () => clearInterval(id);
   }, [fetchStatus]);
-
-  const handleRunAll = useCallback(async () => {
-    try {
-      setTriggerMsg("Queued…");
-      await triggerAllFeeds();
-      setTriggerMsg("✓ Queued");
-      setTimeout(() => setTriggerMsg(null), 2500);
-    } catch {
-      setTriggerMsg("Failed");
-      setTimeout(() => setTriggerMsg(null), 2500);
-    }
-  }, []);
 
   /* Loading / error states */
   if (error && !data) {
@@ -138,15 +124,20 @@ export function HeaderStatusBar({ userRole }: { userRole?: string }) {
 
   const isOk = data.status === "ok";
   const tl = threatLevel(data.avg_risk_score);
-  const isAdmin = userRole === "admin";
+  const allUp = isOk && data.active_feeds > 0;
 
   return (
-    <div className="flex items-center gap-1 flex-wrap">
-      {/* 1 ── System Health ──────────────────────────── */}
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {/* 1 ── System Health + Live ───────────────────── */}
       <div className="group relative">
-        <Pill className={isOk ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"}>
-          <Server className="h-3 w-3" />
-          {isOk ? "OK" : "Degraded"}
+        <Pill className={allUp ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"}>
+          <span className="relative flex h-2 w-2 shrink-0">
+            {allUp && (
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+            )}
+            <span className={`relative inline-flex rounded-full h-2 w-2 ${allUp ? "bg-emerald-500" : "bg-amber-500"}`} />
+          </span>
+          {allUp ? "Live" : "Degraded"}
         </Pill>
         <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-50 hidden group-hover:block">
           <div className="bg-popover border border-border/50 rounded-lg shadow-xl px-3 py-2 text-[10px] whitespace-nowrap space-y-1">
@@ -210,7 +201,7 @@ export function HeaderStatusBar({ userRole }: { userRole?: string }) {
       {/* 6 ── Feed Sparkline ─────────────────────────── */}
       {data.sparkline && data.sparkline.length > 0 && (
         <>
-          <div className="group relative flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted/20 shrink-0">
+          <div className="group relative flex items-center gap-1 h-7 px-2 rounded-md bg-muted/20 shrink-0">
             <MiniSparkline data={data.sparkline} />
             <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-50 hidden group-hover:block">
               <div className="bg-popover border border-border/50 rounded-lg shadow-xl px-3 py-1.5 text-[10px] whitespace-nowrap text-muted-foreground">
@@ -253,21 +244,6 @@ export function HeaderStatusBar({ userRole }: { userRole?: string }) {
         </>
       )}
 
-      {/* 10 ── Quick Actions (admin only) ────────────── */}
-      {isAdmin && (
-        <>
-          <Sep />
-          <button
-            onClick={handleRunAll}
-            disabled={!!triggerMsg}
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-50 shrink-0"
-            title="Queue all feed ingestion jobs"
-          >
-            <Play className="h-3 w-3" />
-            {triggerMsg || "Run Feeds"}
-          </button>
-        </>
-      )}
     </div>
   );
 }

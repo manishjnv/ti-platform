@@ -16,13 +16,11 @@ import {
   Moon,
   Sun,
 } from "lucide-react";
-import { getStatusBar } from "@/lib/api";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { fetchUser, user, performLogout } = useAppStore();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [darkMode, setDarkMode] = useState(true);
-  const [liveOk, setLiveOk] = useState<boolean | null>(null);
 
   useEffect(() => {
     fetchUser();
@@ -44,21 +42,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     document.documentElement.classList.toggle("dark", preferDark);
   }, []);
 
-  // Live status polling
-  useEffect(() => {
-    let cancelled = false;
-    const poll = async () => {
-      try {
-        const d = await getStatusBar();
-        if (!cancelled) setLiveOk(d.status === "ok" && d.active_feeds > 0);
-      } catch {
-        if (!cancelled) setLiveOk(false);
-      }
-    };
-    poll();
-    const id = setInterval(poll, 30_000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, []);
 
   const handleLogout = async () => {
     // Clear app session + CF Access cookies via API
@@ -91,33 +74,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
           {/* Center: status bar */}
           <div className="hidden lg:flex items-center flex-1 justify-center">
-            <HeaderStatusBar userRole={user?.role} />
+            <HeaderStatusBar />
           </div>
           <div className="flex-1 lg:hidden" />
 
           {/* Right: actions */}
           <div className="flex items-center gap-2">
-            {/* Live indicator — data-driven */}
-            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors ${
-              liveOk === null
-                ? "bg-muted/20 text-muted-foreground"
-                : liveOk
-                  ? "bg-green-500/10 text-green-400"
-                  : "bg-amber-500/10 text-amber-400"
-            }`}>
-              <span className="relative flex h-2 w-2">
-                {liveOk !== false && (
-                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                    liveOk ? "bg-green-400" : "bg-muted-foreground"
-                  }`} />
-                )}
-                <span className={`relative inline-flex rounded-full h-2 w-2 ${
-                  liveOk === null ? "bg-muted-foreground" : liveOk ? "bg-green-500" : "bg-amber-500"
-                }`} />
-              </span>
-              {liveOk === null ? "..." : liveOk ? "Live" : "Degraded"}
-            </div>
-
             {/* Theme toggle */}
             <button
               onClick={toggleTheme}

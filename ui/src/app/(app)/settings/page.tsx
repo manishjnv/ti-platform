@@ -843,48 +843,101 @@ function AppearanceSettings({ settings, onChange }: SettingsProps) {
 }
 
 function DataSettings({ settings, onChange }: SettingsProps) {
+  const [feedMsg, setFeedMsg] = useState<string | null>(null);
+  const [feedRunning, setFeedRunning] = useState(false);
+
+  const handleRunAllFeeds = async () => {
+    setFeedRunning(true);
+    setFeedMsg(null);
+    try {
+      await api.triggerAllFeeds();
+      setFeedMsg("All feed jobs queued successfully");
+      setTimeout(() => setFeedMsg(null), 4000);
+    } catch {
+      setFeedMsg("Failed to queue feed jobs");
+      setTimeout(() => setFeedMsg(null), 4000);
+    }
+    setFeedRunning(false);
+  };
+
   return (
-    <Card>
-      <CardHeader className="pb-2 pt-4 px-5">
-        <CardTitle className="text-sm font-semibold">Data & Storage</CardTitle>
-      </CardHeader>
-      <CardContent className="px-5 pb-4">
-        <SettingField
-          label="Data Retention"
-          description="Automatically delete items older than"
-        >
-          <select
-            value={(settings.data_retention as string) || "never"}
-            onChange={(e) => onChange("data_retention", e.target.value)}
-            className="w-36 h-8 px-3 rounded-md bg-muted/40 border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-2 pt-4 px-5">
+          <CardTitle className="text-sm font-semibold">Data & Storage</CardTitle>
+        </CardHeader>
+        <CardContent className="px-5 pb-4">
+          <SettingField
+            label="Data Retention"
+            description="Automatically delete items older than"
           >
-            <option value="30 days">30 days</option>
-            <option value="90 days">90 days</option>
-            <option value="180 days">180 days</option>
-            <option value="1 year">1 year</option>
-            <option value="never">Never</option>
-          </select>
-        </SettingField>
-        <SettingField
-          label="Deduplication"
-          description="Skip duplicate intel items during ingestion"
-        >
-          <ToggleSwitch
-            checked={settings.deduplication !== false}
-            onChange={(v) => onChange("deduplication", v)}
-          />
-        </SettingField>
-        <SettingField
-          label="OpenSearch Sync"
-          description="Sync ingested items to OpenSearch index"
-        >
-          <ToggleSwitch
-            checked={settings.opensearch_sync !== false}
-            onChange={(v) => onChange("opensearch_sync", v)}
-          />
-        </SettingField>
-      </CardContent>
-    </Card>
+            <select
+              value={(settings.data_retention as string) || "never"}
+              onChange={(e) => onChange("data_retention", e.target.value)}
+              className="w-36 h-8 px-3 rounded-md bg-muted/40 border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="30 days">30 days</option>
+              <option value="90 days">90 days</option>
+              <option value="180 days">180 days</option>
+              <option value="1 year">1 year</option>
+              <option value="never">Never</option>
+            </select>
+          </SettingField>
+          <SettingField
+            label="Deduplication"
+            description="Skip duplicate intel items during ingestion"
+          >
+            <ToggleSwitch
+              checked={settings.deduplication !== false}
+              onChange={(v) => onChange("deduplication", v)}
+            />
+          </SettingField>
+          <SettingField
+            label="OpenSearch Sync"
+            description="Sync ingested items to OpenSearch index"
+          >
+            <ToggleSwitch
+              checked={settings.opensearch_sync !== false}
+              onChange={(v) => onChange("opensearch_sync", v)}
+            />
+          </SettingField>
+        </CardContent>
+      </Card>
+
+      {/* Feed Ingestion Actions */}
+      <Card>
+        <CardHeader className="pb-2 pt-4 px-5">
+          <CardTitle className="text-sm font-semibold">Feed Ingestion</CardTitle>
+        </CardHeader>
+        <CardContent className="px-5 pb-4">
+          <SettingField
+            label="Run All Feeds"
+            description="Manually queue all feed ingestion jobs now"
+          >
+            <div className="flex items-center gap-2">
+              {feedMsg && (
+                <span className={`text-[10px] flex items-center gap-1 ${feedMsg.includes("Failed") ? "text-red-400" : "text-emerald-400"}`}>
+                  {feedMsg.includes("Failed") ? <XCircle className="h-3 w-3" /> : <CheckCircle2 className="h-3 w-3" />}
+                  {feedMsg}
+                </span>
+              )}
+              <button
+                onClick={handleRunAllFeeds}
+                disabled={feedRunning}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors disabled:opacity-50"
+              >
+                {feedRunning ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Database className="h-3.5 w-3.5" />
+                )}
+                {feedRunning ? "Queuing..." : "Run All Feeds"}
+              </button>
+            </div>
+          </SettingField>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
