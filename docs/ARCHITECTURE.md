@@ -383,14 +383,17 @@ app/layout.tsx (root HTML, dark class)
     │   └── Data Table
     ├── threats/page.tsx
     ├── intel/page.tsx → intel/[id]/page.tsx
-    │   └── IntelCard (with DataTooltip on risk score)
+    │   ├── IntelCard (with DataTooltip on risk score)
+    │   ├── StructuredIntelCards (Overview tab)
+    │   ├── EnhancedTimelineEvent (Timeline tab — color-coded cards, event type legend)
+    │   └── IOCDetailRow (IOCs tab — expandable rows with InternetDB/EPSS enrichment)
     ├── investigate/page.tsx (GraphExplorer)
     ├── techniques/page.tsx (CoverageRing donut + DetectionGapsCard + ATTACKMatrix)
     ├── search/page.tsx (Enhanced: sortable table, debounced search, type/severity/feed filter pills, donut+bar charts, VT/Shodan enrichment slide-over, copy-to-clipboard)
-    ├── iocs/page.tsx
+    ├── iocs/page.tsx (IOC Database — table, stats, VT/Shodan enrichment panel + stored InternetDB/EPSS/IPinfo context)
     ├── analytics/page.tsx
     ├── reports/page.tsx → reports/new/page.tsx, reports/[id]/page.tsx
-    ├── geo/page.tsx
+    ├── geo/page.tsx (5-tab layout: Countries, Continents, Networks, Industries, Intel Geo)
     ├── feeds/page.tsx
     └── settings/page.tsx
 
@@ -675,6 +678,7 @@ Real-time monitoring and correlation for large-scale global events (natural disa
 
 | Date | Change |
 | ---- | ------ |
+| 2026-03-04 | UI Improvements Phase 7: **Intel Detail Page** — new IOCs tab showing linked indicators with InternetDB enrichment (ports, vulns, CPEs, hostnames, tags), EPSS scores, IPinfo geolocation; enhanced Timeline tab with event type legend, color-coded cards, relative dates, source badges; improved Threat Actor section with motivation emoji icons, confidence coloring, "Hunt" search link, technique counts; improved Notable Campaigns section with visual timeline, severity-based dots, Impact Assessment box. New API endpoint `GET /intel/{id}/iocs` (joins IOC+IntelIOCLink with enrichment data). **IOC Database Page** — enrichment side panel now shows stored IPinfo (country, ASN, network), InternetDB (ports, vulns, CVE links to NVD, technologies/CPEs, hostnames, tags), and EPSS scores with probability bar before VT/Shodan on-demand results. **Geo View Page** — complete overhaul from single-source to 5-tab layout: Countries (flag grid + donut + AI threat geography), Continents (emoji progress bars), Networks (ASN bar chart), Industries (AI-enriched targeting), Intel Geo (original region data with severity pills + detail drill-down); uses `getDashboardInsights()` + `getIOCStats()` for comprehensive data. |
 | 2026-03-03 | ATT&CK Page Improvements: **Status bar** — ATT&CK coverage pill now shows 7-day trend arrow (↑/↓/—) via new `attack_coverage_prev_pct` field (SQL lookback on `intel_attack_links.created_at`); cache key bumped to v3. **ATT&CK page** — new `CoverageRing` SVG donut chart (animated, color-coded by %), new `DetectionGapsCard` showing top 20 unmapped high-priority techniques (initial-access, execution, persistence, priv-esc, defense-evasion, lateral-movement, impact). **ATT&CK matrix** — per-tactic mini coverage bars (mapped/total, 3-tier color), rich hover tooltips with `SeverityMicroBar` stacked severity breakdown, ATT&CK Navigator v4.5 JSON layer export (download button). API: severity counts via `literal_column()` ENUM casts in `case()`, `DetectionGap` schema, `mapped`/`total` per tactic. |
 | 2026-03-03 | Structured AI Analysis: replaced plain-text `_ai_summarize()` with `_ai_analyze()` returning structured JSON (summary, threat_actors, timeline, affected_products, fix_remediation, known_breaches, key_findings); date-descending sort on live lookup results; `ai_analysis: dict` in `LiveLookupResponse` schema |
 | 2026-03-03 | Unified StructuredIntelCards: new shared component `StructuredIntelCards.tsx` (~220 lines) with `full`/`compact` variants — color-coded cards (purple summary, orange TAs, cyan products, red breaches, emerald fix, blue timeline, amber findings); integrated into Search page (replaced inline JSX), Intel Detail overview tab (maps enrichment data), InsightDetailModal (maps aggregated stats), Threats page (unified badge scheme) |
