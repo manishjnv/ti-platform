@@ -1382,7 +1382,7 @@ function EnhancedTimelineEvent({
             {cfg.label}
           </Badge>
           {source === "ai" && (
-            <Sparkles className="h-3 w-3 text-purple-400 ml-auto" title="AI-generated" />
+            <span className="ml-auto" title="AI-generated"><Sparkles className="h-3 w-3 text-purple-400" /></span>
           )}
         </div>
         <p className="text-xs text-muted-foreground mt-1">{description}</p>
