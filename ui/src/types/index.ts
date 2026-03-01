@@ -82,6 +82,11 @@ export interface StatusBarData {
   active_feeds: number;
   total_feeds: number;
   last_feed_at: string | null;
+  avg_risk_score: number;
+  kev_count: number;
+  attack_coverage_pct: number;
+  searches_today: number;
+  sparkline: number[];
 }
 
 export interface DashboardData {

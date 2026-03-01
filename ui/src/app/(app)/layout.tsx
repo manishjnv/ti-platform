@@ -91,7 +91,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
           {/* Center: status bar */}
           <div className="hidden lg:flex items-center flex-1 justify-center">
-            <HeaderStatusBar />
+            <HeaderStatusBar userRole={user?.role} />
           </div>
           <div className="flex-1 lg:hidden" />
 

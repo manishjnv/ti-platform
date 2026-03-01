@@ -1,4 +1,4 @@
-"""Health check endpoint."""
+"""Health check & status bar endpoints."""
 
 from __future__ import annotations
 
@@ -18,17 +18,25 @@ settings = get_settings()
 
 
 class StatusBarResponse(BaseModel):
+    # Health
     status: str  # ok | degraded
     postgres: bool
     redis: bool
     opensearch: bool
+    # Counts
     total_intel: int
     intel_24h: int
     critical_count: int
     high_count: int
     active_feeds: int
     total_feeds: int
-    last_feed_at: str | None  # ISO timestamp
+    last_feed_at: str | None
+    # New widgets
+    avg_risk_score: float
+    kev_count: int
+    attack_coverage_pct: float
+    searches_today: int
+    sparkline: list[int]  # 24 hourly bins (oldest → newest)
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -72,12 +80,12 @@ async def health_check():
 @router.get("/status/bar", response_model=StatusBarResponse)
 async def status_bar():
     """Lightweight header status bar — health + quick counts (cached 60s)."""
-    ck = cache_key("status_bar")
+    ck = cache_key("status_bar_v2")
     cached = await get_cached(ck)
     if cached:
         return cached
 
-    # --- Health checks (same as /health) ---
+    # --- Health checks ---
     pg_ok = redis_ok = os_ok = False
     try:
         from app.core.database import engine
@@ -96,41 +104,39 @@ async def status_bar():
     except Exception:
         pass
 
-    # --- Quick stats from DB ---
-    total_intel = 0
-    intel_24h = 0
-    critical_count = 0
-    high_count = 0
-    active_feeds = 0
-    total_feeds = 0
+    # --- DB stats ---
+    total_intel = intel_24h = critical_count = high_count = 0
+    active_feeds = total_feeds = kev_count = searches_today = 0
+    avg_risk_score = 0.0
+    attack_coverage_pct = 0.0
     last_feed_at: str | None = None
+    sparkline: list[int] = []
 
     try:
         from app.core.database import engine
-        from app.models.models import IntelItem, FeedSyncState
         from datetime import timedelta
 
+        now = datetime.now(timezone.utc)
+        day_ago = now - timedelta(days=1)
+
         async with engine.connect() as conn:
-            # Total intel
-            total_intel = (await conn.execute(
-                select(func.count()).select_from(IntelItem)
-            )).scalar() or 0
-
-            # Last 24h
-            day_ago = datetime.now(timezone.utc) - timedelta(days=1)
-            intel_24h = (await conn.execute(
-                select(func.count()).select_from(IntelItem).where(
-                    IntelItem.ingested_at >= day_ago
-                )
-            )).scalar() or 0
-
-            # Critical / high counts (use raw SQL — severity is a custom PG enum)
-            critical_count = (await conn.execute(
-                text("SELECT count(*) FROM intel_items WHERE severity = 'critical'")
-            )).scalar() or 0
-            high_count = (await conn.execute(
-                text("SELECT count(*) FROM intel_items WHERE severity = 'high'")
-            )).scalar() or 0
+            # Combined counts in one query
+            row = (await conn.execute(text(
+                "SELECT"
+                "  count(*) AS total,"
+                "  count(*) FILTER (WHERE ingested_at >= :day_ago) AS last_24h,"
+                "  count(*) FILTER (WHERE severity = 'critical') AS crit,"
+                "  count(*) FILTER (WHERE severity = 'high') AS high,"
+                "  count(*) FILTER (WHERE is_kev) AS kev,"
+                "  round(coalesce(avg(risk_score), 0)::numeric, 1) AS avg_risk"
+                " FROM intel_items"
+            ), {"day_ago": day_ago})).one()
+            total_intel = row.total or 0
+            intel_24h = row.last_24h or 0
+            critical_count = row.crit or 0
+            high_count = row.high or 0
+            kev_count = row.kev or 0
+            avg_risk_score = float(row.avg_risk or 0)
 
             # Feed stats
             feeds_row = (await conn.execute(text(
@@ -143,9 +149,43 @@ async def status_bar():
             active_feeds = feeds_row.active or 0
             if feeds_row.last_success:
                 last_feed_at = feeds_row.last_success.isoformat()
+
+            # ATT&CK coverage: techniques with at least one intel link / total
+            cov_row = (await conn.execute(text(
+                "SELECT"
+                "  (SELECT count(DISTINCT id) FROM attack_techniques) AS total_tech,"
+                "  (SELECT count(DISTINCT technique_id) FROM intel_attack_links) AS linked"
+            ))).one()
+            total_tech = cov_row.total_tech or 1
+            linked = cov_row.linked or 0
+            attack_coverage_pct = round(linked / max(total_tech, 1) * 100, 1)
+
+            # Searches today (audit_log action = 'search')
+            searches_today = (await conn.execute(text(
+                "SELECT count(*) FROM audit_log"
+                " WHERE action = 'search' AND created_at >= :today"
+            ), {"today": now.replace(hour=0, minute=0, second=0, microsecond=0)})).scalar() or 0
+
+            # Sparkline: hourly ingestion count for last 24h
+            spark_rows = (await conn.execute(text(
+                "WITH hours AS ("
+                "  SELECT generate_series("
+                "    date_trunc('hour', now() - interval '23 hours'),"
+                "    date_trunc('hour', now()),"
+                "    interval '1 hour'"
+                "  ) AS hr"
+                ") SELECT h.hr, coalesce(c.cnt, 0) AS cnt"
+                " FROM hours h"
+                " LEFT JOIN ("
+                "   SELECT date_trunc('hour', ingested_at) AS hr, count(*) AS cnt"
+                "   FROM intel_items WHERE ingested_at >= now() - interval '24 hours'"
+                "   GROUP BY 1"
+                " ) c ON c.hr = h.hr"
+                " ORDER BY h.hr"
+            ))).all()
+            sparkline = [int(r.cnt) for r in spark_rows]
     except Exception:
         pass
-
 
     payload = StatusBarResponse(
         status="ok" if (pg_ok and redis_ok) else "degraded",
@@ -159,6 +199,11 @@ async def status_bar():
         active_feeds=active_feeds,
         total_feeds=total_feeds,
         last_feed_at=last_feed_at,
+        avg_risk_score=avg_risk_score,
+        kev_count=kev_count,
+        attack_coverage_pct=attack_coverage_pct,
+        searches_today=searches_today,
+        sparkline=sparkline,
     )
 
     await set_cached(ck, payload.model_dump(), ttl=60)
