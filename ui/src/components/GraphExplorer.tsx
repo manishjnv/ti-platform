@@ -1,15 +1,15 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import type { GraphNode, GraphEdge, GraphResponse } from "@/types";
 
-/* ── colour palettes by node type ─────────────────────── */
-const NODE_COLORS: Record<string, string> = {
-  intel: "#3b82f6",
-  ioc: "#f97316",
-  technique: "#8b5cf6",
-  cve: "#ef4444",
+/* ── Cyber-theme colour palettes ──────────────────────── */
+const NODE_COLORS: Record<string, { fill: string; glow: string; icon: string }> = {
+  intel: { fill: "#3b82f6", glow: "#60a5fa", icon: "I" },
+  ioc: { fill: "#f97316", glow: "#fb923c", icon: "!" },
+  technique: { fill: "#8b5cf6", glow: "#a78bfa", icon: "T" },
+  cve: { fill: "#ef4444", glow: "#f87171", icon: "C" },
 };
 
 const SEVERITY_RING: Record<string, string> = {
@@ -18,57 +18,78 @@ const SEVERITY_RING: Record<string, string> = {
   medium: "#eab308",
   low: "#22c55e",
   info: "#6b7280",
-  unknown: "#6b7280",
+  unknown: "#374151",
 };
 
 const EDGE_COLORS: Record<string, string> = {
+  "shares-ioc": "#f97316",
   shares_ioc: "#f97316",
+  "shares-cve": "#ef4444",
   shares_cve: "#ef4444",
+  "shares-technique": "#8b5cf6",
   shares_technique: "#8b5cf6",
   indicates: "#3b82f6",
   uses: "#10b981",
   exploits: "#dc2626",
+  "co-occurs": "#6b7280",
   co_occurs: "#6b7280",
-  "related-to": "#6b7280",
+  "related-to": "#06b6d4",
 };
 
-/* ── simple force simulation (no D3 dependency) ───────── */
+/* ── force-directed simulation ────────────────────────── */
 interface SimNode extends GraphNode {
   x: number;
   y: number;
   vx: number;
   vy: number;
-  fx?: number;
-  fy?: number;
   isCenter?: boolean;
 }
 
-function initialLayout(nodes: GraphNode[], center: string, width: number, height: number): SimNode[] {
+function initialLayout(
+  nodes: GraphNode[],
+  center: string,
+  width: number,
+  height: number,
+): SimNode[] {
   const cx = width / 2;
   const cy = height / 2;
-  return nodes.map((n, i) => {
+  const byType: Record<string, GraphNode[]> = {};
+  nodes.forEach((n) => {
+    (byType[n.type] ??= []).push(n);
+  });
+  const types = Object.keys(byType);
+
+  return nodes.map((n) => {
     const isCenter = n.id === center;
-    const angle = (2 * Math.PI * i) / nodes.length;
-    const r = isCenter ? 0 : 140 + Math.random() * 80;
+    if (isCenter) return { ...n, x: cx, y: cy, vx: 0, vy: 0, isCenter };
+
+    const ti = types.indexOf(n.type);
+    const group = byType[n.type];
+    const gi = group.indexOf(n);
+    const sectorAngle = (2 * Math.PI) / Math.max(types.length, 1);
+    const baseAngle = ti * sectorAngle;
+    const spread = sectorAngle * 0.8;
+    const angle = baseAngle + (gi / Math.max(group.length, 1)) * spread;
+    const r = 120 + Math.random() * 100 + gi * 3;
     return {
       ...n,
-      x: isCenter ? cx : cx + r * Math.cos(angle),
-      y: isCenter ? cy : cy + r * Math.sin(angle),
+      x: cx + r * Math.cos(angle),
+      y: cy + r * Math.sin(angle),
       vx: 0,
       vy: 0,
-      isCenter,
+      isCenter: false,
     };
   });
 }
 
-function simulate(nodes: SimNode[], edges: GraphEdge[], iterations = 80) {
+function simulate(nodes: SimNode[], edges: GraphEdge[], iterations = 120) {
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-  const repulsion = 3500;
-  const attraction = 0.005;
-  const damping = 0.85;
+  const repulsion = 5000;
+  const attraction = 0.004;
+  const centerGravity = 0.002;
+  const damping = 0.88;
 
   for (let iter = 0; iter < iterations; iter++) {
-    // repulsion between all node pairs
     for (let i = 0; i < nodes.length; i++) {
       for (let j = i + 1; j < nodes.length; j++) {
         const a = nodes[i];
@@ -84,7 +105,6 @@ function simulate(nodes: SimNode[], edges: GraphEdge[], iterations = 80) {
       }
     }
 
-    // attraction along edges
     for (const e of edges) {
       const s = nodeMap.get(e.source);
       const t = nodeMap.get(e.target);
@@ -97,9 +117,12 @@ function simulate(nodes: SimNode[], edges: GraphEdge[], iterations = 80) {
       if (!t.isCenter) { t.vx -= fx; t.vy -= fy; }
     }
 
-    // apply velocities
+    const cx = nodes.reduce((s, n) => s + n.x, 0) / nodes.length;
+    const cy = nodes.reduce((s, n) => s + n.y, 0) / nodes.length;
     for (const n of nodes) {
       if (n.isCenter) continue;
+      n.vx -= (n.x - cx) * centerGravity;
+      n.vy -= (n.y - cy) * centerGravity;
       n.vx *= damping;
       n.vy *= damping;
       n.x += n.vx;
@@ -114,34 +137,78 @@ interface Props {
   width?: number;
   height?: number;
   onNodeClick?: (node: GraphNode) => void;
+  onNodeSelect?: (node: GraphNode | null) => void;
+  selectedNodeId?: string | null;
   className?: string;
 }
 
-export function GraphExplorer({ data, width = 800, height = 560, onNodeClick, className }: Props) {
+export function GraphExplorer({
+  data,
+  width = 800,
+  height = 640,
+  onNodeClick,
+  onNodeSelect,
+  selectedNodeId,
+  className,
+}: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [nodes, setNodes] = useState<SimNode[]>([]);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [hoveredEdge, setHoveredEdge] = useState<string | null>(null);
   const [dragNode, setDragNode] = useState<string | null>(null);
   const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 });
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [panStart, setPanStart] = useState<{ x: number; y: number; tx: number; ty: number } | null>(null);
+  const [animTick, setAnimTick] = useState(0);
 
-  /* Run layout when data changes */
+  // Animated particle tick
+  useEffect(() => {
+    const interval = setInterval(() => setAnimTick((t) => (t + 1) % 1000), 50);
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     if (!data.nodes.length) { setNodes([]); return; }
-    const sim = initialLayout(data.nodes, data.center, width, height);
+    const w = isFullscreen ? (typeof window !== "undefined" ? window.innerWidth : 1200) : width;
+    const h = isFullscreen ? (typeof window !== "undefined" ? window.innerHeight - 60 : 800) : height;
+    const sim = initialLayout(data.nodes, data.center, w, h);
     simulate(sim, data.edges);
     setNodes(sim);
     setTransform({ x: 0, y: 0, k: 1 });
-  }, [data, width, height]);
+  }, [data, width, height, isFullscreen]);
 
-  /* Drag handlers */
-  const handleMouseDown = useCallback((id: string) => (e: React.MouseEvent) => {
-    e.preventDefault();
-    setDragNode(id);
-  }, []);
+  // ESC to exit fullscreen
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setIsFullscreen(false); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [isFullscreen]);
+
+  const handleMouseDown = useCallback(
+    (id: string) => (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragNode(id);
+    },
+    [],
+  );
+
+  const handleBgMouseDown = useCallback((e: React.MouseEvent) => {
+    if (dragNode) return;
+    setPanStart({ x: e.clientX, y: e.clientY, tx: transform.x, ty: transform.y });
+  }, [dragNode, transform]);
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
+      if (panStart && !dragNode) {
+        setTransform((t) => ({
+          ...t,
+          x: panStart.tx + (e.clientX - panStart.x),
+          y: panStart.ty + (e.clientY - panStart.y),
+        }));
+        return;
+      }
       if (!dragNode || !svgRef.current) return;
       const svg = svgRef.current;
       const pt = svg.createSVGPoint();
@@ -150,86 +217,257 @@ export function GraphExplorer({ data, width = 800, height = 560, onNodeClick, cl
       const svgP = pt.matrixTransform(svg.getScreenCTM()?.inverse());
       setNodes((prev) =>
         prev.map((n) =>
-          n.id === dragNode ? { ...n, x: (svgP.x - transform.x) / transform.k, y: (svgP.y - transform.y) / transform.k } : n
-        )
+          n.id === dragNode
+            ? { ...n, x: (svgP.x - transform.x) / transform.k, y: (svgP.y - transform.y) / transform.k }
+            : n,
+        ),
       );
     },
-    [dragNode, transform]
+    [dragNode, transform, panStart],
   );
 
-  const handleMouseUp = useCallback(() => setDragNode(null), []);
-
-  /* Zoom via wheel */
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.1 : 0.9;
-    setTransform((t) => ({ ...t, k: Math.min(3, Math.max(0.3, t.k * factor)) }));
+  const handleMouseUp = useCallback(() => {
+    setDragNode(null);
+    setPanStart(null);
   }, []);
 
-  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.12 : 0.89;
+    setTransform((t) => ({
+      ...t,
+      k: Math.min(4, Math.max(0.15, t.k * factor)),
+    }));
+  }, []);
+
+  const zoomIn = () => setTransform((t) => ({ ...t, k: Math.min(4, t.k * 1.3) }));
+  const zoomOut = () => setTransform((t) => ({ ...t, k: Math.max(0.15, t.k / 1.3) }));
+  const resetView = () => setTransform({ x: 0, y: 0, k: 1 });
+  const toggleFullscreen = useCallback(() => setIsFullscreen((f) => !f), []);
+
+  const nodeMap = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+
+  const connectedTo = useMemo(() => {
+    const active = hoveredNode || selectedNodeId;
+    if (!active) return new Set<string>();
+    const s = new Set<string>();
+    data.edges.forEach((e) => {
+      if (e.source === active) s.add(e.target);
+      if (e.target === active) s.add(e.source);
+    });
+    return s;
+  }, [hoveredNode, selectedNodeId, data.edges]);
+
+  const activeNode = hoveredNode || selectedNodeId;
+
+  const svgW = isFullscreen ? "100vw" : width;
+  const svgH = isFullscreen ? "calc(100vh - 60px)" : height;
 
   return (
-    <div className={cn("relative select-none", className)}>
-      {/* Legend */}
-      <div className="absolute top-2 left-2 z-10 bg-background/90 border border-border/50 rounded-lg p-2 text-xs space-y-1">
-        {Object.entries(NODE_COLORS).map(([type, color]) => (
+    <div
+      className={cn(
+        "relative select-none overflow-hidden",
+        isFullscreen && "fixed inset-0 z-50 bg-[#0a0e1a]",
+        className,
+      )}
+    >
+      {/* SVG defs for glow effects & gradients */}
+      <svg width={0} height={0} className="absolute">
+        <defs>
+          <filter id="glow-blue" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="4" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+          <filter id="glow-strong" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="8" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+          <filter id="node-shadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000" floodOpacity="0.5" />
+          </filter>
+          {Object.entries(NODE_COLORS).map(([type, c]) => (
+            <React.Fragment key={type}>
+              <radialGradient id={`grad-${type}`} cx="35%" cy="35%">
+                <stop offset="0%" stopColor={c.glow} stopOpacity="1" />
+                <stop offset="70%" stopColor={c.fill} stopOpacity="0.95" />
+                <stop offset="100%" stopColor={c.fill} stopOpacity="0.8" />
+              </radialGradient>
+              <radialGradient id={`grad-${type}-active`} cx="35%" cy="35%">
+                <stop offset="0%" stopColor="#ffffff" stopOpacity="0.4" />
+                <stop offset="40%" stopColor={c.glow} stopOpacity="1" />
+                <stop offset="100%" stopColor={c.fill} stopOpacity="0.9" />
+              </radialGradient>
+            </React.Fragment>
+          ))}
+          <pattern id="cyber-grid" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+            <line x1="40" y1="0" x2="40" y2="40" stroke="#1e293b" strokeWidth="0.5" strokeOpacity="0.3" />
+            <line x1="0" y1="40" x2="40" y2="40" stroke="#1e293b" strokeWidth="0.5" strokeOpacity="0.3" />
+          </pattern>
+          <radialGradient id="center-ambient">
+            <stop offset="0%" stopColor="#3b82f6" />
+            <stop offset="100%" stopColor="transparent" />
+          </radialGradient>
+        </defs>
+      </svg>
+
+      {/* Top-left: Legend */}
+      <div className="absolute top-3 left-3 z-20 bg-[#0f172a]/90 backdrop-blur-sm border border-[#1e293b] rounded-xl px-3 py-2 text-[11px] flex items-center gap-3">
+        {Object.entries(NODE_COLORS).map(([type, c]) => (
           <div key={type} className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full inline-block" style={{ background: color }} />
-            <span className="capitalize text-muted-foreground">{type}</span>
+            <span
+              className="w-2.5 h-2.5 rounded-full inline-block ring-1 ring-white/10"
+              style={{ background: c.fill, boxShadow: `0 0 6px ${c.glow}` }}
+            />
+            <span className="capitalize text-slate-400">{type}</span>
           </div>
         ))}
       </div>
 
-      {/* Stats */}
-      <div className="absolute top-2 right-2 z-10 bg-background/90 border border-border/50 rounded-lg px-3 py-1.5 text-xs text-muted-foreground">
-        {data.total_nodes} nodes · {data.total_edges} edges
+      {/* Top-right: Controls */}
+      <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5">
+        <div className="bg-[#0f172a]/90 backdrop-blur-sm border border-[#1e293b] rounded-xl px-2.5 py-1 text-[11px] text-slate-400 mr-1">
+          {data.total_nodes} nodes · {data.total_edges} edges
+        </div>
+        {[
+          { label: "+", action: zoomIn, title: "Zoom in" },
+          { label: "−", action: zoomOut, title: "Zoom out" },
+        ].map((btn) => (
+          <button
+            key={btn.title}
+            onClick={btn.action}
+            className="w-8 h-8 rounded-lg bg-[#0f172a]/90 border border-[#1e293b] text-slate-300 hover:text-white hover:border-blue-500/50 flex items-center justify-center transition-all text-sm"
+            title={btn.title}
+          >
+            {btn.label}
+          </button>
+        ))}
+        <button
+          onClick={resetView}
+          className="w-8 h-8 rounded-lg bg-[#0f172a]/90 border border-[#1e293b] text-slate-300 hover:text-white hover:border-blue-500/50 flex items-center justify-center transition-all"
+          title="Reset view"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            <path d="M3 3v5h5" />
+          </svg>
+        </button>
+        <button
+          onClick={toggleFullscreen}
+          className="w-8 h-8 rounded-lg bg-[#0f172a]/90 border border-[#1e293b] text-slate-300 hover:text-white hover:border-blue-500/50 flex items-center justify-center transition-all"
+          title={isFullscreen ? "Exit fullscreen (Esc)" : "Fullscreen"}
+        >
+          {isFullscreen ? (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+            </svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+            </svg>
+          )}
+        </button>
       </div>
 
+      {/* Zoom indicator */}
+      {transform.k !== 1 && (
+        <div className="absolute bottom-3 right-3 z-20 bg-[#0f172a]/80 backdrop-blur-sm border border-[#1e293b] rounded-lg px-2 py-1 text-[10px] text-slate-500">
+          {Math.round(transform.k * 100)}%
+        </div>
+      )}
+
+      {/* Main SVG */}
       <svg
         ref={svgRef}
-        width={width}
-        height={height}
-        className="bg-background rounded-lg border border-border/30"
+        width={svgW}
+        height={svgH}
+        className="rounded-xl"
+        style={{ background: "linear-gradient(135deg, #0a0e1a 0%, #0f172a 50%, #0a101f 100%)" }}
+        onMouseDown={handleBgMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
       >
+        <rect width="100%" height="100%" fill="url(#cyber-grid)" opacity={0.6} />
+        <circle cx="50%" cy="50%" r="300" fill="url(#center-ambient)" opacity={0.12} />
+
         <g transform={`translate(${transform.x},${transform.y}) scale(${transform.k})`}>
           {/* Edges */}
           {data.edges.map((edge) => {
             const s = nodeMap.get(edge.source);
             const t = nodeMap.get(edge.target);
             if (!s || !t) return null;
-            const isHovered = hoveredEdge === edge.id ||
-              hoveredNode === edge.source ||
-              hoveredNode === edge.target;
-            const color = EDGE_COLORS[edge.type] || "#6b7280";
+            const isActive =
+              hoveredEdge === edge.id ||
+              activeNode === edge.source ||
+              activeNode === edge.target;
+            const isSelected =
+              selectedNodeId === edge.source || selectedNodeId === edge.target;
+            const color = EDGE_COLORS[edge.type] || "#475569";
+            const dimmed = activeNode && !isActive;
+
+            // Animated particle
+            const particleT = ((animTick * 3 + parseInt(edge.id.slice(-4), 16)) % 200) / 200;
+            const px = s.x + (t.x - s.x) * particleT;
+            const py = s.y + (t.y - s.y) * particleT;
+
             return (
               <g key={edge.id}>
+                {(isActive || isSelected) && (
+                  <line
+                    x1={s.x} y1={s.y} x2={t.x} y2={t.y}
+                    stroke={color}
+                    strokeWidth={4}
+                    strokeOpacity={0.25}
+                    filter="url(#glow-blue)"
+                    className="pointer-events-none"
+                  />
+                )}
                 <line
-                  x1={s.x}
-                  y1={s.y}
-                  x2={t.x}
-                  y2={t.y}
+                  x1={s.x} y1={s.y} x2={t.x} y2={t.y}
                   stroke={color}
-                  strokeWidth={isHovered ? 2.5 : 1.5}
-                  strokeOpacity={hoveredNode && !isHovered ? 0.15 : isHovered ? 0.9 : 0.4}
+                  strokeWidth={isActive ? 2 : 1}
+                  strokeOpacity={dimmed ? 0.05 : isActive ? 0.8 : 0.2}
+                  strokeDasharray={edge.type.includes("co") ? "4 4" : "none"}
                   onMouseEnter={() => setHoveredEdge(edge.id)}
                   onMouseLeave={() => setHoveredEdge(null)}
                   className="cursor-pointer"
                 />
-                {isHovered && (
-                  <text
-                    x={(s.x + t.x) / 2}
-                    y={(s.y + t.y) / 2 - 6}
-                    fontSize={10}
+                {isActive && (
+                  <circle
+                    cx={px} cy={py} r={2.5}
                     fill={color}
-                    textAnchor="middle"
+                    opacity={0.9}
+                    filter="url(#glow-blue)"
                     className="pointer-events-none"
-                  >
-                    {edge.type.replace(/_/g, " ")} ({edge.confidence}%)
-                  </text>
+                  />
+                )}
+                {isActive && hoveredEdge === edge.id && (
+                  <g>
+                    <rect
+                      x={(s.x + t.x) / 2 - 55}
+                      y={(s.y + t.y) / 2 - 19}
+                      width={110}
+                      height={22}
+                      rx={6}
+                      fill="#0f172a"
+                      fillOpacity={0.92}
+                      stroke={color}
+                      strokeWidth={0.5}
+                      className="pointer-events-none"
+                    />
+                    <text
+                      x={(s.x + t.x) / 2}
+                      y={(s.y + t.y) / 2 - 5}
+                      fontSize={9}
+                      fill={color}
+                      textAnchor="middle"
+                      className="pointer-events-none"
+                      fontFamily="monospace"
+                    >
+                      {edge.type.replace(/[_-]/g, " ")} · {edge.confidence}%
+                    </text>
+                  </g>
                 )}
               </g>
             );
@@ -237,16 +475,15 @@ export function GraphExplorer({ data, width = 800, height = 560, onNodeClick, cl
 
           {/* Nodes */}
           {nodes.map((node) => {
-            const color = NODE_COLORS[node.type] || "#6b7280";
+            const colorSet = NODE_COLORS[node.type] || { fill: "#475569", glow: "#64748b", icon: "?" };
             const ring = node.severity ? SEVERITY_RING[node.severity] : undefined;
-            const r = node.isCenter ? 20 : node.type === "intel" ? 16 : 12;
+            const r = node.isCenter ? 22 : node.type === "intel" ? 17 : 13;
             const isHovered = hoveredNode === node.id;
-            const dimmed = hoveredNode !== null && !isHovered &&
-              !data.edges.some(
-                (e) =>
-                  (e.source === hoveredNode && e.target === node.id) ||
-                  (e.target === hoveredNode && e.source === node.id)
-              );
+            const isSelected = selectedNodeId === node.id;
+            const isHighlighted = isHovered || isSelected;
+            const isConnected = connectedTo.has(node.id);
+            const dimmed = activeNode !== null && !isHighlighted && !isConnected && node.id !== activeNode;
+
             return (
               <g
                 key={node.id}
@@ -254,57 +491,105 @@ export function GraphExplorer({ data, width = 800, height = 560, onNodeClick, cl
                 onMouseEnter={() => setHoveredNode(node.id)}
                 onMouseLeave={() => setHoveredNode(null)}
                 onMouseDown={handleMouseDown(node.id)}
-                onClick={() => onNodeClick?.(node)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onNodeSelect?.(node);
+                }}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  onNodeClick?.(node);
+                }}
                 className="cursor-pointer"
-                opacity={dimmed ? 0.2 : 1}
+                opacity={dimmed ? 0.12 : 1}
+                style={{ transition: "opacity 0.3s ease" }}
               >
+                {/* Pulse ring for center/selected */}
+                {(node.isCenter || isSelected) && (
+                  <circle
+                    r={r + 12}
+                    fill="none"
+                    stroke={colorSet.glow}
+                    strokeWidth={1}
+                    strokeOpacity={0.3}
+                    className="animate-pulse"
+                  />
+                )}
+                {/* Ambient glow */}
+                <circle
+                  r={r + 6}
+                  fill={colorSet.glow}
+                  fillOpacity={isHighlighted ? 0.2 : 0.08}
+                  className="pointer-events-none"
+                />
                 {/* Severity ring */}
                 {ring && (
-                  <circle r={r + 3} fill="none" stroke={ring} strokeWidth={2} strokeOpacity={0.6} />
+                  <circle
+                    r={r + 3}
+                    fill="none"
+                    stroke={ring}
+                    strokeWidth={2}
+                    strokeOpacity={0.7}
+                    strokeDasharray={node.severity === "critical" ? "none" : "3 2"}
+                  />
                 )}
-                {/* Main circle */}
+                {/* 3D gradient node */}
                 <circle
                   r={r}
-                  fill={color}
-                  fillOpacity={isHovered ? 1 : 0.85}
-                  stroke={isHovered ? "#fff" : "none"}
-                  strokeWidth={2}
+                  fill={`url(#grad-${node.type}${isHighlighted ? "-active" : ""})`}
+                  stroke={isHighlighted ? "#ffffff" : colorSet.glow}
+                  strokeWidth={isHighlighted ? 2 : 0.5}
+                  strokeOpacity={isHighlighted ? 0.9 : 0.3}
+                  filter="url(#node-shadow)"
                 />
-                {/* Type icon letter */}
+                {/* Specular highlight */}
+                <ellipse
+                  cx={-r * 0.2}
+                  cy={-r * 0.25}
+                  rx={r * 0.45}
+                  ry={r * 0.3}
+                  fill="white"
+                  fillOpacity={0.12}
+                  className="pointer-events-none"
+                />
+                {/* Type icon */}
                 <text
                   y={1}
-                  fontSize={r * 0.7}
+                  fontSize={r * 0.65}
                   fill="#fff"
                   textAnchor="middle"
                   dominantBaseline="central"
-                  className="pointer-events-none font-bold"
+                  className="pointer-events-none"
+                  fontWeight="700"
+                  style={{ textShadow: `0 0 8px ${colorSet.glow}` }}
                 >
-                  {node.type[0].toUpperCase()}
+                  {colorSet.icon}
                 </text>
                 {/* Label */}
                 <text
-                  y={r + 14}
-                  fontSize={10}
-                  fill="currentColor"
+                  y={r + 15}
+                  fontSize={9.5}
+                  fill="#94a3b8"
                   textAnchor="middle"
-                  className="pointer-events-none fill-foreground"
+                  className="pointer-events-none"
+                  fontFamily="system-ui, sans-serif"
                 >
-                  {node.label.length > 28 ? node.label.slice(0, 26) + "…" : node.label}
+                  {node.label.length > 32 ? node.label.slice(0, 30) + "…" : node.label}
                 </text>
                 {/* Risk score badge */}
                 {node.risk_score != null && node.risk_score > 0 && (
-                  <>
+                  <g transform={`translate(${r - 1},${-r - 2})`}>
                     <rect
-                      x={r - 2}
-                      y={-r - 4}
-                      width={22}
+                      width={24}
                       height={14}
-                      rx={4}
-                      fill={node.risk_score >= 80 ? "#dc2626" : node.risk_score >= 50 ? "#f97316" : "#6b7280"}
+                      rx={7}
+                      fill={
+                        node.risk_score >= 80 ? "#dc2626" : node.risk_score >= 50 ? "#f97316" : "#475569"
+                      }
+                      stroke="#0f172a"
+                      strokeWidth={1}
                     />
                     <text
-                      x={r + 9}
-                      y={-r + 5}
+                      x={12} y={8}
                       fontSize={8}
                       fill="#fff"
                       textAnchor="middle"
@@ -313,13 +598,18 @@ export function GraphExplorer({ data, width = 800, height = 560, onNodeClick, cl
                     >
                       {node.risk_score}
                     </text>
-                  </>
+                  </g>
                 )}
               </g>
             );
           })}
         </g>
       </svg>
+
+      {/* Hints */}
+      <div className="absolute bottom-3 left-3 z-20 text-[10px] text-slate-600 flex items-center gap-3">
+        <span>Click: select · Double-click: open · Drag: move · Scroll: zoom · Drag bg: pan</span>
+      </div>
     </div>
   );
 }
