@@ -1,0 +1,15 @@
+{
+	email admin@intelwatch.in
+}
+
+intelwatch.in, www.intelwatch.in {
+	# www → apex redirect
+	@www host www.intelwatch.in
+	redir @www https://intelwatch.in{uri} permanent
+
+	# API routes → FastAPI
+	reverse_proxy /api/* api:8000
+
+	# Everything else → Next.js UI
+	reverse_proxy ui:3000
+}

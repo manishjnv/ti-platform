@@ -1,9 +1,7 @@
-"""Authentication middleware — JWT session-based auth with Cloudflare Access fallback.
+"""Authentication middleware — JWT session-based auth.
 
-Supports:
-1. JWT session cookie (iw_session) — primary auth method
-2. Cloudflare Access headers — auto-creates session on first request
-3. Development bypass — auto-authenticates as dev user
+All requests to protected routes must include a valid iw_session cookie.
+Sessions are Redis-backed for server-side validation and revocation.
 """
 
 from __future__ import annotations
@@ -28,24 +26,17 @@ settings = get_settings()
 
 COOKIE_NAME = "iw_session"
 
-# Cloudflare Access headers
-CF_ACCESS_EMAIL = "cf-access-authenticated-user-email"
-CF_ACCESS_JWT = "cf-access-jwt-assertion"
-
 
 async def get_current_user(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> User:
-    """Extract user from JWT session cookie, CF Access headers, or dev bypass.
+    """Extract user from JWT session cookie.
 
-    Priority:
-    1. JWT session cookie (iw_session)
-    2. Cloudflare Access headers (cf-access-authenticated-user-email)
-    3. Development bypass (if enabled)
+    Validates the token signature, expiry, and Redis session state.
     """
 
-    # ── 1. Check JWT session cookie ──
+    # ── Check JWT session cookie ──
     token = request.cookies.get(COOKIE_NAME)
     if token:
         payload = decode_access_token(token)
@@ -56,23 +47,12 @@ async def get_current_user(
                 user = await get_or_create_user(db, payload["email"], payload.get("name"))
                 if user.is_active:
                     return user
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Account is disabled",
+                )
 
-    # ── 2. Cloudflare Access headers (production SSO) ──
-    cf_email = request.headers.get(CF_ACCESS_EMAIL)
-    if cf_email:
-        user = await get_or_create_user(db, cf_email)
-        if user.is_active:
-            return user
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account is disabled",
-        )
-
-    # ── 3. Development bypass ──
-    if settings.environment == "development" or settings.dev_bypass_auth:
-        return await get_or_create_user(db, "dev@intelwatch.local", "Developer", "admin")
-
-    # ── No auth found ──
+    # ── No valid auth found ──
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Authentication required. Please login at /login.",

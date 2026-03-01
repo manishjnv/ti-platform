@@ -76,7 +76,7 @@ A production-grade, self-hosted threat intelligence aggregation and analysis pla
 git clone https://github.com/manishjnv/ti-platform.git
 cd ti-platform
 cp .env.example .env
-# Edit .env — set DEV_BYPASS_AUTH=true for local development
+# Edit .env — set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SECRET_KEY
 ```
 
 ### 2. Start All Services
@@ -98,7 +98,7 @@ curl -s http://localhost:8000/api/v1/health | jq .
 open http://localhost:3000   # UI — redirects to login
 ```
 
-> **Full workflow:** Local dev, production deployment, Cloudflare Tunnel, CI/CD → [docs/WORKFLOW.md](docs/WORKFLOW.md)
+> **Full workflow:** Local dev, production deployment, Caddy reverse proxy, CI/CD → [docs/WORKFLOW.md](docs/WORKFLOW.md)
 
 ---
 
@@ -119,11 +119,15 @@ open http://localhost:3000   # UI — redirects to login
 | `POSTGRES_PASSWORD` | **Yes** | Database password — **change in production** |
 | `REDIS_URL` | Yes | Redis connection (default: `redis://redis:6379/0`) |
 | `OPENSEARCH_URL` | Yes | OpenSearch endpoint |
-| `DEV_BYPASS_AUTH` | No | Skip authentication in dev (default: `false`) |
+| `GOOGLE_CLIENT_ID` | **Yes** | Google OAuth 2.0 Client ID |
+| `GOOGLE_CLIENT_SECRET` | **Yes** | Google OAuth 2.0 Client Secret |
 | `JWT_EXPIRE_MINUTES` | No | Session duration in minutes (default: `480`) |
-| `CF_ACCESS_TEAM_NAME` | Prod | Cloudflare Zero Trust team name |
-| `CF_ACCESS_AUD` | Prod | Cloudflare Access audience tag |
-| `CF_TUNNEL_TOKEN` | Prod | Cloudflare Tunnel token |
+| `SMTP_HOST` | OTP | SMTP server host (e.g., `smtp.gmail.com`) |
+| `SMTP_PORT` | OTP | SMTP port (default: `587`) |
+| `SMTP_USER` | OTP | SMTP username |
+| `SMTP_PASSWORD` | OTP | SMTP password |
+| `SMTP_FROM_EMAIL` | OTP | Sender email (default: `noreply@intelwatch.in`) |
+| `EMAIL_OTP_ENABLED` | No | Enable email OTP login (default: `false`) |
 | `NVD_API_KEY` | No | NVD API key (higher rate limits) |
 | `ABUSEIPDB_API_KEY` | No | AbuseIPDB API key (required for that feed) |
 | `OTX_API_KEY` | No | AlienVault OTX API key |
@@ -143,8 +147,11 @@ Base URL: `http://localhost:8000/api/v1`
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | `GET` | `/health` | No | Service health check |
-| `GET` | `/auth/config` | No | Auth method configuration (SSO vs local) |
-| `POST` | `/auth/login` | No | Login — creates JWT session cookie |
+| `GET` | `/auth/config` | No | Auth method configuration |
+| `GET` | `/auth/google/url` | No | Get Google OAuth redirect URL |
+| `GET` | `/auth/google/callback` | No | Google OAuth callback (redirect from Google) |
+| `POST` | `/auth/otp/send` | No | Send email OTP code |
+| `POST` | `/auth/otp/verify` | No | Verify OTP and create session |
 | `POST` | `/auth/logout` | No | Logout — revokes session |
 | `GET` | `/auth/session` | Cookie | Check session validity, return user info |
 | `GET` | `/me` | Session | Current user info |
@@ -166,20 +173,21 @@ All list endpoints support `page`, `page_size`, `severity`, `feed_type`, `date_f
 
 | Mode | When | How |
 |------|------|-----|
-| **Dev Bypass** | `DEV_BYPASS_AUTH=true` | Click "Sign in (Dev Mode)" → auto-creates `dev@intelwatch.local` (admin) |
-| **Cloudflare SSO** | `CF_ACCESS_TEAM_NAME` + `CF_ACCESS_AUD` set | Cloudflare Zero Trust → Google SSO → auto-provisions user |
+| **Google OAuth** | `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` set | Click "Sign in with Google" → Google consent → redirect callback → session created |
+| **Email OTP** | `EMAIL_OTP_ENABLED=true` + SMTP configured | Enter email → receive 6-digit code → verify → session created |
 
 ```
-Browser → /login → GET /api/v1/auth/config → determine auth method
-  ├── Dev Mode:  POST /auth/login → set iw_session cookie → /dashboard
-  └── SSO Mode:  Cloudflare redirect → SSO → POST /auth/login (CF headers) → /dashboard
+Browser → /login → GET /api/v1/auth/config → determine available auth methods
+  ├── Google:  GET /auth/google/url → redirect to Google → callback → set cookie → /dashboard
+  └── OTP:     POST /auth/otp/send → enter code → POST /auth/otp/verify → set cookie → /dashboard
 
 Protected routes: AuthGuard → GET /auth/session → valid? → render : redirect /login
 Logout: POST /auth/logout → revoke Redis session → clear cookie → /login
 ```
 
-- **Cookie:** `iw_session` — HttpOnly, SameSite=Lax, 8-hour TTL
+- **Cookie:** `iw_session` — HttpOnly, Secure, SameSite=Lax, 8-hour TTL
 - **Session store:** Redis (server-side revocable)
+- **Reverse proxy:** Caddy (automatic HTTPS via Let's Encrypt)
 - **Protected routes:** All `(app)/*` pages wrapped in `AuthGuard`
 
 ---
@@ -195,7 +203,7 @@ All detailed docs live in `docs/`. Each is a **living document** updated as the 
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture, service topology, data model, security layers |
 | [docs/TECHNOLOGY.md](docs/TECHNOLOGY.md) | Full technology stack, library rationale, version matrix |
 | [docs/INTEGRATION.md](docs/INTEGRATION.md) | Feed & integration requirements — all planned data sources |
-| [docs/WORKFLOW.md](docs/WORKFLOW.md) | Operations guide — local dev, deployment, CI/CD, Cloudflare Tunnel |
+| [docs/WORKFLOW.md](docs/WORKFLOW.md) | Operations guide — local dev, deployment, CI/CD, Caddy |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Multi-phase feature roadmap & progress tracker |
 
 > **Rule:** When adding a new feature or integration, update the relevant doc in `docs/`.

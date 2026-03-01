@@ -24,31 +24,30 @@ async function fetcher<T>(path: string, options?: RequestInit): Promise<T> {
 // ─── Auth ───────────────────────────────────────────────
 export async function getAuthConfig() {
   return fetcher<{
-    auth_method: "google" | "cloudflare_sso" | "local";
-    sso_login_url: string | null;
-    cf_logout_url: string | null;
-    cf_team_domain: string | null;
-    google_client_id: string | null;
+    google_configured: boolean;
+    email_otp_enabled: boolean;
     app_name: string;
-    environment: string;
-    dev_bypass: boolean;
   }>("/auth/config");
 }
 
-export async function login() {
-  return fetcher<{
-    status: string;
-    user: import("@/types").User;
-  }>("/auth/login", { method: "POST" });
+export async function getGoogleAuthUrl() {
+  return fetcher<{ url: string; state: string }>("/auth/google/url");
 }
 
-export async function googleLogin(credential: string) {
+export async function sendOTP(email: string) {
+  return fetcher<{ status: string; message: string }>("/auth/otp/send", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function verifyOTP(email: string, code: string) {
   return fetcher<{
     status: string;
     user: import("@/types").User;
-  }>("/auth/google", {
+  }>("/auth/otp/verify", {
     method: "POST",
-    body: JSON.stringify({ credential }),
+    body: JSON.stringify({ email, code }),
   });
 }
 

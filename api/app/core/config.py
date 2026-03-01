@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     secret_key: str = "change-me"
     api_prefix: str = "/api/v1"
-    cors_origins: list[str] = ["http://localhost:3000", "https://intelwatch.trendsmap.in"]
+    cors_origins: list[str] = ["http://localhost:3000", "https://intelwatch.in"]
 
     # PostgreSQL
     postgres_host: str = "localhost"
@@ -68,22 +68,27 @@ class Settings(BaseSettings):
     ai_timeout: int = 30
     ai_enabled: bool = True
 
-    # Cloudflare Zero Trust
-    cf_access_team_name: str = ""
-    cf_access_aud: str = ""
-
     # Google OAuth
     google_client_id: str = ""
+    google_client_secret: str = ""
+
+    # Email OTP (SMTP)
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = "noreply@intelwatch.in"
+    smtp_from_name: str = "IntelWatch"
+    email_otp_enabled: bool = False
 
     # Domain configuration
-    domain: str = "localhost"
-    domain_ui: str = "http://localhost:3000"
-    domain_api: str = "http://localhost:8000"
+    domain: str = "intelwatch.in"
+    domain_ui: str = "https://intelwatch.in"
+    domain_api: str = "https://intelwatch.in"
 
     # Auth / Session
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 480  # 8 hours
-    dev_bypass_auth: bool = False
 
     # Cache TTLs (seconds)
     cache_ttl_search: int = 300

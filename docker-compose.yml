@@ -74,14 +74,19 @@ services:
     environment:
       <<: *common-env
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
-      CF_ACCESS_TEAM_NAME: ${CF_ACCESS_TEAM_NAME:-}
-      CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      DOMAIN: ${DOMAIN:-localhost}
-      DOMAIN_UI: ${DOMAIN_UI:-http://localhost:3000}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      DOMAIN: ${DOMAIN:-intelwatch.in}
+      DOMAIN_UI: ${DOMAIN_UI:-https://intelwatch.in}
       DOMAIN_API: ${DOMAIN_API:-http://localhost:8000}
-      DEV_BYPASS_AUTH: ${DEV_BYPASS_AUTH:-false}
       JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-480}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@intelwatch.in}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-IntelWatch}
+      EMAIL_OTP_ENABLED: ${EMAIL_OTP_ENABLED:-false}
       NVD_API_KEY: ${NVD_API_KEY:-}
       ABUSEIPDB_API_KEY: ${ABUSEIPDB_API_KEY:-}
       OTX_API_KEY: ${OTX_API_KEY:-}
@@ -90,8 +95,8 @@ services:
       AI_API_URL: ${AI_API_URL:-}
       AI_API_KEY: ${AI_API_KEY:-}
       AI_MODEL: ${AI_MODEL:-}
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -107,8 +112,8 @@ services:
     restart: unless-stopped
     environment:
       BACKEND_URL: http://api:8000
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     depends_on:
       - api
 
@@ -147,19 +152,27 @@ services:
       redis:
         condition: service_healthy
 
-  # ── Cloudflare Tunnel (optional — only if no external reverse proxy) ──
-  # Uncomment and set TUNNEL_TOKEN in .env to use
-  # cloudflared:
-  #   image: cloudflare/cloudflared:latest
-  #   restart: unless-stopped
-  #   command: tunnel run
-  #   environment:
-  #     TUNNEL_TOKEN: ${CF_TUNNEL_TOKEN}
-  #   depends_on:
-  #     - ui
-  #     - api
+  # ── Cloudflare Tunnel (deprecated — replaced by Caddy) ──
+  # cloudflared has been removed. Caddy handles TLS termination.
+
+  # ── Reverse Proxy (Caddy — auto HTTPS via Let's Encrypt) ──
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - ui
+      - api
 
 volumes:
   pg_data:
   redis_data:
   os_data:
+  caddy_data:
+  caddy_config:

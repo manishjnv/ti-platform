@@ -1,10 +1,9 @@
-"""Authentication routes — login, logout, session management.
+"""Authentication routes — Google OAuth, Email OTP, session management.
 
 Supports:
-1. Google OAuth (production) — validates Google ID token
-2. Cloudflare Zero Trust callback — validates CF Access headers
-3. Development login — auto-creates dev user session
-4. Session refresh and logout
+1. Google OAuth 2.0 — authorization code flow (redirect-based)
+2. Email OTP — 6-digit code sent via SMTP
+3. Session check, refresh, and logout
 """
 
 from __future__ import annotations
@@ -12,6 +11,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -24,11 +24,14 @@ from pydantic import BaseModel
 from app.services.auth import (
     create_session,
     decode_access_token,
+    exchange_google_code,
+    generate_otp,
+    get_google_auth_url,
     get_or_create_user,
     is_session_valid,
     revoke_session,
-    verify_cf_access_token,
-    verify_google_token,
+    send_otp_email,
+    verify_otp,
 )
 
 logger = get_logger(__name__)
@@ -46,7 +49,7 @@ def _set_session_cookie(response: Response, token: str) -> None:
         key=COOKIE_NAME,
         value=token,
         httponly=True,
-        secure=settings.environment == "production",
+        secure=True,
         samesite="lax",
         max_age=COOKIE_MAX_AGE,
         path="/",
@@ -58,80 +61,160 @@ def _clear_session_cookie(response: Response) -> None:
     response.delete_cookie(key=COOKIE_NAME, path="/")
 
 
-@router.post("/login")
-async def login(
+# ─── Google OAuth 2.0 (Authorization Code Flow) ─────────
+
+
+@router.get("/google/url")
+async def google_auth_url():
+    """Return the Google OAuth authorization URL for the frontend to redirect to."""
+    if not settings.google_client_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google OAuth is not configured",
+        )
+
+    import secrets
+    state = secrets.token_urlsafe(32)
+    url = get_google_auth_url(state=state)
+    return {"url": url, "state": state}
+
+
+@router.get("/google/callback")
+async def google_callback(
+    request: Request,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    code: str = "",
+    error: str = "",
+):
+    """Handle the Google OAuth callback.
+
+    Google redirects here with ?code=... after user consents.
+    We exchange the code for user info, create session, and redirect to dashboard.
+    """
+    if error:
+        logger.warning("google_oauth_denied", error=error)
+        return RedirectResponse(url="/login?error=oauth_denied")
+
+    if not code:
+        return RedirectResponse(url="/login?error=no_code")
+
+    google_info = await exchange_google_code(code)
+    if not google_info:
+        return RedirectResponse(url="/login?error=oauth_failed")
+
+    email = google_info["email"]
+    name = google_info.get("name", email.split("@")[0])
+
+    user = await get_or_create_user(db, email, name)
+    token = await create_session(user)
+
+    # Build redirect response and set cookie
+    redirect = RedirectResponse(url="/dashboard", status_code=302)
+    redirect.set_cookie(
+        key=COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=COOKIE_MAX_AGE,
+        path="/",
+    )
+
+    await log_audit(
+        db,
+        user_id=str(user.id),
+        action="login",
+        details={"method": "google_oauth", "email": email},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+
+    logger.info("google_login_success", email=email)
+    return redirect
+
+
+# ─── Email OTP ──────────────────────────────────────────
+
+
+class OTPSendRequest(BaseModel):
+    email: str
+
+
+class OTPVerifyRequest(BaseModel):
+    email: str
+    code: str
+
+
+@router.post("/otp/send")
+async def otp_send(body: OTPSendRequest):
+    """Send a one-time login code to the given email address."""
+    if not settings.email_otp_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email OTP login is not enabled",
+        )
+
+    email = body.email.strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid email address",
+        )
+
+    code = await generate_otp(email)
+    if code is None:
+        # Rate limited — but we still return success to avoid email enumeration
+        return {"status": "sent", "message": "If the email is valid, a code was sent."}
+
+    sent = send_otp_email(email, code)
+    if not sent:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to send verification email. Please try again.",
+        )
+
+    return {"status": "sent", "message": "Verification code sent to your email."}
+
+
+@router.post("/otp/verify")
+async def otp_verify(
+    body: OTPVerifyRequest,
     request: Request,
     response: Response,
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """Login endpoint.
+    """Verify an email OTP code and create a session."""
+    email = body.email.strip().lower()
+    code = body.code.strip()
 
-    In production: validates Cloudflare Access JWT from headers.
-    In development: creates a dev user session automatically.
-    """
-    # ── Development bypass ──
-    if settings.environment == "development" or settings.dev_bypass_auth:
-        user = await get_or_create_user(db, "dev@intelwatch.local", "Developer", "admin")
-        token = await create_session(user)
-        _set_session_cookie(response, token)
-
-        await log_audit(
-            db,
-            user_id=str(user.id),
-            action="login",
-            details={"method": "dev_bypass"},
-            ip_address=request.client.host if request.client else None,
-            user_agent=request.headers.get("user-agent"),
+    if not await verify_otp(email, code):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired code",
         )
 
-        return {
-            "status": "authenticated",
-            "user": UserResponse.model_validate(user).model_dump(),
-        }
+    user = await get_or_create_user(db, email)
+    token = await create_session(user)
+    _set_session_cookie(response, token)
 
-    # ── Production: Cloudflare Zero Trust SSO ──
-    # Check CF-injected headers first (set by CF Access on proxied requests)
-    cf_jwt = request.headers.get("cf-access-jwt-assertion")
-    cf_email = request.headers.get("cf-access-authenticated-user-email")
-
-    # Fallback: check CF_Authorization cookie directly
-    # (in case headers weren't forwarded through the Next.js proxy)
-    if not cf_jwt:
-        cf_jwt = request.cookies.get("CF_Authorization")
-
-    if cf_jwt:
-        cf_payload = await verify_cf_access_token(cf_jwt)
-        if cf_payload:
-            # Extract email from header or JWT payload
-            email = cf_email or cf_payload.get("email", "")
-            if not email:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Could not determine user email from SSO token.",
-                )
-
-            user = await get_or_create_user(db, email)
-            token = await create_session(user)
-            _set_session_cookie(response, token)
-
-            await log_audit(
-                db,
-                user_id=str(user.id),
-                action="login",
-                details={"method": "cloudflare_sso", "cf_email": email},
-                ip_address=request.client.host if request.client else None,
-                user_agent=request.headers.get("user-agent"),
-            )
-
-            return {
-                "status": "authenticated",
-                "user": UserResponse.model_validate(user).model_dump(),
-            }
-
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Authentication required. Sign in with Google to continue.",
+    await log_audit(
+        db,
+        user_id=str(user.id),
+        action="login",
+        details={"method": "email_otp", "email": email},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
     )
+
+    logger.info("otp_login_success", email=email)
+    return {
+        "status": "authenticated",
+        "user": UserResponse.model_validate(user).model_dump(),
+    }
+
+
+# ─── Session Management ────────────────────────────────
 
 
 @router.post("/logout")
@@ -155,12 +238,6 @@ async def logout(
             )
 
     _clear_session_cookie(response)
-
-    # Clear Cloudflare Access cookie so next login forces fresh Google SSO.
-    # This works because our API shares the same domain as CF's edge.
-    response.delete_cookie(key="CF_Authorization", path="/")
-    response.delete_cookie(key="CF_Authorization", path="/", domain=".trendsmap.in")
-
     return {"status": "logged_out"}
 
 
@@ -206,91 +283,15 @@ async def check_session(
     }
 
 
-class GoogleLoginRequest(BaseModel):
-    credential: str
-
-
-@router.post("/google")
-async def google_login(
-    body: GoogleLoginRequest,
-    request: Request,
-    response: Response,
-    db: Annotated[AsyncSession, Depends(get_db)],
-):
-    """Login via Google OAuth — verify Google ID token and create session."""
-    if not settings.google_client_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Google OAuth is not configured",
-        )
-
-    google_info = verify_google_token(body.credential, settings.google_client_id)
-    if not google_info:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Google token",
-        )
-
-    email = google_info["email"]
-    name = google_info.get("name", email.split("@")[0])
-
-    user = await get_or_create_user(db, email, name)
-    token = await create_session(user)
-    _set_session_cookie(response, token)
-
-    await log_audit(
-        db,
-        user_id=str(user.id),
-        action="login",
-        details={"method": "google_oauth", "email": email},
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-    )
-
-    return {
-        "status": "authenticated",
-        "user": UserResponse.model_validate(user).model_dump(),
-    }
-
-
 @router.get("/config")
 async def auth_config():
     """Return auth configuration for the frontend.
 
-    Tells the UI which authentication method is active
-    so it can render the appropriate login flow.
+    Tells the UI which authentication methods are available
+    so it can render the appropriate login options.
     """
-    is_cf_configured = bool(settings.cf_access_team_name and settings.cf_access_aud)
-    is_google_configured = bool(settings.google_client_id)
-
-    # Prioritize: Cloudflare SSO (with Google IdP) > direct Google > local
-    if is_cf_configured:
-        auth_method = "cloudflare_sso"
-    elif is_google_configured:
-        auth_method = "google"
-    else:
-        auth_method = "local"
-
-    # Build SSO login URL for Cloudflare Access
-    sso_login_url = None
-    if is_cf_configured:
-        sso_login_url = (
-            f"https://{settings.cf_access_team_name}.cloudflareaccess.com"
-            f"/cdn-cgi/access/login/{settings.domain}"
-        )
-
-    # Build CF logout URL so the frontend can revoke the CF Access session
-    cf_logout_url = None
-    if is_cf_configured:
-        cf_logout_url = "/cdn-cgi/access/logout"
-
     return {
-        "auth_method": auth_method,
-        "sso_login_url": sso_login_url,
-        "cf_logout_url": cf_logout_url,
-        "cf_team_domain": f"https://{settings.cf_access_team_name}.cloudflareaccess.com" if is_cf_configured else None,
-        "google_client_id": settings.google_client_id if is_google_configured else None,
-        "app_name": "IntelWatch - TI Platform",
-        "environment": settings.environment,
-        "dev_bypass": settings.dev_bypass_auth or settings.environment == "development",
+        "google_configured": bool(settings.google_client_id and settings.google_client_secret),
+        "email_otp_enabled": settings.email_otp_enabled,
+        "app_name": "IntelWatch - Threat Intelligence Platform",
     }

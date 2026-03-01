@@ -9,8 +9,6 @@ interface AppState {
   authLoading: boolean;
   authError: string | null;
   checkAuth: () => Promise<boolean>;
-  performLogin: () => Promise<boolean>;
-  performGoogleLogin: (credential: string) => Promise<boolean>;
   performLogout: () => Promise<void>;
 
   // User
@@ -100,47 +98,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       return false;
     }
   },
-  performLogin: async () => {
-    set({ authLoading: true, authError: null });
-    try {
-      const data = await api.login();
-      set({
-        isAuthenticated: true,
-        authChecked: true,
-        authLoading: false,
-        user: data.user,
-      });
-      return true;
-    } catch (e: any) {
-      set({ authLoading: false, authError: e.message });
-      return false;
-    }
-  },
-  performGoogleLogin: async (credential: string) => {
-    set({ authLoading: true, authError: null });
-    try {
-      const data = await api.googleLogin(credential);
-      set({
-        isAuthenticated: true,
-        authChecked: true,
-        authLoading: false,
-        user: data.user,
-      });
-      return true;
-    } catch (e: any) {
-      set({ authLoading: false, authError: e.message });
-      return false;
-    }
-  },
   performLogout: async () => {
     try {
       await api.logout();
     } catch {
       // ignore
-    }
-    // Clear any SSO state so next login requires fresh Google auth
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("sso_pending");
     }
     set({ isAuthenticated: false, user: null, authChecked: true });
   },
