@@ -1263,7 +1263,7 @@ async def _download_epss_csv() -> str | None:
     import httpx
 
     try:
-        async with httpx.AsyncClient(timeout=EPSS_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=EPSS_TIMEOUT, follow_redirects=True) as client:
             resp = await client.get(EPSS_CSV_URL)
             if resp.status_code != 200:
                 logger.error("epss_download_failed", status=resp.status_code)
