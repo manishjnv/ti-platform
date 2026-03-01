@@ -382,7 +382,7 @@ app/layout.tsx (root HTML, dark class)
     ├── intel/page.tsx → intel/[id]/page.tsx
     │   └── IntelCard (with DataTooltip on risk score)
     ├── investigate/page.tsx (GraphExplorer)
-    ├── techniques/page.tsx (ATTACKMatrix)
+    ├── techniques/page.tsx (CoverageRing donut + DetectionGapsCard + ATTACKMatrix)
     ├── search/page.tsx (Enhanced: sortable table, debounced search, type/severity/feed filter pills, donut+bar charts, VT/Shodan enrichment slide-over, copy-to-clipboard)
     ├── iocs/page.tsx
     ├── analytics/page.tsx
@@ -405,13 +405,14 @@ Shared Components (14 root + 4 charts + 6 ui primitives):
 │   ├── Active CVEs (CISA KEV count)
 │   ├── Feed Activity Sparkline (SVG polyline, 24 hourly bins)
 │   ├── Last Feed timestamp (timeAgo)
-│   ├── ATT&CK Coverage (% linked, links to /techniques)
+│   ├── ATT&CK Coverage (% linked + 7-day trend arrow ↑/↓/—, links to /techniques)
 │   ├── Search Stats (today count from audit_log)
 │   └── Quick Actions — Run All Feeds (admin-only)
 ├── Sidebar (4-section navigation)
 ├── StatCard, IntelCard, FeedStatusPanel, RankedDataList, ThreatLevelBar
 ├── GraphExplorer (SVG force-directed graph)
-├── ATTACKMatrix (MITRE ATT&CK heatmap grid)
+├── ATTACKMatrix (MITRE ATT&CK heatmap grid — per-tactic coverage bars,
+│       rich severity tooltips w/ SeverityMicroBar, ATT&CK Navigator JSON export)
 ├── Pagination (page/pages/onPageChange)
 ├── Tooltip / DataTooltip (Radix UI — score/status metadata)
 ├── charts/ — DonutChart, HorizontalBarChart, TrendLineChart
@@ -666,6 +667,7 @@ Real-time monitoring and correlation for large-scale global events (natural disa
 
 | Date | Change |
 | ---- | ------ |
+| 2026-03-03 | ATT&CK Page Improvements: **Status bar** — ATT&CK coverage pill now shows 7-day trend arrow (↑/↓/—) via new `attack_coverage_prev_pct` field (SQL lookback on `intel_attack_links.created_at`); cache key bumped to v3. **ATT&CK page** — new `CoverageRing` SVG donut chart (animated, color-coded by %), new `DetectionGapsCard` showing top 20 unmapped high-priority techniques (initial-access, execution, persistence, priv-esc, defense-evasion, lateral-movement, impact). **ATT&CK matrix** — per-tactic mini coverage bars (mapped/total, 3-tier color), rich hover tooltips with `SeverityMicroBar` stacked severity breakdown, ATT&CK Navigator v4.5 JSON layer export (download button). API: severity counts via `literal_column()` ENUM casts in `case()`, `DetectionGap` schema, `mapped`/`total` per tactic. |
 | 2026-03-03 | Structured AI Analysis: replaced plain-text `_ai_summarize()` with `_ai_analyze()` returning structured JSON (summary, threat_actors, timeline, affected_products, fix_remediation, known_breaches, key_findings); date-descending sort on live lookup results; `ai_analysis: dict` in `LiveLookupResponse` schema |
 | 2026-03-03 | Unified StructuredIntelCards: new shared component `StructuredIntelCards.tsx` (~220 lines) with `full`/`compact` variants — color-coded cards (purple summary, orange TAs, cyan products, red breaches, emerald fix, blue timeline, amber findings); integrated into Search page (replaced inline JSX), Intel Detail overview tab (maps enrichment data), InsightDetailModal (maps aggregated stats), Threats page (unified badge scheme) |
 | 2026-03-02 | Live Internet Lookup: `services/live_lookup.py` (832 lines) — type-aware external API querying (NVD, AbuseIPDB, VirusTotal, Shodan, URLhaus, OTX, CISA KEV, DuckDuckGo); IOC auto-detection routes to appropriate sources (CVE→NVD+KEV+Web, IP→AbuseIPDB+VT+Shodan, Domain→VT+Shodan+Web, Hash→VT, URL→VT+URLhaus, Email→Web, Keyword→NVD+OTX+Web); AI summary synthesis via Groq; Redis caching (10 min TTL); `POST /search/live-lookup` endpoint; search page "Search Internet" button (zero-results + results header); live results display with source badges, AI summary card, severity-colored result cards, risk scores, references, CVE IDs, ports, tags |
