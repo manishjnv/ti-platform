@@ -170,6 +170,7 @@ class LiveLookupResponse(BaseModel):
     sources_queried: list[str] = Field(default_factory=list)
     results: list[dict] = Field(default_factory=list)
     ai_summary: str | None = None
+    ai_analysis: dict | None = None
     errors: list[str] = Field(default_factory=list)
 
 

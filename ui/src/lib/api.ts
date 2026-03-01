@@ -114,6 +114,16 @@ export interface LiveLookupResult {
   [key: string]: unknown;
 }
 
+export interface AiAnalysis {
+  summary: string;
+  threat_actors: string[];
+  timeline: { date: string; event: string }[];
+  affected_products: string[];
+  fix_remediation: string | null;
+  known_breaches: string | null;
+  key_findings: string[];
+}
+
 export interface LiveLookupResponse {
   query: string;
   detected_type: string | null;
@@ -121,6 +131,7 @@ export interface LiveLookupResponse {
   sources_queried: string[];
   results: LiveLookupResult[];
   ai_summary: string | null;
+  ai_analysis: AiAnalysis | null;
   errors: string[];
 }
 

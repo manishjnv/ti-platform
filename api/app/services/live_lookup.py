@@ -55,6 +55,7 @@ async def live_lookup(query: str) -> dict[str, Any]:
         "sources_queried": [],
         "results": [],
         "ai_summary": None,
+        "ai_analysis": None,
         "errors": [],
     }
 
@@ -114,12 +115,25 @@ async def live_lookup(query: str) -> dict[str, Any]:
             elif isinstance(out, dict):
                 result["results"].append(out)
 
-    # AI summary if results found and AI available
+    # AI analysis if results found and AI available
     if result["results"] and settings.ai_api_key:
         try:
-            result["ai_summary"] = await _ai_summarize(q, source_tag, result["results"])
+            analysis = await _ai_analyze(q, source_tag, result["results"])
+            if analysis:
+                result["ai_analysis"] = analysis
+                result["ai_summary"] = analysis.get("summary")  # backward compat
         except Exception as e:
             logger.debug("live_lookup_ai_error", error=str(e))
+
+    # Sort results: most recent first (results with dates before those without)
+    def _sort_key(r: dict) -> str:
+        for field in ("published", "last_modified", "date_added", "created", "last_reported"):
+            v = r.get(field)
+            if v:
+                return v
+        return ""  # no date → pushed to the end
+
+    result["results"].sort(key=_sort_key, reverse=True)
 
     # Cache for 10 minutes
     await set_cached(ck, result, ttl=600)
@@ -768,32 +782,68 @@ async def _lookup_web(client: httpx.AsyncClient, query: str) -> list[dict]:
     return results
 
 
-# ─── AI Summary ──────────────────────────────────────────
+# ─── AI Analysis ─────────────────────────────────────────
 
-async def _ai_summarize(query: str, ioc_type: str, results: list[dict]) -> str | None:
-    """Use AI to synthesize a concise summary of live lookup findings."""
+async def _ai_analyze(query: str, ioc_type: str, results: list[dict]) -> dict[str, Any] | None:
+    """Use AI to produce structured threat intelligence analysis.
+
+    Returns a dict with keys: summary, threat_actors, timeline, affected_products,
+    fix_remediation, known_breaches, key_findings.
+    """
     if not settings.ai_api_key:
         return None
 
     # Build context from results
     context_parts = []
-    for r in results[:10]:
+    for r in results[:12]:
         line = f"[{r.get('source', '?')}] {r.get('title', '')}"
         if r.get("description"):
-            line += f"\n  {r['description'][:200]}"
+            line += f"\n  {r['description'][:300]}"
+        extra = []
+        if r.get("cve_id"):
+            extra.append(f"CVE: {r['cve_id']}")
+        if r.get("cvss_score"):
+            extra.append(f"CVSS: {r['cvss_score']}")
+        if r.get("affected_products"):
+            extra.append(f"Products: {', '.join(r['affected_products'][:5])}")
+        if r.get("adversary"):
+            extra.append(f"Threat Actor: {r['adversary']}")
+        if r.get("published"):
+            extra.append(f"Published: {r['published']}")
+        if r.get("required_action"):
+            extra.append(f"Fix: {r['required_action']}")
+        if r.get("known_ransomware_use") and r.get("known_ransomware_use") != "Unknown":
+            extra.append(f"Ransomware: {r['known_ransomware_use']}")
+        if r.get("is_kev"):
+            extra.append("CISA KEV: Yes (actively exploited)")
+        if r.get("exploit_available"):
+            extra.append("Exploit: available")
+        if extra:
+            line += f"\n  {' | '.join(extra)}"
         context_parts.append(line)
 
     context = "\n\n".join(context_parts)
 
     system = (
-        "You are a concise threat intelligence analyst. Given live lookup results for an IOC, "
-        "write a 2-4 sentence executive summary: what is this IOC, is it malicious, what's the "
-        "key risk, and what action should be taken. Be direct and factual."
+        "You are an expert threat intelligence analyst. Analyze the given IOC lookup results and produce "
+        "a structured JSON analysis. Respond ONLY with valid JSON, no markdown, no code blocks.\n\n"
+        "Required JSON structure:\n"
+        '{\n'
+        '  "summary": "2-4 sentence executive summary of what this IOC is and its risk level",\n'
+        '  "threat_actors": ["list of threat actors/groups associated, empty if none known"],\n'
+        '  "timeline": [{"date": "YYYY-MM-DD or description", "event": "what happened"}],\n'
+        '  "affected_products": ["vendor:product pairs or product names impacted"],\n'
+        '  "fix_remediation": "Specific recommended fix or remediation steps. Null if not applicable",\n'
+        '  "known_breaches": "Description of any known breaches or campaigns. Null if none",\n'
+        '  "key_findings": ["3-6 bullet point key findings, each a concise sentence"]\n'
+        '}\n\n'
+        "Rules: Be factual. Do not fabricate data. If information is not available, use empty arrays or null. "
+        "Keep it concise and actionable. Focus on what a SOC analyst needs to know."
     )
     user_msg = f"IOC: {query} (type: {ioc_type})\n\nLive lookup results:\n{context}"
 
     try:
-        async with httpx.AsyncClient(timeout=20) as c:
+        async with httpx.AsyncClient(timeout=25) as c:
             resp = await c.post(
                 settings.ai_api_url,
                 headers={
@@ -806,14 +856,36 @@ async def _ai_summarize(query: str, ioc_type: str, results: list[dict]) -> str |
                         {"role": "system", "content": system},
                         {"role": "user", "content": user_msg},
                     ],
-                    "temperature": 0.3,
-                    "max_tokens": 250,
+                    "temperature": 0.2,
+                    "max_tokens": 700,
                 },
             )
             resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"].strip()
+            raw = resp.json()["choices"][0]["message"]["content"].strip()
+
+            # Parse JSON — strip markdown code fences if present
+            import json as _json
+            cleaned = raw
+            if cleaned.startswith("```"):
+                cleaned = "\n".join(cleaned.split("\n")[1:])
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3]
+            cleaned = cleaned.strip()
+
+            analysis = _json.loads(cleaned)
+
+            # Also set the old ai_summary field for backward compat
+            return {
+                "summary": analysis.get("summary", ""),
+                "threat_actors": analysis.get("threat_actors", []),
+                "timeline": analysis.get("timeline", []),
+                "affected_products": analysis.get("affected_products", []),
+                "fix_remediation": analysis.get("fix_remediation"),
+                "known_breaches": analysis.get("known_breaches"),
+                "key_findings": analysis.get("key_findings", []),
+            }
     except Exception as e:
-        logger.debug("ai_summary_error", error=str(e))
+        logger.debug("ai_analysis_error", error=str(e))
         return None
 
 
