@@ -52,14 +52,14 @@ A production-grade, self-hosted threat intelligence aggregation and analysis pla
 | **Dashboard** | `/dashboard` | KPI stat cards, threat level bar, severity/category donut charts, top risks table, feed status |
 | **Threat Feed** | `/threats` | Severity filter pills, risk-sorted threat list, asset type breakdown |
 | **Intel Items** | `/intel` | Paginated intel browser with filters, detail drill-down |
-| **IOC Search** | `/search` | Full-text IOC search with type/severity/date filters |
+| **IOC Search** | `/search` | Full-text IOC search with type/severity/date filters, Live Internet Lookup (12+ sources), structured AI analysis |
 | **IOC Database** | `/iocs` | Browse all IOCs with type filter pills, copy-to-clipboard, type distribution donut |
 | **Analytics** | `/analytics` | Severity bar chart, category donut, geo/industry rankings, source reliability |
 | **Geo View** | `/geo` | Geographic threat distribution, region drill-down, region-specific threat list |
 | **Feed Status** | `/feeds` | Feed health monitor with status badges, error display, item counts |
 | **Settings** | `/settings` | General, Security, Notifications, Appearance, Data & Storage, API Keys, Platform Setup |
 
-**Shared components:** AuthGuard, StatCard, ThreatLevelBar, DonutChart, TrendLineChart, HorizontalBarChart, RankedDataList, FeedStatusPanel, Sidebar (4-section nav), Header bar (search, notifications, user menu).
+**Shared components:** AuthGuard, StatCard, ThreatLevelBar, StructuredIntelCards (unified intel display), DonutChart, TrendLineChart, HorizontalBarChart, RankedDataList, FeedStatusPanel, Sidebar (4-section nav), Header bar (search, notifications, user menu).
 
 ---
 

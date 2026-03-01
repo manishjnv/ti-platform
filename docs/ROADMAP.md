@@ -15,8 +15,8 @@
 | Dashboard | Stat cards, severity distribution, trend charts, top risks, feed status |
 | Threats | Active threats sorted by risk score, severity filters |
 | Intel Feed | Paginated intel items with filtering, CSV/Excel export |
-| Intel Detail | Full item view with overview, timeline, AI summary, CVE badges |
-| Search | IOC-type auto-detection (CVE, IP, domain, URL, hash, email) |
+| Intel Detail | Full item view with overview, timeline, AI summary, CVE badges, structured intel cards |
+| Search | IOC-type auto-detection, Live Internet Lookup, structured AI analysis |
 | IOC Database | Browse all IOCs with type filters, copy-to-clipboard |
 | Analytics | Severity bars, feed type charts, geo distribution, trend analysis |
 | Geo | Geographic threat distribution with region drill-down |
@@ -143,6 +143,32 @@ CISA KEV, NVD, URLhaus, AbuseIPDB, AlienVault OTX, VirusTotal, Shodan
 - **Page update:** IOC Database — show enrichment data (VT detections, Shodan ports) inline *(future enhancement)*
 - **Page update:** Intel Detail — enrichment sidebar showing VT/Shodan data for linked IOCs *(future enhancement)*
 - **Feed Status:** VT and Shodan appear in feed status panel automatically ✅
+
+### 1.6 AI Web Research & Live Internet Lookup ✅ DONE
+- **Module:** `api/app/services/live_lookup.py` (~902 lines) — type-aware external API querying ✅
+  - IOC type detection routes queries to appropriate sources (CVE→NVD+KEV+Web, IP→AbuseIPDB+VT+Shodan, Domain→VT+Shodan+Web, Hash→VT, URL→VT+URLhaus, Email→Web, Keyword→NVD+OTX+Web)
+  - 12+ external API sources queried in parallel with source-specific parsing
+  - AI structured analysis via Groq `llama-3.3-70b-versatile` — returns summary, threat_actors, timeline, affected_products, fix_remediation, known_breaches, key_findings
+  - Redis caching (10 min TTL) for repeated queries
+  - Date-descending sort on results using published/last_modified/date_added
+- **Route:** `POST /search/live-lookup` endpoint ✅
+- **Schema:** `LiveLookupResponse` with `ai_analysis: dict | None` ✅
+- **Page update:** Search page — "Search Internet" button, live results with source badges, severity-colored result cards, clickable detail slide-over panel ✅
+- **Features:**
+  - Published date, threat actor, CVE, products, confidence extracted per result ✅
+  - AI analysis displayed as color-coded structured cards ✅
+  - Zero-results and results-header trigger buttons ✅
+
+### 1.7 Unified StructuredIntelCards ✅ DONE
+- **Component:** `ui/src/components/StructuredIntelCards.tsx` (~220 lines) — shared reusable component ✅
+  - Two variants: `"full"` (grid layout for detail pages) and `"compact"` (smaller for inline/modals)
+  - Color-coded sections: purple summary, orange threat actors, cyan affected products, red known breaches, emerald fix/remediation, blue timeline, amber key findings
+  - Accepts `StructuredIntelData` props with optional fields for each section
+- **Page update:** Search page — refactored both inline AI analysis blocks to use shared component ✅
+- **Page update:** Intel Detail overview tab — added structured snapshot from enrichment data (threat_actors, affected_versions, notable_campaigns, remediation, timeline_events, computed key_findings) ✅
+- **Page update:** Dashboard InsightDetailModal — added structured cards for aggregated entity drill-down stats ✅
+- **Page update:** Threats page — unified badge color scheme (cyan products, red exploits, amber CVSS, TA badges) ✅
+- **Impact:** 328 insertions, 274 deletions across 5 files (net reduction via shared component)
 
 ---
 

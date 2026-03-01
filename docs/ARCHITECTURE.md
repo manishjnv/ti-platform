@@ -584,19 +584,19 @@ GitHub Actions
 
 ## Codebase Metrics
 
-> Last updated: **2026-03-02** (Live Internet Lookup + Enhanced Search Page)
+> Last updated: **2026-03-03** (Structured AI Analysis + Unified StructuredIntelCards)
 
 ### Lines of Code by Category
 
 | Category | Lines | Files | Description |
 | -------- | -----: | -----: | ----------- |
-| Python (API + Worker) | 11,275 | 51 | FastAPI routes, services, models, schemas, feeds, worker tasks, live lookup |
-| TypeScript/TSX (UI) | 14,235 | 49 | Next.js pages, components, store, types, API client |
+| Python (API + Worker) | 11,350 | 51 | FastAPI routes, services, models, schemas, feeds, worker tasks, live lookup |
+| TypeScript/TSX (UI) | 14,300 | 50 | Next.js pages, components, store, types, API client |
 | Markdown (Docs) | 2,747 | 7 | Architecture, roadmap, instructions, integration, technology |
 | Config (JSON/YAML/CSS/TOML) | 517 | 8 | package.json, tailwind, tsconfig, docker-compose, OpenSearch mapping |
 | SQL (Schema + Migrations) | 468 | 3 | PostgreSQL + TimescaleDB DDL, indexes, materialized views |
 | Docker | 262 | 5 | Multi-stage Dockerfiles (API, UI, Worker), compose files |
-| **TOTAL** | **~20,500** | **~123** | |
+| **TOTAL** | **~20,600** | **~124** | |
 
 ### Documentation Breakdown
 
@@ -622,6 +622,7 @@ GitHub Actions
 | 2026-02-28 | Phase 1.5 — VirusTotal & Shodan Connectors | ~19,315 |
 | 2026-03-01 | Phase 1.6 — AI Web Research & Enhanced Report Sections | ~19,800 |
 | 2026-03-02 | Live Internet Lookup (12+ external API sources, AI summary) | ~20,500 |
+| 2026-03-03 | Structured AI Analysis + Unified StructuredIntelCards | ~20,600 |
 
 ---
 
@@ -629,6 +630,8 @@ GitHub Actions
 
 | Date | Change |
 | ---- | ------ |
+| 2026-03-03 | Structured AI Analysis: replaced plain-text `_ai_summarize()` with `_ai_analyze()` returning structured JSON (summary, threat_actors, timeline, affected_products, fix_remediation, known_breaches, key_findings); date-descending sort on live lookup results; `ai_analysis: dict` in `LiveLookupResponse` schema |
+| 2026-03-03 | Unified StructuredIntelCards: new shared component `StructuredIntelCards.tsx` (~220 lines) with `full`/`compact` variants — color-coded cards (purple summary, orange TAs, cyan products, red breaches, emerald fix, blue timeline, amber findings); integrated into Search page (replaced inline JSX), Intel Detail overview tab (maps enrichment data), InsightDetailModal (maps aggregated stats), Threats page (unified badge scheme) |
 | 2026-03-02 | Live Internet Lookup: `services/live_lookup.py` (832 lines) — type-aware external API querying (NVD, AbuseIPDB, VirusTotal, Shodan, URLhaus, OTX, CISA KEV, DuckDuckGo); IOC auto-detection routes to appropriate sources (CVE→NVD+KEV+Web, IP→AbuseIPDB+VT+Shodan, Domain→VT+Shodan+Web, Hash→VT, URL→VT+URLhaus, Email→Web, Keyword→NVD+OTX+Web); AI summary synthesis via Groq; Redis caching (10 min TTL); `POST /search/live-lookup` endpoint; search page "Search Internet" button (zero-results + results header); live results display with source badges, AI summary card, severity-colored result cards, risk scores, references, CVE IDs, ports, tags |
 | 2026-03-02 | Enhanced Search Page: fix ResponseValidationError (optional `updated_at`), add `GET /search/stats` aggregation endpoint, sortable columns (7 fields), debounced search (400ms), type/severity/feed filter pills from live stats, collapsible donut+bar charts, copy-to-clipboard, VT/Shodan enrichment slide-over panel with backdrop, intel summary card, empty-state example queries + feature highlight cards; worker+admin reindex now index `updated_at`, `ai_summary` |
 | 2026-03-02 | Enhanced status bar: 10 widgets (health, threat gauge, intel count, crit/high, KEV, sparkline, last feed, ATT&CK %, search stats, admin quick actions); API extended with avg_risk_score, kev_count, attack_coverage_pct, searches_today, sparkline (24h hourly bins via generate_series); data-driven Live indicator; theme toggle; scheduler auto-cleanup on SIGTERM/atexit |
