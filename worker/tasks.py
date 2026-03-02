@@ -1335,6 +1335,8 @@ def ingest_news() -> dict:
 
 def enrich_news_batch(batch_size: int = 10) -> dict:
     """AI-enrich unenriched news items in batch."""
+    import time
+
     from app.models.models import NewsItem
     from app.services.news import enrich_news_item
 
@@ -1356,7 +1358,7 @@ def enrich_news_batch(batch_size: int = 10) -> dict:
             return {"enriched": 0}
 
         enriched_count = 0
-        for item in items:
+        for idx, item in enumerate(items):
             enrichment = _run_async(
                 enrich_news_item(item.headline, item.raw_content or "")
             )
@@ -1393,6 +1395,10 @@ def enrich_news_batch(batch_size: int = 10) -> dict:
             else:
                 # AI call failed (rate limit, timeout, etc.) — leave for next batch
                 logger.warning("news_enrich_item_skip", headline=item.headline[:80])
+
+            # Throttle between items to avoid per-minute rate limits (TPM)
+            if idx < len(items) - 1:
+                time.sleep(3)
 
         session.commit()
         logger.info("news_enrich_complete", enriched=enriched_count)

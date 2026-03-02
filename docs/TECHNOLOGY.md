@@ -235,8 +235,8 @@ The platform uses OpenAI-compatible APIs for threat intelligence summarisation, 
 |---|----------|-------|----------------|---------|
 | 1 | **Groq** | `llama-3.3-70b-versatile` | ~100K tokens/day | Primary — fastest inference, best quality |
 | 2 | **Groq** | `llama-3.1-8b-instant` | ~100K tokens/day (separate bucket) | Lightweight fallback, same provider |
-| 3 | **Cerebras** | `llama-3.3-70b` | Free tier | Same model, different provider |
-| 4 | **Groq** | `gemma2-9b-it` | ~100K tokens/day (separate bucket) | Google's model on Groq |
+| 3 | **Cerebras** | `qwen-3-235b-a22b-instruct-2507` | Free tier | 235B model, different provider |
+| 4 | **Groq** | `qwen/qwen3-32b` | ~100K tokens/day (separate bucket) | Qwen3 32B on Groq |
 | 5 | **HuggingFace** | `Mistral-7B-Instruct-v0.3` | Free tier | External fallback |
 
 ### Failover Logic
@@ -250,11 +250,11 @@ Request → Groq primary (70B)
                               │
                               ├─ 200 OK → return response
                               │
-                              └─ 429/503 → Cerebras 70B
+                              └─ 429/503 → Cerebras Qwen3 235B
                                                │
                                                ├─ 200 OK → return response
                                                │
-                                               └─ 429/503 → Groq Gemma2
+                                               └─ 429/503 → Groq Qwen3 32B
                                                                 │
                                                                 └─ 429/503 → HuggingFace Mistral
                                                                                  │

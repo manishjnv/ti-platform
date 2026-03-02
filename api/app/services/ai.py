@@ -63,33 +63,33 @@ def _build_fallback_chain() -> list[_Provider]:
             timeout=30,
         ))
 
-    # 3. Cerebras — free tier, fast inference, same Llama 3.3 70B
+    # 3. Cerebras — free tier, fast inference, Qwen3 235B
     cerebras_key = getattr(settings, "cerebras_api_key", "")
     if cerebras_key:
         chain.append(_Provider(
             name="cerebras",
             url="https://api.cerebras.ai/v1/chat/completions",
             key=cerebras_key,
-            model="llama-3.3-70b",
+            model="qwen-3-235b-a22b-instruct-2507",
             timeout=60,
         ))
 
-    # 4. Groq gemma2 — another model bucket
+    # 4. Groq Qwen3 32B — another model bucket
     if settings.ai_api_key:
         chain.append(_Provider(
-            name="groq-gemma2",
+            name="groq-qwen3",
             url="https://api.groq.com/openai/v1/chat/completions",
             key=settings.ai_api_key,
-            model="gemma2-9b-it",
+            model="qwen/qwen3-32b",
             timeout=30,
         ))
 
-    # 5. HuggingFace Inference API — free, good for structured tasks
+    # 5. HuggingFace Inference API (router) — free, good for structured tasks
     hf_key = getattr(settings, "hf_api_key", "")
     if hf_key:
         chain.append(_Provider(
             name="huggingface",
-            url="https://api-inference.huggingface.co/v1/chat/completions",
+            url="https://router.huggingface.co/hf-inference/v1/chat/completions",
             key=hf_key,
             model="mistralai/Mistral-7B-Instruct-v0.3",
             timeout=60,
