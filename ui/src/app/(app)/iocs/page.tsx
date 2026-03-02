@@ -852,42 +852,42 @@ export default function IOCDatabasePage() {
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => handleEnrich(ioc)}
-                            className="p-1.5 rounded-md bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/20 transition-colors"
+                            className="p-1.5 rounded hover:bg-muted/60 transition-colors"
                             title="Enrich with VT/Shodan"
                           >
-                            <Zap className={`h-3.5 w-3.5 ${enrichTarget?.id === ioc.id && enrichLoading ? "text-yellow-400 animate-pulse" : "text-yellow-400"}`} />
+                            <Zap className={`h-3.5 w-3.5 ${enrichTarget?.id === ioc.id && enrichLoading ? "text-yellow-400 animate-pulse" : "text-muted-foreground hover:text-yellow-400 transition-colors"}`} />
                           </button>
                           <button
                             onClick={() => handleCopy(ioc.value, idx)}
-                            className="p-1.5 rounded-md bg-muted/40 hover:bg-muted/60 border border-border/30 transition-colors"
+                            className="p-1.5 rounded hover:bg-muted/60 transition-colors"
                             title="Copy IOC value"
                           >
                             {copiedIdx === idx ? (
                               <Check className="h-3.5 w-3.5 text-green-400" />
                             ) : (
-                              <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+                              <Copy className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground transition-colors" />
                             )}
                           </button>
                           <button
                             onClick={() => router.push(`/search?q=${encodeURIComponent(ioc.value)}&hunt=1`)}
-                            className="p-1.5 rounded-md bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 transition-colors"
+                            className="p-1.5 rounded hover:bg-muted/60 transition-colors"
                             title="Hunt — search local + internet"
                           >
-                            <Crosshair className="h-3.5 w-3.5 text-blue-400" />
+                            <Crosshair className="h-3.5 w-3.5 text-muted-foreground hover:text-blue-400 transition-colors" />
                           </button>
                           <button
                             onClick={() => router.push(`/investigate?id=${encodeURIComponent(ioc.value)}&type=ioc&depth=1`)}
-                            className="p-1.5 rounded-md bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 transition-colors"
+                            className="p-1.5 rounded hover:bg-muted/60 transition-colors"
                             title="Investigate — relationship graph"
                           >
-                            <Telescope className="h-3.5 w-3.5 text-purple-400" />
+                            <Telescope className="h-3.5 w-3.5 text-muted-foreground hover:text-purple-400 transition-colors" />
                           </button>
                           <span
-                            className="flex items-center gap-0.5 px-1.5 py-1 rounded-md bg-teal-500/10 border border-teal-500/20"
+                            className="flex items-center gap-0.5 px-1 text-muted-foreground/60"
                             title={`${ioc.linked_intel_count || 0} related connections`}
                           >
-                            <Share2 className="h-3 w-3 text-teal-400" />
-                            <span className="text-[10px] font-bold text-teal-400 tabular-nums">{ioc.linked_intel_count || 0}</span>
+                            <Share2 className="h-3 w-3" />
+                            <span className="text-[10px] tabular-nums">{ioc.linked_intel_count || 0}</span>
                           </span>
                         </div>
                       </td>

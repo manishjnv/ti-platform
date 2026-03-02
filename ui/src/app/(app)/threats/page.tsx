@@ -326,10 +326,10 @@ export default function ThreatsPage() {
                           e.stopPropagation();
                           window.location.href = `/search?q=${encodeURIComponent(item.source_ref || item.cve_ids?.[0] || item.title)}&hunt=1`;
                         }}
-                        className="p-1.5 rounded-md bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 transition-colors"
+                        className="p-1.5 rounded hover:bg-muted/60 transition-colors"
                         title="Hunt — search local + internet"
                       >
-                        <Crosshair className="h-3.5 w-3.5 text-blue-400" />
+                        <Crosshair className="h-3.5 w-3.5 text-muted-foreground hover:text-blue-400 transition-colors" />
                       </button>
                       <button
                         onClick={(e) => {
@@ -337,17 +337,17 @@ export default function ThreatsPage() {
                           e.stopPropagation();
                           window.location.href = `/investigate?id=${encodeURIComponent(item.id)}&type=intel&depth=1`;
                         }}
-                        className="p-1.5 rounded-md bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 transition-colors"
+                        className="p-1.5 rounded hover:bg-muted/60 transition-colors"
                         title="Investigate — relationship graph"
                       >
-                        <Telescope className="h-3.5 w-3.5 text-purple-400" />
+                        <Telescope className="h-3.5 w-3.5 text-muted-foreground hover:text-purple-400 transition-colors" />
                       </button>
                       <span
-                        className="flex items-center gap-0.5 px-1.5 py-1 rounded-md bg-teal-500/10 border border-teal-500/20"
+                        className="flex items-center gap-0.5 px-1 py-0.5 text-muted-foreground/60"
                         title={`${item.related_ioc_count || 0} related connections`}
                       >
-                        <Share2 className="h-3 w-3 text-teal-400" />
-                        <span className="text-[10px] font-bold text-teal-400 tabular-nums">{item.related_ioc_count || 0}</span>
+                        <Share2 className="h-3 w-3" />
+                        <span className="text-[10px] tabular-nums">{item.related_ioc_count || 0}</span>
                       </span>
                       <ChevronRight className="h-4 w-4 text-muted-foreground/30 group-hover:text-primary transition-colors" />
                     </div>
