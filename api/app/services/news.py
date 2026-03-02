@@ -175,20 +175,55 @@ _STOP_WORDS = frozenset({
 
 
 def _headline_tokens(headline: str) -> set[str]:
-    """Tokenize a headline into a set of meaningful lowercase words."""
+    """Tokenize a headline into a set of meaningful lowercase words.
+
+    Applies simple suffix stripping so 'patches'/'patched'/'patching' all
+    normalise to the same stem, improving cross-source matching.
+    """
     words = re.findall(r"[a-z0-9]+(?:[-'][a-z0-9]+)*", headline.lower())
-    return {w for w in words if w not in _STOP_WORDS and len(w) > 1}
+    tokens: set[str] = set()
+    for w in words:
+        if w in _STOP_WORDS or len(w) <= 1:
+            continue
+        # Keep CVE IDs and numbers intact
+        if re.match(r"^cve-\d{4}-\d+$", w) or re.match(r"^\d+$", w):
+            tokens.add(w)
+            continue
+        # Simple suffix stripping (poor man's stemmer)
+        stem = w
+        for suffix in ("ting", "ing", "ied", "ies", "ity", "ness", "ment",
+                        "ous", "ive", "able", "ble", "ful", "less",
+                        "ated", "ates", "tion", "sion",
+                        "ed", "es", "ly", "er", "al", "en"):
+            if stem.endswith(suffix) and len(stem) - len(suffix) >= 3:
+                stem = stem[:-len(suffix)]
+                break
+        # Trailing 's' after stripping
+        if stem.endswith("s") and len(stem) > 3:
+            stem = stem[:-1]
+        tokens.add(stem)
+    return tokens
 
 
 def _headline_similarity(a: str, b: str) -> float:
-    """Jaccard similarity between two headline token sets (0.0 – 1.0)."""
+    """Jaccard similarity between two headline token sets (0.0 – 1.0).
+
+    Automatically boosts score if both headlines reference the same CVE ID.
+    """
     ta, tb = _headline_tokens(a), _headline_tokens(b)
     if not ta or not tb:
         return 0.0
+
+    # Shared CVE IDs are a very strong duplicate signal
+    cve_a = {t for t in ta if t.startswith("cve-")}
+    cve_b = {t for t in tb if t.startswith("cve-")}
+    if cve_a and cve_a & cve_b:
+        return max(0.80, len(ta & tb) / len(ta | tb))
+
     return len(ta & tb) / len(ta | tb)
 
 
-DUPLICATE_SIMILARITY_THRESHOLD = 0.55  # ≥55 % token overlap = same story
+DUPLICATE_SIMILARITY_THRESHOLD = 0.40  # ≥40 % token overlap = same story
 
 
 # ── Full-text Extraction ─────────────────────────────────
