@@ -1388,9 +1388,11 @@ def enrich_news_batch(batch_size: int = 10) -> dict:
                 item.mitigation_recommendations = enrichment.get("mitigation_recommendations", [])
                 item.confidence = enrichment.get("confidence", "medium")
                 item.relevance_score = max(1, min(100, enrichment.get("relevance_score", 50)))
-
-            item.ai_enriched = True
-            enriched_count += 1
+                item.ai_enriched = True
+                enriched_count += 1
+            else:
+                # AI call failed (rate limit, timeout, etc.) — leave for next batch
+                logger.warning("news_enrich_item_skip", headline=item.headline[:80])
 
         session.commit()
         logger.info("news_enrich_complete", enriched=enriched_count)
