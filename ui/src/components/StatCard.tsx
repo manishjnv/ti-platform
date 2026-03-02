@@ -43,7 +43,7 @@ export function StatCard({
   const card = (
     <div
       className={cn(
-        "rounded-xl border bg-gradient-to-br p-4 transition-all hover:shadow-md",
+        "rounded-xl border bg-gradient-to-br p-4 card-3d",
         accentColor
       )}
     >
@@ -74,7 +74,7 @@ export function StatCard({
           )}
         </div>
         {icon && (
-          <div className="rounded-lg bg-background/50 p-2 text-muted-foreground/40">
+          <div className="rounded-lg bg-background/50 p-2 text-muted-foreground/60">
             {icon}
           </div>
         )}

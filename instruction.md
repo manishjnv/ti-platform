@@ -1,35 +1,52 @@
 # IntelWatch — Development Instructions
 
+## 3D Design System
+
+The entire UI uses a consistent 3D depth effect to give cards, buttons, and icons a raised, tactile feel.
+
+### CSS Utility Classes (defined in `globals.css`)
+
+| Class | Usage | Effect |
+|-------|-------|--------|
+| `card-3d` | All `<Card>`, stat cards, panels | Multi-layer box-shadow with inset top highlight; lifts on hover |
+| `icon-btn-3d` | Clickable action icon buttons | Raised pill with shadow; lifts on hover, depresses on click |
+| `conn-badge-3d` | Connections count badge (non-clickable) | Inset shadow giving a sunken/recessed look |
+
+### Card Component
+
+The base `<Card>` component (`ui/card.tsx`) uses `card-3d` instead of plain `shadow-sm`. Every card in the project automatically gets 3D depth — no per-page overrides needed.
+
+### StatCard
+
+Dashboard stat cards use `card-3d` plus their existing gradient overlays. Icon containers use `text-muted-foreground/60` for visibility.
+
+---
+
 ## Action Icons
 
-Every intel item, IOC, or entity card/row should include the standard action icons described below. 
+Every intel item, IOC, or entity card/row should include the standard action icons described below.
 Follow this guide when adding new pages or features that display intel or IOC data.
 
 ### Standard Icon Set
 
-| Icon | Lucide Name | Purpose | Clickable | Navigates To |
-|------|-------------|---------|-----------|--------------|
-| **Hunt** | `Crosshair` | Search local database + live internet lookup | Yes | `/search?q=<value>&hunt=1` |
-| **Investigate** | `Telescope` | Open relationship graph (1-hop focused view) | Yes | `/investigate?id=<id>&type=<intel\|ioc>&depth=1` |
-| **Connections** | `Share2` | Show count of related entities (IOCs or intel items) | No | — (display only) |
-| **Enrich** | `Zap` | Enrich IOC via VirusTotal / Shodan | Yes | Triggers API call |
-| **Copy** | `Copy` / `Check` | Copy value to clipboard | Yes | — (in-place action) |
+| Icon | Lucide Name | Default Color | Hover Color | Purpose | Clickable |
+|------|-------------|---------------|-------------|---------|-----------|
+| **Hunt** | `Crosshair` | `text-blue-400` | `text-blue-300` | Search local + internet | Yes |
+| **Investigate** | `Telescope` | `text-purple-400` | `text-purple-300` | Relationship graph | Yes |
+| **Connections** | `Share2` | `text-teal-400/70` | — | Show relation count | No |
+| **Enrich** | `Zap` | `text-yellow-400` | `text-yellow-300` | Enrich via VT/Shodan | Yes |
+| **Copy** | `Copy`/`Check` | `text-muted-foreground` | `text-foreground` | Copy to clipboard | Yes |
 
 ### Design Rules
 
-1. **Keep it basic** — No colored backgrounds, no borders on icon buttons. Just the icon.
-2. **Default color** — Icons use `text-muted-foreground` at rest.
-3. **Hover color** — Each icon gets its own accent color on hover only:
-   - Hunt → `hover:text-blue-400`
-   - Investigate → `hover:text-purple-400`
-   - Enrich → `hover:text-yellow-400`
-   - Copy → `hover:text-foreground`
-   - Connections (static) → `text-muted-foreground/60` (no hover, not clickable)
-4. **Hover background** — Use `hover:bg-muted/60` (subtle grey). No colored backgrounds.
-5. **Padding** — `p-1.5 rounded` for icon-only buttons; `px-1.5 py-0.5 rounded` for labeled links.
-6. **Size** — Icons are `h-3.5 w-3.5` in table rows, `h-3 w-3` in card meta rows.
-7. **Labels** — On cards (IntelCard), Hunt and Investigate show a `text-[10px]` label next to the icon. On table rows (IOC Database) and stacked layouts (Threats), icons are icon-only.
-8. **Connections badge** — Always shows `<Share2 icon> <count>` as plain text, never clickable.
+1. **Always-on accent color** — Icons show their accent color at rest (not grey). They brighten on hover.
+2. **3D pill buttons** — All clickable icons use the `icon-btn-3d` CSS class. This gives raised depth with shadow.
+3. **Hover lift** — Buttons lift 1px on hover (`translateY(-1px)`) with stronger shadow.
+4. **Press effect** — On `:active`, buttons sink back down with inset shadow.
+5. **Connections badge** — Uses `conn-badge-3d` class (inset/sunken effect). Not clickable.
+6. **Size** — Icons are `h-3.5 w-3.5` in tables, `h-3 w-3` in card meta rows.
+7. **Labels** — On IntelCard, Hunt and Investigate show a `text-[10px] font-medium` label. Tables use icon-only.
+8. **Group hover** — Use named groups (`group/hunt`, `group/inv`, etc.) so the icon brightens when hovering the button container.
 
 ### Where Icons Appear
 
@@ -41,7 +58,7 @@ Follow this guide when adding new pages or features that display intel or IOC da
 
 ### URL Patterns
 
-- **Hunt**: `/search?q={encodeURIComponent(value)}&hunt=1`  
+- **Hunt**: `/search?q={encodeURIComponent(value)}&hunt=1`
   - For intel items: use `item.source_ref || item.cve_ids[0] || item.title`
   - For IOCs: use `ioc.value`
 - **Investigate**: `/investigate?id={encodeURIComponent(id)}&type={intel|ioc}&depth=1`
@@ -55,10 +72,10 @@ The **Investigate** page uses the `Telescope` icon in the sidebar for consistenc
 ### Adding a New Action Icon
 
 1. Choose a lucide-react icon that clearly represents the action.
-2. Use `text-muted-foreground` as default color, pick a unique accent for hover.
-3. Add a `title` attribute with a short description (e.g., `"Hunt — search local + internet"`).
-4. If the icon navigates, use `<button>` with `router.push()` or `<Link>`. Use `e.stopPropagation()` if inside a clickable card.
-5. If the icon is display-only (like Connections), use `<span>` instead of `<button>`.
+2. Pick a unique accent color (e.g., `text-emerald-400` / `text-emerald-300` for hover).
+3. Use the `icon-btn-3d` class on the button/link. For display-only, use `conn-badge-3d`.
+4. Add a `title` attribute with a short description (e.g., `"Hunt — search local + internet"`).
+5. Use `e.stopPropagation()` if inside a clickable card.
 6. Add the icon to all 3 pages listed above for consistency.
 7. Update this file with the new icon entry.
 

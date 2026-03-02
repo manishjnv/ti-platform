@@ -146,27 +146,27 @@ export function IntelCard({ item }: IntelCardProps) {
             <Link
               href={`/search?q=${encodeURIComponent(item.source_ref || item.cve_ids[0] || item.title)}&hunt=1`}
               onClick={(e) => e.stopPropagation()}
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-muted/60 transition-colors text-muted-foreground hover:text-blue-400"
+              className="icon-btn-3d flex items-center gap-1 !px-2 !py-0.5 group/hunt"
               title="Hunt — search local + internet"
             >
-              <Crosshair className="h-3 w-3" />
-              <span className="text-[10px]">Hunt</span>
+              <Crosshair className="h-3 w-3 text-blue-400 group-hover/hunt:text-blue-300" />
+              <span className="text-[10px] font-medium text-blue-400 group-hover/hunt:text-blue-300">Hunt</span>
             </Link>
             <Link
               href={`/investigate?id=${encodeURIComponent(item.id)}&type=intel&depth=1`}
               onClick={(e) => e.stopPropagation()}
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-muted/60 transition-colors text-muted-foreground hover:text-purple-400"
+              className="icon-btn-3d flex items-center gap-1 !px-2 !py-0.5 group/inv"
               title="Investigate — relationship graph"
             >
-              <Telescope className="h-3 w-3" />
-              <span className="text-[10px]">Investigate</span>
+              <Telescope className="h-3 w-3 text-purple-400 group-hover/inv:text-purple-300" />
+              <span className="text-[10px] font-medium text-purple-400 group-hover/inv:text-purple-300">Investigate</span>
             </Link>
             <span
-              className="flex items-center gap-0.5 text-muted-foreground/60"
+              className="conn-badge-3d flex items-center gap-0.5 text-teal-400/70"
               title={`${item.related_ioc_count || 0} related connections`}
             >
               <Share2 className="h-3 w-3" />
-              <span className="text-[10px] tabular-nums">{item.related_ioc_count || 0}</span>
+              <span className="text-[10px] font-medium tabular-nums">{item.related_ioc_count || 0}</span>
             </span>
           </div>
         </div>

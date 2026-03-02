@@ -319,17 +319,17 @@ export default function ThreatsPage() {
                         </div>
                       )}
                     </div>
-                    <div className="flex flex-col items-center gap-0.5 shrink-0 mt-1">
+                    <div className="flex flex-col items-center gap-1 shrink-0 mt-1">
                       <button
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
                           window.location.href = `/search?q=${encodeURIComponent(item.source_ref || item.cve_ids?.[0] || item.title)}&hunt=1`;
                         }}
-                        className="p-1.5 rounded hover:bg-muted/60 transition-colors"
+                        className="icon-btn-3d group/hunt"
                         title="Hunt — search local + internet"
                       >
-                        <Crosshair className="h-3.5 w-3.5 text-muted-foreground hover:text-blue-400 transition-colors" />
+                        <Crosshair className="h-3.5 w-3.5 text-blue-400 group-hover/hunt:text-blue-300 transition-colors" />
                       </button>
                       <button
                         onClick={(e) => {
@@ -337,17 +337,17 @@ export default function ThreatsPage() {
                           e.stopPropagation();
                           window.location.href = `/investigate?id=${encodeURIComponent(item.id)}&type=intel&depth=1`;
                         }}
-                        className="p-1.5 rounded hover:bg-muted/60 transition-colors"
+                        className="icon-btn-3d group/inv"
                         title="Investigate — relationship graph"
                       >
-                        <Telescope className="h-3.5 w-3.5 text-muted-foreground hover:text-purple-400 transition-colors" />
+                        <Telescope className="h-3.5 w-3.5 text-purple-400 group-hover/inv:text-purple-300 transition-colors" />
                       </button>
                       <span
-                        className="flex items-center gap-0.5 px-1 py-0.5 text-muted-foreground/60"
+                        className="conn-badge-3d flex items-center gap-0.5 text-teal-400/70"
                         title={`${item.related_ioc_count || 0} related connections`}
                       >
                         <Share2 className="h-3 w-3" />
-                        <span className="text-[10px] tabular-nums">{item.related_ioc_count || 0}</span>
+                        <span className="text-[10px] font-medium tabular-nums">{item.related_ioc_count || 0}</span>
                       </span>
                       <ChevronRight className="h-4 w-4 text-muted-foreground/30 group-hover:text-primary transition-colors" />
                     </div>

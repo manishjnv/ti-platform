@@ -849,45 +849,45 @@ export default function IOCDatabasePage() {
 
                       {/* Actions */}
                       <td className="py-1.5 px-3">
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1.5">
                           <button
                             onClick={() => handleEnrich(ioc)}
-                            className="p-1.5 rounded hover:bg-muted/60 transition-colors"
+                            className="icon-btn-3d group/enrich"
                             title="Enrich with VT/Shodan"
                           >
-                            <Zap className={`h-3.5 w-3.5 ${enrichTarget?.id === ioc.id && enrichLoading ? "text-yellow-400 animate-pulse" : "text-muted-foreground hover:text-yellow-400 transition-colors"}`} />
+                            <Zap className={`h-3.5 w-3.5 ${enrichTarget?.id === ioc.id && enrichLoading ? "text-yellow-400 animate-pulse" : "text-yellow-400 group-hover/enrich:text-yellow-300 transition-colors"}`} />
                           </button>
                           <button
                             onClick={() => handleCopy(ioc.value, idx)}
-                            className="p-1.5 rounded hover:bg-muted/60 transition-colors"
+                            className="icon-btn-3d group/copy"
                             title="Copy IOC value"
                           >
                             {copiedIdx === idx ? (
                               <Check className="h-3.5 w-3.5 text-green-400" />
                             ) : (
-                              <Copy className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground transition-colors" />
+                              <Copy className="h-3.5 w-3.5 text-muted-foreground group-hover/copy:text-foreground transition-colors" />
                             )}
                           </button>
                           <button
                             onClick={() => router.push(`/search?q=${encodeURIComponent(ioc.value)}&hunt=1`)}
-                            className="p-1.5 rounded hover:bg-muted/60 transition-colors"
+                            className="icon-btn-3d group/hunt"
                             title="Hunt — search local + internet"
                           >
-                            <Crosshair className="h-3.5 w-3.5 text-muted-foreground hover:text-blue-400 transition-colors" />
+                            <Crosshair className="h-3.5 w-3.5 text-blue-400 group-hover/hunt:text-blue-300 transition-colors" />
                           </button>
                           <button
                             onClick={() => router.push(`/investigate?id=${encodeURIComponent(ioc.value)}&type=ioc&depth=1`)}
-                            className="p-1.5 rounded hover:bg-muted/60 transition-colors"
+                            className="icon-btn-3d group/inv"
                             title="Investigate — relationship graph"
                           >
-                            <Telescope className="h-3.5 w-3.5 text-muted-foreground hover:text-purple-400 transition-colors" />
+                            <Telescope className="h-3.5 w-3.5 text-purple-400 group-hover/inv:text-purple-300 transition-colors" />
                           </button>
                           <span
-                            className="flex items-center gap-0.5 px-1 text-muted-foreground/60"
+                            className="conn-badge-3d flex items-center gap-0.5 text-teal-400/70"
                             title={`${ioc.linked_intel_count || 0} related connections`}
                           >
                             <Share2 className="h-3 w-3" />
-                            <span className="text-[10px] tabular-nums">{ioc.linked_intel_count || 0}</span>
+                            <span className="text-[10px] font-medium tabular-nums">{ioc.linked_intel_count || 0}</span>
                           </span>
                         </div>
                       </td>
