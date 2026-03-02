@@ -1365,6 +1365,10 @@ def enrich_news_batch(batch_size: int = 10) -> dict:
                 # Apply enrichment data
                 item.category = enrichment.get("category", item.category)
                 item.summary = enrichment.get("summary")
+                item.executive_brief = enrichment.get("executive_brief")
+                item.risk_assessment = enrichment.get("risk_assessment")
+                item.attack_narrative = enrichment.get("attack_narrative")
+                item.recommended_priority = enrichment.get("recommended_priority", "medium")
                 item.why_it_matters = enrichment.get("why_it_matters", [])
                 item.tags = enrichment.get("tags", [])
                 item.threat_actors = enrichment.get("threat_actors", [])

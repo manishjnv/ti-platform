@@ -609,3 +609,21 @@ export async function refreshNews(): Promise<{ status: string; job_id: string }>
     method: "POST",
   });
 }
+
+export async function downloadNewsReport(id: string): Promise<void> {
+  const response = await fetch(`/api/v1/news/${id}/report`, { credentials: "include" });
+  if (!response.ok) throw new Error("Failed to generate report");
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download =
+    response.headers
+      .get("Content-Disposition")
+      ?.split("filename=")[1]
+      ?.replace(/"/g, "") || "IntelWatch-Report.md";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}

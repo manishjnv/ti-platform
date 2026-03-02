@@ -465,6 +465,10 @@ CREATE TABLE IF NOT EXISTS news_items (
     published_at    TIMESTAMPTZ,
     category        news_category NOT NULL DEFAULT 'active_threats',
     summary         TEXT,
+    executive_brief TEXT,
+    risk_assessment TEXT,
+    attack_narrative TEXT,
+    recommended_priority VARCHAR(20) NOT NULL DEFAULT 'medium',
 
     -- Structured intelligence (AI-enriched)
     why_it_matters          TEXT[] NOT NULL DEFAULT '{}',

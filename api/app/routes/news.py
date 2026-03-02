@@ -4,15 +4,18 @@ Provides:
   - GET /news — paginated news list with category/tag filtering
   - GET /news/categories — category counts with latest headlines
   - GET /news/{id} — single news item detail
+  - GET /news/{id}/report — generate downloadable intelligence report
   - POST /news/refresh — trigger manual feed refresh (admin)
 """
 
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy import select, func, desc, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -186,6 +189,239 @@ async def get_news_item(
     response = NewsItemResponse.model_validate(item)
     await set_cached(ck, response.model_dump(), ttl=120)
     return response
+
+
+# ── Category labels ───────────────────────────────────────
+_CAT_LABELS = {
+    "active_threats": "Active Threats",
+    "exploited_vulnerabilities": "Exploited Vulnerabilities",
+    "ransomware_breaches": "Ransomware & Breaches",
+    "nation_state": "Nation-State Activity",
+    "cloud_identity": "Cloud & Identity",
+    "ot_ics": "OT / ICS",
+    "security_research": "Security Research",
+    "tools_technology": "Tools & Technology",
+    "policy_regulation": "Policy & Regulation",
+}
+
+_PRIORITY_LABELS = {
+    "critical": "CRITICAL — Immediate action required",
+    "high": "HIGH — Action within 24 hours",
+    "medium": "MEDIUM — Action within 1 week",
+    "low": "LOW — Informational / no immediate action",
+}
+
+
+def _build_report_markdown(item: NewsItemResponse) -> str:
+    """Generate a structured Markdown intelligence report from a news item."""
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    pub = item.published_at.strftime("%Y-%m-%d %H:%M UTC") if item.published_at else "Unknown"
+    cat_label = _CAT_LABELS.get(item.category.value if hasattr(item.category, 'value') else item.category, str(item.category))
+    prio = getattr(item, "recommended_priority", "medium") or "medium"
+    prio_label = _PRIORITY_LABELS.get(prio, prio)
+
+    lines: list[str] = []
+    lines.append(f"# INTELLIGENCE REPORT")
+    lines.append("")
+    lines.append(f"**Classification:** TLP:GREEN &nbsp;|&nbsp; **Generated:** {now}")
+    lines.append(f"**Source:** IntelWatch Cyber News Intelligence")
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+
+    # Header
+    lines.append(f"## {item.headline}")
+    lines.append("")
+    lines.append(f"| Field | Value |")
+    lines.append(f"|---|---|")
+    lines.append(f"| **Category** | {cat_label} |")
+    lines.append(f"| **Source** | {item.source} |")
+    lines.append(f"| **Published** | {pub} |")
+    lines.append(f"| **Relevance Score** | {item.relevance_score}/100 |")
+    lines.append(f"| **Confidence** | {item.confidence} |")
+    lines.append(f"| **Priority** | {prio_label} |")
+    if item.campaign_name:
+        lines.append(f"| **Campaign** | {item.campaign_name} |")
+    if item.initial_access_vector:
+        lines.append(f"| **Initial Access** | {item.initial_access_vector} |")
+    lines.append("")
+
+    # Executive Summary
+    if item.summary:
+        lines.append("## Executive Summary")
+        lines.append("")
+        lines.append(item.summary)
+        lines.append("")
+
+    # Executive Brief
+    brief = getattr(item, "executive_brief", None)
+    if brief:
+        lines.append("## Intelligence Brief")
+        lines.append("")
+        lines.append(brief)
+        lines.append("")
+
+    # Risk Assessment
+    risk = getattr(item, "risk_assessment", None)
+    if risk:
+        lines.append("## Risk Assessment")
+        lines.append("")
+        lines.append(risk)
+        lines.append("")
+
+    # Attack Narrative
+    narrative = getattr(item, "attack_narrative", None)
+    if narrative:
+        lines.append("## Attack Narrative")
+        lines.append("")
+        lines.append(narrative)
+        lines.append("")
+
+    # Why It Matters
+    if item.why_it_matters:
+        lines.append("## Key Takeaways")
+        lines.append("")
+        for pt in item.why_it_matters:
+            lines.append(f"- {pt}")
+        lines.append("")
+
+    # Threat Landscape
+    has_threat_data = item.threat_actors or item.malware_families or item.cves or item.vulnerable_products
+    if has_threat_data:
+        lines.append("## Threat Landscape")
+        lines.append("")
+        if item.threat_actors:
+            lines.append(f"**Threat Actors:** {', '.join(item.threat_actors)}")
+            lines.append("")
+        if item.malware_families:
+            lines.append(f"**Malware / Tools:** {', '.join(item.malware_families)}")
+            lines.append("")
+        if item.cves:
+            lines.append(f"**CVEs:** {', '.join(item.cves)}")
+            lines.append("")
+        if item.vulnerable_products:
+            lines.append(f"**Affected Products:** {', '.join(item.vulnerable_products)}")
+            lines.append("")
+
+    # MITRE ATT&CK
+    if item.tactics_techniques:
+        lines.append("## MITRE ATT&CK Mapping")
+        lines.append("")
+        for tt in item.tactics_techniques:
+            lines.append(f"- {tt}")
+        lines.append("")
+
+    # Post-Exploitation
+    if item.post_exploitation:
+        lines.append("## Post-Exploitation Activity")
+        lines.append("")
+        for pe in item.post_exploitation:
+            lines.append(f"- {pe}")
+        lines.append("")
+
+    # Targeting
+    has_targeting = item.targeted_sectors or item.targeted_regions or item.impacted_assets
+    if has_targeting:
+        lines.append("## Targeting")
+        lines.append("")
+        if item.targeted_sectors:
+            lines.append(f"**Sectors:** {', '.join(item.targeted_sectors)}")
+            lines.append("")
+        if item.targeted_regions:
+            lines.append(f"**Regions:** {', '.join(item.targeted_regions)}")
+            lines.append("")
+        if item.impacted_assets:
+            lines.append(f"**Impacted Assets:** {', '.join(item.impacted_assets)}")
+            lines.append("")
+
+    # IOC Summary
+    ioc = item.ioc_summary or {}
+    has_iocs = any(ioc.get(k) for k in ("domains", "ips", "hashes", "urls"))
+    if has_iocs:
+        lines.append("## Indicators of Compromise")
+        lines.append("")
+        lines.append("| Type | Value |")
+        lines.append("|---|---|")
+        for domain in (ioc.get("domains") or []):
+            lines.append(f"| Domain | `{domain}` |")
+        for ip in (ioc.get("ips") or []):
+            lines.append(f"| IP | `{ip}` |")
+        for h in (ioc.get("hashes") or []):
+            lines.append(f"| Hash | `{h}` |")
+        for url in (ioc.get("urls") or []):
+            lines.append(f"| URL | `{url}` |")
+        lines.append("")
+
+    # Timeline
+    if item.timeline:
+        lines.append("## Timeline")
+        lines.append("")
+        for ev in item.timeline:
+            date_str = ev.get("date") or "N/A"
+            lines.append(f"- **{date_str}** — {ev.get('event', '')}")
+        lines.append("")
+
+    # Detection & Mitigation side-by-side
+    if item.detection_opportunities:
+        lines.append("## Detection Opportunities")
+        lines.append("")
+        for det in item.detection_opportunities:
+            lines.append(f"- {det}")
+        lines.append("")
+
+    if item.mitigation_recommendations:
+        lines.append("## Mitigation Recommendations")
+        lines.append("")
+        for mit in item.mitigation_recommendations:
+            lines.append(f"- {mit}")
+        lines.append("")
+
+    # Tags
+    if item.tags:
+        lines.append("---")
+        lines.append("")
+        lines.append(f"**Tags:** {', '.join(item.tags)}")
+        lines.append("")
+
+    # Footer
+    lines.append("---")
+    lines.append("")
+    lines.append(f"*Source URL: {item.source_url}*")
+    lines.append("")
+    lines.append("*This report was auto-generated by IntelWatch Cyber News Intelligence. AI-enriched analysis may contain inferences based on threat intelligence knowledge.*")
+
+    return "\n".join(lines)
+
+
+@router.get("/{news_id}/report")
+async def generate_news_report(
+    news_id: uuid.UUID,
+    user: Annotated[User, Depends(require_viewer)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    format: str = Query("markdown", pattern="^(markdown|text)$"),
+):
+    """Generate a downloadable intelligence report for a news item."""
+    result = await db.execute(
+        select(NewsItem).where(NewsItem.id == news_id)
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="News item not found")
+
+    news_response = NewsItemResponse.model_validate(item)
+    report_md = _build_report_markdown(news_response)
+
+    # Sanitize filename
+    safe_title = "".join(c if c.isalnum() or c in " -_" else "" for c in item.headline[:60]).strip()
+    filename = f"IntelWatch-Report-{safe_title}.md"
+
+    return Response(
+        content=report_md,
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+    )
 
 
 @router.post("/refresh")

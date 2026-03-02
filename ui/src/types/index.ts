@@ -630,6 +630,10 @@ export interface NewsItem {
   published_at: string | null;
   category: NewsCategory;
   summary: string | null;
+  executive_brief: string | null;
+  risk_assessment: string | null;
+  attack_narrative: string | null;
+  recommended_priority: string;
   why_it_matters: string[];
   tags: string[];
   threat_actors: string[];

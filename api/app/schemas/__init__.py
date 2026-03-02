@@ -613,6 +613,10 @@ class NewsItemResponse(BaseModel):
     published_at: datetime | None = None
     category: NewsCategory
     summary: str | None = None
+    executive_brief: str | None = None
+    risk_assessment: str | None = None
+    attack_narrative: str | None = None
+    recommended_priority: str = "medium"
 
     why_it_matters: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)

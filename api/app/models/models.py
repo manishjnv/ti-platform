@@ -338,6 +338,10 @@ class NewsItem(Base):
         nullable=False, default="active_threats",
     )
     summary: Mapped[str | None] = mapped_column(Text)
+    executive_brief: Mapped[str | None] = mapped_column(Text)
+    risk_assessment: Mapped[str | None] = mapped_column(Text)
+    attack_narrative: Mapped[str | None] = mapped_column(Text)
+    recommended_priority: Mapped[str] = mapped_column(String(20), nullable=False, default="medium")
 
     # Structured intelligence (AI-enriched)
     why_it_matters: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)

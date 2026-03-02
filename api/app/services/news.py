@@ -228,36 +228,48 @@ async def fetch_all_feeds() -> list[dict]:
 
 # ── AI Enrichment ────────────────────────────────────────
 
-_NEWS_ENRICHMENT_SYSTEM = """You are a senior cyber threat intelligence analyst. Given a cybersecurity news article headline and content, produce a structured JSON analysis.
+_NEWS_ENRICHMENT_SYSTEM = """You are a senior cyber threat intelligence analyst writing for SOC teams and CISOs. Given a cybersecurity news article headline and content, produce a comprehensive structured JSON intelligence brief.
+
+CRITICAL RULES:
+1. ALWAYS fill executive_brief, risk_assessment, attack_narrative, why_it_matters, detection_opportunities, mitigation_recommendations — these must NEVER be empty.
+2. Use your deep cybersecurity knowledge to INFER and EXPAND beyond what the article states. If the article mentions "ransomware", provide typical ransomware TTPs, detection methods, and mitigations even if not explicitly stated.
+3. For threat_actors and malware_families, include known groups/malware if you can confidently associate them with the described activity.
+4. For tactics_techniques, always provide relevant MITRE ATT&CK technique IDs (e.g., T1566.001) based on the attack described.
+5. For targeted_sectors and targeted_regions, infer from context (e.g., a Korean tax agency breach targets "Government", "South Korea").
+6. Think like an analyst writing an intelligence report — provide actionable, decision-ready content.
 
 Return ONLY valid JSON with this exact schema (no markdown, no backticks):
 {
   "category": "one of: active_threats, exploited_vulnerabilities, ransomware_breaches, nation_state, cloud_identity, ot_ics, security_research, tools_technology, policy_regulation",
-  "summary": "2-3 sentence executive summary",
-  "why_it_matters": ["1-3 bullet points for SOC/CISO decision-makers"],
-  "tags": ["relevant keywords/tags"],
-  "threat_actors": ["named threat actor groups, empty if none"],
-  "malware_families": ["named malware families, empty if none"],
+  "summary": "2-3 sentence executive summary of the article",
+  "executive_brief": "5-8 sentence deep-dive analysis: what happened, how, why it matters strategically, what organizations should do. Write as a polished intelligence brief worth reading.",
+  "risk_assessment": "2-3 sentences describing the business risk, who is most at risk, and the potential impact severity (e.g., data loss, operational disruption, financial)",
+  "attack_narrative": "3-5 sentences describing the attack chain or technical mechanism. For vulnerabilities, describe the exploitation path. For breaches, describe initial access through impact. For research, describe the findings.",
+  "why_it_matters": ["3-5 bullet points — each should be a concise, actionable insight for SOC analysts or CISOs making decisions"],
+  "tags": ["6-10 relevant keywords: include technology names, attack types, affected platforms, industries"],
+  "threat_actors": ["named threat actor groups — include aliases if known. Use [] only if truly no attribution possible"],
+  "malware_families": ["named malware, tools, or frameworks used. Include legitimate tools used maliciously (e.g., Cobalt Strike). Use [] only if no malware involved"],
   "campaign_name": "campaign name or null",
-  "cves": ["CVE-YYYY-NNNNN format, empty if none"],
-  "vulnerable_products": ["affected software/hardware"],
-  "tactics_techniques": ["MITRE ATT&CK technique IDs like T1566, T1190"],
-  "initial_access_vector": "primary initial access method or null",
-  "post_exploitation": ["post-exploitation activities observed"],
-  "targeted_sectors": ["industry sectors targeted"],
-  "targeted_regions": ["geographic regions targeted"],
-  "impacted_assets": ["types of assets impacted"],
+  "cves": ["CVE-YYYY-NNNNN format. Include related CVEs you know are associated even if not in the article"],
+  "vulnerable_products": ["affected software, hardware, or platforms with version info when available"],
+  "tactics_techniques": ["MITRE ATT&CK technique IDs with names, e.g., 'T1566.001 - Spearphishing Attachment'. Always include 2-5 relevant techniques based on the attack described"],
+  "initial_access_vector": "primary initial access method described or inferred, or null if purely informational",
+  "post_exploitation": ["specific post-exploitation activities: lateral movement, data staging, exfiltration methods, persistence mechanisms. Infer likely activities based on the attack type"],
+  "targeted_sectors": ["industry sectors targeted or likely affected — always provide at least 1 based on context"],
+  "targeted_regions": ["geographic regions targeted or affected — always provide at least 1"],
+  "impacted_assets": ["types of assets at risk: endpoints, servers, cloud workloads, databases, credentials, crypto wallets, etc."],
   "ioc_summary": {"domains": [], "ips": [], "hashes": [], "urls": []},
   "timeline": [{"date": "YYYY-MM-DD or null", "event": "description"}],
-  "detection_opportunities": ["detection/hunting opportunities"],
-  "mitigation_recommendations": ["actionable mitigation steps"],
-  "confidence": "high, medium, or low",
+  "detection_opportunities": ["3-5 specific detection/hunting methods: SIEM rules, EDR queries, network signatures, log sources to monitor"],
+  "mitigation_recommendations": ["3-5 actionable steps: patching, configuration changes, monitoring, incident response preparation"],
+  "recommended_priority": "one of: critical, high, medium, low — how urgently should security teams act",
+  "confidence": "high, medium, or low — based on source reliability and corroboration",
   "relevance_score": 50
 }
 
 Scoring guidelines for relevance_score (1-100):
-- 90-100: Active exploitation, zero-day, KEV addition, critical infrastructure
-- 70-89: Enterprise-impact vulnerability, major breach, APT campaign
+- 90-100: Active exploitation, zero-day, KEV, critical infrastructure attack
+- 70-89: Enterprise-impact vuln, major breach, APT campaign, ransomware wave
 - 50-69: Notable research, tool release, moderate vulnerability
 - 30-49: Policy update, minor tool, informational
 - 1-29: Low-impact, historical, opinion piece"""
@@ -270,7 +282,7 @@ async def enrich_news_item(headline: str, raw_content: str) -> dict | None:
     result = await chat_completion(
         system_prompt=_NEWS_ENRICHMENT_SYSTEM,
         user_prompt=user_prompt,
-        max_tokens=1200,
+        max_tokens=2000,
         temperature=0.2,
     )
 
