@@ -500,6 +500,9 @@ CREATE TABLE IF NOT EXISTS news_items (
     raw_content             TEXT,
     source_hash             VARCHAR(64) NOT NULL,
 
+    -- Cross-source correlation
+    correlated_sources      JSONB NOT NULL DEFAULT '[]',
+
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

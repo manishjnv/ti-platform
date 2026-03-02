@@ -158,7 +158,37 @@ def _strip_html(html: str | None) -> str:
     text = re.sub(r"<[^>]+>", " ", html)
     text = re.sub(r"&[a-z]+;", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
-    return text[:5000]  # cap long descriptions
+    return text[:12000]  # cap long descriptions
+
+
+# ── Cross-source Deduplication ───────────────────────────
+
+# Stop-words stripped before comparing headlines
+_STOP_WORDS = frozenset({
+    "a", "an", "the", "is", "are", "was", "were", "in", "on", "at", "to",
+    "for", "of", "and", "or", "but", "by", "with", "from", "up", "as",
+    "it", "its", "that", "this", "how", "what", "why", "who", "new",
+    "has", "have", "had", "not", "no", "be", "been", "being",
+    "can", "could", "will", "would", "may", "might", "about", "over",
+    "after", "more", "than", "all", "get", "got", "into", "out",
+})
+
+
+def _headline_tokens(headline: str) -> set[str]:
+    """Tokenize a headline into a set of meaningful lowercase words."""
+    words = re.findall(r"[a-z0-9]+(?:[-'][a-z0-9]+)*", headline.lower())
+    return {w for w in words if w not in _STOP_WORDS and len(w) > 1}
+
+
+def _headline_similarity(a: str, b: str) -> float:
+    """Jaccard similarity between two headline token sets (0.0 – 1.0)."""
+    ta, tb = _headline_tokens(a), _headline_tokens(b)
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / len(ta | tb)
+
+
+DUPLICATE_SIMILARITY_THRESHOLD = 0.55  # ≥55 % token overlap = same story
 
 
 # ── Full-text Extraction ─────────────────────────────────
@@ -191,7 +221,7 @@ async def _extract_full_text(url: str) -> str | None:
             no_fallback=False,
         )
         if text and len(text) > 200:
-            return text[:8000]
+            return text[:12000]
         return None
     except Exception:
         return None
@@ -431,12 +461,12 @@ Scoring: 90-100 active zero-day/KEV; 70-89 major breach/APT/ransomware; 50-69 no
 
 async def enrich_news_item(headline: str, raw_content: str) -> dict | None:
     """Use AI to extract structured intelligence from a news article."""
-    user_prompt = f"Headline: {headline}\n\nContent:\n{raw_content[:6000]}"
+    user_prompt = f"Headline: {headline}\n\nContent:\n{raw_content[:10000]}"
 
     result = await chat_completion(
         system_prompt=_NEWS_ENRICHMENT_SYSTEM,
         user_prompt=user_prompt,
-        max_tokens=2500,
+        max_tokens=3500,
         temperature=0.15,
     )
 

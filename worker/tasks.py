@@ -1283,9 +1283,21 @@ async def _download_epss_csv() -> str | None:
 # ── Cyber News Ingestion ─────────────────────────────────
 
 def ingest_news() -> dict:
-    """Fetch cyber news from RSS feeds, store new articles, queue AI enrichment."""
+    """Fetch cyber news from RSS feeds, store new articles, queue AI enrichment.
+
+    Cross-source dedup: when multiple sources report the same story within
+    48 hours, we keep the first article and merge supplementary content from
+    the duplicates.  If the original was already AI-enriched it gets
+    re-queued for enrichment with the richer merged content.
+    """
+    from datetime import timedelta
+
     from app.models.models import NewsItem
-    from app.services.news import fetch_all_feeds
+    from app.services.news import (
+        DUPLICATE_SIMILARITY_THRESHOLD,
+        _headline_similarity,
+        fetch_all_feeds,
+    )
 
     logger.info("news_ingest_start")
     session = SyncSession()
@@ -1296,16 +1308,116 @@ def ingest_news() -> dict:
             logger.info("news_ingest_no_articles")
             return {"fetched": 0, "stored": 0}
 
-        stored = 0
-        for article in articles:
-            # Check dedup
-            existing = session.execute(
-                select(NewsItem.id).where(NewsItem.source_hash == article["source_hash"])
-            ).scalar_one_or_none()
+        # ── Load recent headlines from DB for cross-source matching ──
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
+        recent_rows = session.execute(
+            select(
+                NewsItem.id,
+                NewsItem.headline,
+                NewsItem.source,
+                NewsItem.source_hash,
+                NewsItem.raw_content,
+                NewsItem.ai_enriched,
+                NewsItem.correlated_sources,
+            ).where(NewsItem.created_at >= cutoff)
+        ).all()
 
-            if existing:
+        # Build lookup: source_hash → row, headline list for similarity
+        hash_set = {r.source_hash for r in recent_rows}
+        recent_items = [(r.id, r.headline, r.source, r.source_hash,
+                         r.raw_content or "", r.ai_enriched,
+                         r.correlated_sources or []) for r in recent_rows]
+
+        stored = 0
+        merged = 0
+        skipped_dup = 0
+
+        for article in articles:
+            # 1. Exact source_hash dedup (same source + same URL)
+            if article["source_hash"] in hash_set:
                 continue
 
+            # 2. Cross-source headline similarity check
+            best_match = None
+            best_score = 0.0
+            for rid, rhead, rsource, rhash, rcontent, renriched, rcorr in recent_items:
+                if article["source"] == rsource:
+                    continue  # same source — skip
+                score = _headline_similarity(article["headline"], rhead)
+                if score > best_score:
+                    best_score = score
+                    best_match = (rid, rhead, rsource, rhash, rcontent, renriched, rcorr)
+
+            if best_match and best_score >= DUPLICATE_SIMILARITY_THRESHOLD:
+                # Duplicate story from a different source — merge content
+                mid, mhead, msource, mhash, mcontent, menriched, mcorr = best_match
+                logger.info(
+                    "news_cross_source_dup",
+                    new_source=article["source"],
+                    existing_source=msource,
+                    score=round(best_score, 2),
+                    headline=article["headline"][:80],
+                )
+
+                # Append new source's content if it adds meaningful length
+                new_content = article.get("raw_content", "")
+                if len(new_content) > 500 and len(new_content) > len(mcontent) * 0.3:
+                    merged_content = (
+                        mcontent
+                        + f"\n\n--- Additional coverage from {article['source']} ---\n\n"
+                        + new_content
+                    )
+                    # Cap merged content at 15 000 chars
+                    session.execute(
+                        select(NewsItem)
+                        .where(NewsItem.id == mid)
+                    )
+                    existing_item = session.get(NewsItem, mid)
+                    if existing_item:
+                        existing_item.raw_content = merged_content[:15000]
+
+                        # Track the correlated source
+                        corr_entry = {
+                            "source": article["source"],
+                            "url": article["source_url"],
+                            "headline": article["headline"][:200],
+                        }
+                        updated_corr = list(mcorr)
+                        # Avoid adding the same source twice
+                        if not any(c.get("source") == article["source"] for c in updated_corr):
+                            updated_corr.append(corr_entry)
+                            existing_item.correlated_sources = updated_corr
+
+                        # Re-queue for AI enrichment if already enriched
+                        if menriched:
+                            existing_item.ai_enriched = False
+                            logger.info(
+                                "news_requeue_enrichment",
+                                headline=mhead[:80],
+                                reason="cross_source_merge",
+                            )
+
+                        merged += 1
+                else:
+                    # Content not substantial enough to merge, just track source
+                    existing_item = session.get(NewsItem, mid)
+                    if existing_item:
+                        corr_entry = {
+                            "source": article["source"],
+                            "url": article["source_url"],
+                            "headline": article["headline"][:200],
+                        }
+                        updated_corr = list(mcorr)
+                        if not any(c.get("source") == article["source"] for c in updated_corr):
+                            updated_corr.append(corr_entry)
+                            existing_item.correlated_sources = updated_corr
+
+                skipped_dup += 1
+                # Add to hash_set so subsequent articles don't re-match
+                hash_set.add(article["source_hash"])
+                continue
+
+            # 3. New unique article — store it
             news_item = NewsItem(
                 headline=article["headline"],
                 source=article["source"],
@@ -1317,13 +1429,33 @@ def ingest_news() -> dict:
                 ai_enriched=False,
                 relevance_score=50,
                 confidence="medium",
+                correlated_sources=[],
             )
             session.add(news_item)
             stored += 1
 
+            # Add to recent_items so later articles in this batch can match
+            hash_set.add(article["source_hash"])
+            recent_items.append((
+                news_item.id, article["headline"], article["source"],
+                article["source_hash"], article.get("raw_content", ""),
+                False, [],
+            ))
+
         session.commit()
-        logger.info("news_ingest_complete", fetched=len(articles), stored=stored)
-        return {"fetched": len(articles), "stored": stored}
+        logger.info(
+            "news_ingest_complete",
+            fetched=len(articles),
+            stored=stored,
+            merged=merged,
+            skipped_dup=skipped_dup,
+        )
+        return {
+            "fetched": len(articles),
+            "stored": stored,
+            "merged": merged,
+            "skipped_dup": skipped_dup,
+        }
 
     except Exception as e:
         logger.error("news_ingest_error", error=str(e))

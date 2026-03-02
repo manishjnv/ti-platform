@@ -376,5 +376,8 @@ class NewsItem(Base):
     raw_content: Mapped[str | None] = mapped_column(Text)
     source_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
 
+    # Cross-source correlation: tracks other sources covering the same story
+    correlated_sources: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
