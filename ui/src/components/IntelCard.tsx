@@ -161,15 +161,13 @@ export function IntelCard({ item }: IntelCardProps) {
               <Telescope className="h-3 w-3 text-purple-400" />
               <span className="text-[10px] font-medium text-purple-400">Investigate</span>
             </Link>
-            <Link
-              href={`/investigate?id=${encodeURIComponent(item.id)}&type=intel&depth=2`}
-              onClick={(e) => e.stopPropagation()}
-              className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/20 transition-colors"
-              title="Connections — explore related entities"
+            <span
+              className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-500/10 border border-teal-500/20"
+              title={`${item.related_ioc_count || 0} related connections`}
             >
               <Share2 className="h-3 w-3 text-teal-400" />
-              <span className="text-[10px] font-medium text-teal-400">Connections</span>
-            </Link>
+              <span className="text-[10px] font-bold text-teal-400 tabular-nums">{item.related_ioc_count || 0}</span>
+            </span>
           </div>
         </div>
 

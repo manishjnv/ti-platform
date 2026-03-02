@@ -20,7 +20,7 @@ import {
   Globe,
   Bug,
   Crosshair,
-  Share2,
+  Telescope,
   FileText,
   Bell,
   X,
@@ -42,7 +42,7 @@ const NAV_SECTIONS = [
     items: [
       { href: "/intel", label: "Intel Items", icon: List },
       { href: "/reports", label: "Reports", icon: FileText },
-      { href: "/investigate", label: "Investigate", icon: Share2 },
+      { href: "/investigate", label: "Investigate", icon: Telescope },
       { href: "/techniques", label: "ATT&CK Map", icon: Crosshair },
       { href: "/search", label: "IOC Search", icon: Search },
       { href: "/iocs", label: "IOC Database", icon: Bug },

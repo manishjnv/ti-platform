@@ -882,13 +882,13 @@ export default function IOCDatabasePage() {
                           >
                             <Telescope className="h-3.5 w-3.5 text-purple-400" />
                           </button>
-                          <button
-                            onClick={() => router.push(`/investigate?id=${encodeURIComponent(ioc.value)}&type=ioc&depth=2`)}
-                            className="p-1.5 rounded-md bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/20 transition-colors"
-                            title="Connections — explore related entities"
+                          <span
+                            className="flex items-center gap-0.5 px-1.5 py-1 rounded-md bg-teal-500/10 border border-teal-500/20"
+                            title={`${ioc.linked_intel_count || 0} related connections`}
                           >
-                            <Share2 className="h-3.5 w-3.5 text-teal-400" />
-                          </button>
+                            <Share2 className="h-3 w-3 text-teal-400" />
+                            <span className="text-[10px] font-bold text-teal-400 tabular-nums">{ioc.linked_intel_count || 0}</span>
+                          </span>
                         </div>
                       </td>
                     </tr>
