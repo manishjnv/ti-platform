@@ -245,8 +245,8 @@ export default function SearchPage() {
     }
   };
 
-  const handleLiveLookup = async () => {
-    const q = (debouncedQuery || query).trim();
+  const handleLiveLookup = async (overrideQuery?: string) => {
+    const q = (overrideQuery || debouncedQuery || query).trim();
     if (!q) return;
     setLiveLoading(true);
     setLiveResult(null);
@@ -264,7 +264,7 @@ export default function SearchPage() {
     if (e.key === "Enter") {
       setDebouncedQuery(query);
       doSearch(1, query);
-      setLiveResult(null);
+      handleLiveLookup(query);
     }
   };
 
@@ -353,6 +353,7 @@ export default function SearchPage() {
           onClick={() => {
             setDebouncedQuery(query);
             doSearch(1, query);
+            handleLiveLookup(query);
           }}
           disabled={searchLoading || !query.trim()}
           className="h-10"
@@ -538,7 +539,7 @@ export default function SearchPage() {
             </div>
             {searchResult.results.length > 0 && (
               <Button
-                onClick={handleLiveLookup}
+                onClick={() => handleLiveLookup()}
                 disabled={liveLoading}
                 variant="outline"
                 size="sm"
@@ -571,7 +572,7 @@ export default function SearchPage() {
                   This IOC wasn&apos;t found in ingested feeds. Search the internet for live intelligence.
                 </p>
                 <Button
-                  onClick={handleLiveLookup}
+                  onClick={() => handleLiveLookup()}
                   disabled={liveLoading}
                   className="gap-2"
                   variant="outline"
@@ -1010,6 +1011,7 @@ export default function SearchPage() {
                     setQuery(example);
                     setDebouncedQuery(example);
                     doSearch(1, example);
+                    handleLiveLookup(example);
                   }}
                 >
                   {example}
