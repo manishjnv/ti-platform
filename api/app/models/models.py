@@ -316,3 +316,61 @@ class UserSetting(Base):
     preferences: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+# ─── Cyber News ───────────────────────────────────────────
+
+class NewsItem(Base):
+    __tablename__ = "news_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    headline: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(String(200), nullable=False)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    category: Mapped[str] = mapped_column(
+        SAEnum(
+            "active_threats", "exploited_vulnerabilities", "ransomware_breaches",
+            "nation_state", "cloud_identity", "ot_ics", "security_research",
+            "tools_technology", "policy_regulation",
+            name="news_category", create_type=False,
+        ),
+        nullable=False, default="active_threats",
+    )
+    summary: Mapped[str | None] = mapped_column(Text)
+
+    # Structured intelligence (AI-enriched)
+    why_it_matters: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    tags: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    threat_actors: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    malware_families: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    campaign_name: Mapped[str | None] = mapped_column(String(300))
+    cves: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    vulnerable_products: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    tactics_techniques: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    initial_access_vector: Mapped[str | None] = mapped_column(Text)
+    post_exploitation: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    targeted_sectors: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    targeted_regions: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    impacted_assets: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+
+    # Structured JSON blocks
+    ioc_summary: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    timeline: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    detection_opportunities: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    mitigation_recommendations: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+
+    # Scoring
+    confidence: Mapped[str] = mapped_column(
+        SAEnum("high", "medium", "low", name="confidence_level", create_type=False),
+        nullable=False, default="medium",
+    )
+    relevance_score: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=50)
+
+    # Processing state
+    ai_enriched: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    raw_content: Mapped[str | None] = mapped_column(Text)
+    source_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

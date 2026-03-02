@@ -1278,3 +1278,123 @@ async def _download_epss_csv() -> str | None:
     except Exception as e:
         logger.error("epss_download_error", error=str(e))
         return None
+
+
+# ── Cyber News Ingestion ─────────────────────────────────
+
+def ingest_news() -> dict:
+    """Fetch cyber news from RSS feeds, store new articles, queue AI enrichment."""
+    from app.models.models import NewsItem
+    from app.services.news import fetch_all_feeds
+
+    logger.info("news_ingest_start")
+    session = SyncSession()
+
+    try:
+        articles = _run_async(fetch_all_feeds())
+        if not articles:
+            logger.info("news_ingest_no_articles")
+            return {"fetched": 0, "stored": 0}
+
+        stored = 0
+        for article in articles:
+            # Check dedup
+            existing = session.execute(
+                select(NewsItem.id).where(NewsItem.source_hash == article["source_hash"])
+            ).scalar_one_or_none()
+
+            if existing:
+                continue
+
+            news_item = NewsItem(
+                headline=article["headline"],
+                source=article["source"],
+                source_url=article["source_url"],
+                published_at=article.get("published_at"),
+                category=article.get("category", "active_threats"),
+                raw_content=article.get("raw_content"),
+                source_hash=article["source_hash"],
+                ai_enriched=False,
+                relevance_score=50,
+                confidence="medium",
+            )
+            session.add(news_item)
+            stored += 1
+
+        session.commit()
+        logger.info("news_ingest_complete", fetched=len(articles), stored=stored)
+        return {"fetched": len(articles), "stored": stored}
+
+    except Exception as e:
+        logger.error("news_ingest_error", error=str(e))
+        session.rollback()
+        return {"error": str(e)}
+    finally:
+        session.close()
+
+
+def enrich_news_batch(batch_size: int = 10) -> dict:
+    """AI-enrich unenriched news items in batch."""
+    from app.models.models import NewsItem
+    from app.services.news import enrich_news_item
+
+    logger.info("news_enrich_start", batch_size=batch_size)
+    session = SyncSession()
+
+    try:
+        # Get unenriched items, oldest first
+        result = session.execute(
+            select(NewsItem)
+            .where(NewsItem.ai_enriched == False)
+            .order_by(NewsItem.created_at.asc())
+            .limit(batch_size)
+        )
+        items = result.scalars().all()
+
+        if not items:
+            logger.info("news_enrich_no_items")
+            return {"enriched": 0}
+
+        enriched_count = 0
+        for item in items:
+            enrichment = _run_async(
+                enrich_news_item(item.headline, item.raw_content or "")
+            )
+
+            if enrichment:
+                # Apply enrichment data
+                item.category = enrichment.get("category", item.category)
+                item.summary = enrichment.get("summary")
+                item.why_it_matters = enrichment.get("why_it_matters", [])
+                item.tags = enrichment.get("tags", [])
+                item.threat_actors = enrichment.get("threat_actors", [])
+                item.malware_families = enrichment.get("malware_families", [])
+                item.campaign_name = enrichment.get("campaign_name")
+                item.cves = enrichment.get("cves", [])
+                item.vulnerable_products = enrichment.get("vulnerable_products", [])
+                item.tactics_techniques = enrichment.get("tactics_techniques", [])
+                item.initial_access_vector = enrichment.get("initial_access_vector")
+                item.post_exploitation = enrichment.get("post_exploitation", [])
+                item.targeted_sectors = enrichment.get("targeted_sectors", [])
+                item.targeted_regions = enrichment.get("targeted_regions", [])
+                item.impacted_assets = enrichment.get("impacted_assets", [])
+                item.ioc_summary = enrichment.get("ioc_summary", {})
+                item.timeline = enrichment.get("timeline", [])
+                item.detection_opportunities = enrichment.get("detection_opportunities", [])
+                item.mitigation_recommendations = enrichment.get("mitigation_recommendations", [])
+                item.confidence = enrichment.get("confidence", "medium")
+                item.relevance_score = max(1, min(100, enrichment.get("relevance_score", 50)))
+
+            item.ai_enriched = True
+            enriched_count += 1
+
+        session.commit()
+        logger.info("news_enrich_complete", enriched=enriched_count)
+        return {"enriched": enriched_count}
+
+    except Exception as e:
+        logger.error("news_enrich_error", error=str(e))
+        session.rollback()
+        return {"error": str(e)}
+    finally:
+        session.close()

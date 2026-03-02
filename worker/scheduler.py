@@ -35,7 +35,7 @@ redis_conn = Redis.from_url(settings.redis_url)
 scheduler = Scheduler(queue_name="default", connection=redis_conn)
 
 # ── Constants ────────────────────────────────────────────
-EXPECTED_JOB_COUNT = 19          # total scheduled jobs we register
+EXPECTED_JOB_COUNT = 21          # total scheduled jobs we register
 WATCHDOG_INTERVAL = 120          # seconds between health checks
 HEARTBEAT_KEY = "scheduler:heartbeat"
 HEARTBEAT_TTL = 300              # seconds — expires if scheduler dies
@@ -297,6 +297,25 @@ def setup_schedules():
         interval=timedelta(hours=24).total_seconds(),
         queue_name="low",
         meta={"task": "epss_scoring"},
+    )
+
+    # ─── Cyber News Ingestion — every 30 minutes ────────
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc) + timedelta(minutes=2),
+        func="worker.tasks.ingest_news",
+        interval=timedelta(minutes=30).total_seconds(),
+        queue_name="default",
+        meta={"task": "news_ingest"},
+    )
+
+    # ─── Cyber News AI Enrichment — every 5 minutes ─────
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc) + timedelta(minutes=4),
+        func="worker.tasks.enrich_news_batch",
+        kwargs={"batch_size": 5},
+        interval=timedelta(minutes=5).total_seconds(),
+        queue_name="low",
+        meta={"task": "news_enrichment"},
     )
 
     print(f"Scheduled {len(list(scheduler.get_jobs()))} jobs")

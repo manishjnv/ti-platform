@@ -87,3 +87,40 @@ The **Investigate** page uses the `Telescope` icon in the sidebar for consistenc
 - **For any major change**, update the relevant docs (`instruction.md`, `README.md`, or `docs/`).
 - **Develop locally** at `E:\code\ti-platform`, push to GitHub, deploy to VPS and test online.
 - **Deploy flow**: `git push origin main` → SSH to VPS → `git pull` → `docker compose build ui` → `docker compose up -d ui`.
+
+---
+
+## Cyber News Feature
+
+### Overview
+
+A structured, decision-ready intelligence cyber news feed aggregated from 8+ RSS sources with AI enrichment.
+
+### Architecture
+
+| Component | File(s) | Description |
+|-----------|---------|-------------|
+| DB Schema | `db/schema.sql` | `news_items` table with `news_category` + `confidence_level` enums |
+| Model | `api/app/models/models.py` → `NewsItem` | SQLAlchemy 2.0 mapped model |
+| Schemas | `api/app/schemas/__init__.py` | `NewsItemResponse`, `NewsListResponse`, `NewsCategoriesResponse` |
+| Service | `api/app/services/news.py` | RSS fetcher, AI enrichment prompt, category detection |
+| Routes | `api/app/routes/news.py` | `GET /news`, `GET /news/categories`, `GET /news/{id}`, `POST /news/refresh` |
+| Worker | `worker/tasks.py` | `ingest_news()`, `enrich_news_batch()` |
+| Scheduler | `worker/scheduler.py` | Ingestion every 30 min, AI enrichment every 5 min |
+| UI Page | `ui/src/app/(app)/news/page.tsx` | Category widgets (left), news feed (right), skeleton loaders |
+| UI Detail | `ui/src/app/(app)/news/[id]/page.tsx` | Headline strip, why-it-matters cards, IOC summary, timeline, detection/mitigation |
+| TypeScript | `ui/src/types/index.ts` | `NewsItem`, `NewsCategory`, `NewsListResponse`, etc. |
+| API Client | `ui/src/lib/api.ts` | `getNews()`, `getNewsItem()`, `getNewsCategories()`, `refreshNews()` |
+| Sidebar | `ui/src/components/Sidebar.tsx` | `Newspaper` icon in Overview section |
+
+### Nine Categories
+
+`active_threats`, `exploited_vulnerabilities`, `ransomware_breaches`, `nation_state`, `cloud_identity`, `ot_ics`, `security_research`, `tools_technology`, `policy_regulation`
+
+### RSS Sources
+
+BleepingComputer, The Hacker News, Krebs on Security, Dark Reading, SecurityWeek, CISA Alerts, Threatpost, The Record
+
+### AI Enrichment Schema
+
+Each article is enriched into structured JSON with: summary, why_it_matters, threat_actors, malware_families, CVEs, MITRE ATT&CK techniques, IOC summary, timeline, detection/mitigation, relevance_score (1-100), confidence (high/medium/low).

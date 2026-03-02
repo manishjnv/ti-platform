@@ -27,6 +27,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Menu,
+  Newspaper,
 } from "lucide-react";
 
 const NAV_SECTIONS = [
@@ -35,6 +36,7 @@ const NAV_SECTIONS = [
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/threats", label: "Threat Feed", icon: AlertTriangle },
+      { href: "/news", label: "Cyber News", icon: Newspaper },
     ],
   },
   {

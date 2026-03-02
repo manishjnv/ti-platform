@@ -581,3 +581,81 @@ class UserSettingsResponse(BaseModel):
 
 class UserSettingsUpdate(BaseModel):
     settings: dict
+
+
+# ─── Cyber News ──────────────────────────────────────────
+
+class NewsCategory(str, Enum):
+    active_threats = "active_threats"
+    exploited_vulnerabilities = "exploited_vulnerabilities"
+    ransomware_breaches = "ransomware_breaches"
+    nation_state = "nation_state"
+    cloud_identity = "cloud_identity"
+    ot_ics = "ot_ics"
+    security_research = "security_research"
+    tools_technology = "tools_technology"
+    policy_regulation = "policy_regulation"
+
+
+class ConfidenceLevel(str, Enum):
+    high = "high"
+    medium = "medium"
+    low = "low"
+
+
+class NewsItemResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    headline: str
+    source: str
+    source_url: str
+    published_at: datetime | None = None
+    category: NewsCategory
+    summary: str | None = None
+
+    why_it_matters: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    threat_actors: list[str] = Field(default_factory=list)
+    malware_families: list[str] = Field(default_factory=list)
+    campaign_name: str | None = None
+    cves: list[str] = Field(default_factory=list)
+    vulnerable_products: list[str] = Field(default_factory=list)
+    tactics_techniques: list[str] = Field(default_factory=list)
+    initial_access_vector: str | None = None
+    post_exploitation: list[str] = Field(default_factory=list)
+    targeted_sectors: list[str] = Field(default_factory=list)
+    targeted_regions: list[str] = Field(default_factory=list)
+    impacted_assets: list[str] = Field(default_factory=list)
+
+    ioc_summary: dict = Field(default_factory=dict)
+    timeline: list = Field(default_factory=list)
+    detection_opportunities: list[str] = Field(default_factory=list)
+    mitigation_recommendations: list[str] = Field(default_factory=list)
+
+    confidence: ConfidenceLevel = ConfidenceLevel.medium
+    relevance_score: int = 50
+    ai_enriched: bool = False
+
+    created_at: datetime
+    updated_at: datetime
+
+
+class NewsListResponse(BaseModel):
+    items: list[NewsItemResponse]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+class NewsCategoryCount(BaseModel):
+    category: NewsCategory
+    count: int
+    latest_headline: str | None = None
+    latest_published_at: datetime | None = None
+
+
+class NewsCategoriesResponse(BaseModel):
+    categories: list[NewsCategoryCount]
+    total: int

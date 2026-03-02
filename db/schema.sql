@@ -433,3 +433,78 @@ CREATE TABLE IF NOT EXISTS user_settings (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- =============================================
+-- Cyber News
+-- =============================================
+DO $$ BEGIN
+    CREATE TYPE news_category AS ENUM (
+        'active_threats',
+        'exploited_vulnerabilities',
+        'ransomware_breaches',
+        'nation_state',
+        'cloud_identity',
+        'ot_ics',
+        'security_research',
+        'tools_technology',
+        'policy_regulation'
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE confidence_level AS ENUM ('high', 'medium', 'low');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE TABLE IF NOT EXISTS news_items (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    headline        TEXT NOT NULL,
+    source          VARCHAR(200) NOT NULL,
+    source_url      TEXT NOT NULL,
+    published_at    TIMESTAMPTZ,
+    category        news_category NOT NULL DEFAULT 'active_threats',
+    summary         TEXT,
+
+    -- Structured intelligence (AI-enriched)
+    why_it_matters          TEXT[] NOT NULL DEFAULT '{}',
+    tags                    TEXT[] NOT NULL DEFAULT '{}',
+    threat_actors           TEXT[] NOT NULL DEFAULT '{}',
+    malware_families        TEXT[] NOT NULL DEFAULT '{}',
+    campaign_name           VARCHAR(300),
+    cves                    TEXT[] NOT NULL DEFAULT '{}',
+    vulnerable_products     TEXT[] NOT NULL DEFAULT '{}',
+    tactics_techniques      TEXT[] NOT NULL DEFAULT '{}',
+    initial_access_vector   TEXT,
+    post_exploitation       TEXT[] NOT NULL DEFAULT '{}',
+    targeted_sectors        TEXT[] NOT NULL DEFAULT '{}',
+    targeted_regions        TEXT[] NOT NULL DEFAULT '{}',
+    impacted_assets         TEXT[] NOT NULL DEFAULT '{}',
+
+    -- Structured JSON blocks
+    ioc_summary             JSONB NOT NULL DEFAULT '{}',
+    timeline                JSONB NOT NULL DEFAULT '[]',
+    detection_opportunities TEXT[] NOT NULL DEFAULT '{}',
+    mitigation_recommendations TEXT[] NOT NULL DEFAULT '{}',
+
+    -- Scoring
+    confidence              confidence_level NOT NULL DEFAULT 'medium',
+    relevance_score         SMALLINT NOT NULL DEFAULT 50 CHECK (relevance_score >= 0 AND relevance_score <= 100),
+
+    -- Processing state
+    ai_enriched             BOOLEAN NOT NULL DEFAULT FALSE,
+    raw_content             TEXT,
+    source_hash             VARCHAR(64) NOT NULL,
+
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_news_source_hash ON news_items(source_hash);
+CREATE INDEX IF NOT EXISTS idx_news_category ON news_items(category, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_news_published ON news_items(published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_news_relevance ON news_items(relevance_score DESC, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_news_tags ON news_items USING GIN(tags);
+CREATE INDEX IF NOT EXISTS idx_news_cves ON news_items USING GIN(cves);
+CREATE INDEX IF NOT EXISTS idx_news_headline_trgm ON news_items USING GIN(headline gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_news_ai_enriched ON news_items(ai_enriched) WHERE ai_enriched = FALSE;

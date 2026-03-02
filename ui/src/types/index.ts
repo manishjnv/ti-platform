@@ -607,3 +607,74 @@ export interface ReportTemplate {
     hint?: string;
   }>;
 }
+
+// ─── Cyber News ─────────────────────────────────────────
+export type NewsCategory =
+  | 'active_threats'
+  | 'exploited_vulnerabilities'
+  | 'ransomware_breaches'
+  | 'nation_state'
+  | 'cloud_identity'
+  | 'ot_ics'
+  | 'security_research'
+  | 'tools_technology'
+  | 'policy_regulation';
+
+export type ConfidenceLevel = 'high' | 'medium' | 'low';
+
+export interface NewsItem {
+  id: string;
+  headline: string;
+  source: string;
+  source_url: string;
+  published_at: string | null;
+  category: NewsCategory;
+  summary: string | null;
+  why_it_matters: string[];
+  tags: string[];
+  threat_actors: string[];
+  malware_families: string[];
+  campaign_name: string | null;
+  cves: string[];
+  vulnerable_products: string[];
+  tactics_techniques: string[];
+  initial_access_vector: string | null;
+  post_exploitation: string[];
+  targeted_sectors: string[];
+  targeted_regions: string[];
+  impacted_assets: string[];
+  ioc_summary: {
+    domains?: string[];
+    ips?: string[];
+    hashes?: string[];
+    urls?: string[];
+  };
+  timeline: Array<{ date: string | null; event: string }>;
+  detection_opportunities: string[];
+  mitigation_recommendations: string[];
+  confidence: ConfidenceLevel;
+  relevance_score: number;
+  ai_enriched: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NewsListResponse {
+  items: NewsItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+}
+
+export interface NewsCategoryCount {
+  category: NewsCategory;
+  count: number;
+  latest_headline: string | null;
+  latest_published_at: string | null;
+}
+
+export interface NewsCategoriesResponse {
+  categories: NewsCategoryCount[];
+  total: number;
+}

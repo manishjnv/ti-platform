@@ -576,3 +576,36 @@ export async function getPlatformInfo() {
     active_feeds: number;
   }>("/settings/platform-info");
 }
+
+// ─── Cyber News ─────────────────────────────────────────
+export async function getNews(params: {
+  page?: number;
+  page_size?: number;
+  category?: string;
+  tag?: string;
+  search?: string;
+  min_relevance?: number;
+  ai_enriched?: boolean;
+  sort_by?: string;
+  sort_order?: string;
+} = {}): Promise<import("@/types").NewsListResponse> {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== "") query.set(k, String(v));
+  });
+  return fetcher<import("@/types").NewsListResponse>(`/news?${query}`);
+}
+
+export async function getNewsItem(id: string): Promise<import("@/types").NewsItem> {
+  return fetcher<import("@/types").NewsItem>(`/news/${id}`);
+}
+
+export async function getNewsCategories(): Promise<import("@/types").NewsCategoriesResponse> {
+  return fetcher<import("@/types").NewsCategoriesResponse>("/news/categories");
+}
+
+export async function refreshNews(): Promise<{ status: string; job_id: string }> {
+  return fetcher<{ status: string; job_id: string }>("/news/refresh", {
+    method: "POST",
+  });
+}

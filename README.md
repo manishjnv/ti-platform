@@ -51,6 +51,7 @@ A production-grade, self-hosted threat intelligence aggregation and analysis pla
 | **Login** | `/login` | IntelWatch branded login — SSO redirect or dev bypass |
 | **Dashboard** | `/dashboard` | KPI stat cards, threat level bar, severity/category donut charts, top risks table, feed status |
 | **Threat Feed** | `/threats` | Severity filter pills, risk-sorted threat list, asset type breakdown |
+| **Cyber News** | `/news` | Structured intelligence cyber news feed — category widgets, AI enrichment, relevance scoring |
 | **Intel Items** | `/intel` | Paginated intel browser with filters, detail drill-down |
 | **IOC Search** | `/search` | Full-text IOC search with type/severity/date filters, Live Internet Lookup (12+ sources), structured AI analysis |
 | **IOC Database** | `/iocs` | Browse all IOCs with type filter pills, copy-to-clipboard, type distribution donut |
