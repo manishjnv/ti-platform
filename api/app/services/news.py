@@ -14,6 +14,7 @@ from email.utils import parsedate_to_datetime
 from xml.etree import ElementTree
 
 import httpx
+import trafilatura
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -26,6 +27,7 @@ settings = get_settings()
 # ── RSS Feed Sources ─────────────────────────────────────
 
 NEWS_FEEDS: list[dict] = [
+    # ── Tier 1 — Major Security News ──────────────────
     {
         "name": "BleepingComputer",
         "url": "https://www.bleepingcomputer.com/feed/",
@@ -52,19 +54,82 @@ NEWS_FEEDS: list[dict] = [
         "default_category": "active_threats",
     },
     {
+        "name": "The Record",
+        "url": "https://therecord.media/feed",
+        "default_category": "nation_state",
+    },
+    {
+        "name": "CyberScoop",
+        "url": "https://cyberscoop.com/feed/",
+        "default_category": "nation_state",
+    },
+    # ── Tier 2 — Government / CERT Advisories ────────
+    {
         "name": "CISA Alerts",
         "url": "https://www.cisa.gov/cybersecurity-advisories/all.xml",
         "default_category": "exploited_vulnerabilities",
     },
     {
-        "name": "Threatpost",
-        "url": "https://threatpost.com/feed/",
+        "name": "US-CERT",
+        "url": "https://www.cisa.gov/news-events/cybersecurity-advisories/rss.xml",
+        "default_category": "exploited_vulnerabilities",
+    },
+    # ── Tier 3 — Vendor Threat Research Blogs ────────
+    {
+        "name": "Microsoft Security",
+        "url": "https://www.microsoft.com/en-us/security/blog/feed/",
+        "default_category": "security_research",
+    },
+    {
+        "name": "Google TAG",
+        "url": "https://blog.google/threat-analysis-group/rss/",
+        "default_category": "nation_state",
+    },
+    {
+        "name": "Cisco Talos",
+        "url": "https://blog.talosintelligence.com/rss/",
+        "default_category": "security_research",
+    },
+    {
+        "name": "SentinelOne Labs",
+        "url": "https://www.sentinelone.com/labs/feed/",
+        "default_category": "security_research",
+    },
+    {
+        "name": "Unit 42",
+        "url": "https://unit42.paloaltonetworks.com/feed/",
+        "default_category": "security_research",
+    },
+    {
+        "name": "Sophos News",
+        "url": "https://news.sophos.com/en-us/feed/",
         "default_category": "active_threats",
     },
     {
-        "name": "The Record",
-        "url": "https://therecord.media/feed",
+        "name": "WeLiveSecurity",
+        "url": "https://www.welivesecurity.com/en/rss/feed/",
+        "default_category": "security_research",
+    },
+    {
+        "name": "Mandiant",
+        "url": "https://www.mandiant.com/resources/blog/rss.xml",
         "default_category": "nation_state",
+    },
+    # ── Tier 4 — Expert / Independent ────────────────
+    {
+        "name": "Schneier on Security",
+        "url": "https://www.schneier.com/feed/atom/",
+        "default_category": "policy_regulation",
+    },
+    {
+        "name": "Graham Cluley",
+        "url": "https://grahamcluley.com/feed/",
+        "default_category": "active_threats",
+    },
+    {
+        "name": "Threatpost",
+        "url": "https://threatpost.com/feed/",
+        "default_category": "active_threats",
     },
 ]
 
@@ -99,6 +164,71 @@ def _strip_html(html: str | None) -> str:
     text = re.sub(r"&[a-z]+;", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text[:5000]  # cap long descriptions
+
+
+# ── Full-text Extraction ─────────────────────────────────
+
+async def _extract_full_text(url: str) -> str | None:
+    """Fetch the article URL and extract full body text using trafilatura.
+
+    Returns the full article text (capped at 8 000 chars) or None on failure.
+    This gives the AI enrichment pipeline the complete article instead of
+    the short RSS summary.
+    """
+    try:
+        async with httpx.AsyncClient(
+            timeout=15,
+            follow_redirects=True,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                              "AppleWebKit/537.36 (KHTML, like Gecko) "
+                              "Chrome/124.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,*/*",
+            },
+        ) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+
+        text = trafilatura.extract(
+            resp.text,
+            include_comments=False,
+            include_tables=False,
+            no_fallback=False,
+        )
+        if text and len(text) > 200:
+            return text[:8000]
+        return None
+    except Exception:
+        return None
+
+
+async def _enrich_articles_with_fulltext(articles: list[dict]) -> list[dict]:
+    """Concurrently fetch full article text for a batch of articles.
+
+    Replaces the short RSS description in raw_content with the complete
+    article body when extraction succeeds.
+    """
+    import asyncio
+
+    async def _fetch_one(article: dict) -> dict:
+        full = await _extract_full_text(article["source_url"])
+        if full:
+            article["raw_content"] = full
+            logger.debug(
+                "fulltext_extracted",
+                source=article["source"],
+                chars=len(full),
+            )
+        return article
+
+    # Process up to 10 concurrently to be polite to source sites
+    sem = asyncio.Semaphore(10)
+
+    async def _limited(art: dict) -> dict:
+        async with sem:
+            return await _fetch_one(art)
+
+    return await asyncio.gather(*[_limited(a) for a in articles])
 
 
 def _detect_category(title: str, description: str) -> str:
@@ -210,7 +340,7 @@ async def fetch_rss_feed(feed: dict) -> list[dict]:
 
 
 async def fetch_all_feeds() -> list[dict]:
-    """Fetch all configured RSS feeds concurrently."""
+    """Fetch all configured RSS feeds concurrently, then extract full article text."""
     import asyncio
     tasks = [fetch_rss_feed(feed) for feed in NEWS_FEEDS]
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -222,7 +352,18 @@ async def fetch_all_feeds() -> list[dict]:
         elif isinstance(result, Exception):
             logger.warning("news_feed_exception", error=str(result)[:200])
 
-    logger.info("news_all_feeds_fetched", total=len(all_articles))
+    logger.info("news_rss_fetched", total=len(all_articles), sources=len(NEWS_FEEDS))
+
+    # Extract full article text (replaces short RSS summaries)
+    if all_articles:
+        all_articles = list(await _enrich_articles_with_fulltext(all_articles))
+        full_count = sum(1 for a in all_articles if len(a.get("raw_content", "")) > 1000)
+        logger.info(
+            "news_fulltext_done",
+            total=len(all_articles),
+            full_text=full_count,
+        )
+
     return all_articles
 
 
@@ -295,7 +436,7 @@ Scoring: 90-100 active zero-day/KEV; 70-89 major breach/APT/ransomware; 50-69 no
 
 async def enrich_news_item(headline: str, raw_content: str) -> dict | None:
     """Use AI to extract structured intelligence from a news article."""
-    user_prompt = f"Headline: {headline}\n\nContent:\n{raw_content[:3000]}"
+    user_prompt = f"Headline: {headline}\n\nContent:\n{raw_content[:6000]}"
 
     result = await chat_completion(
         system_prompt=_NEWS_ENRICHMENT_SYSTEM,
