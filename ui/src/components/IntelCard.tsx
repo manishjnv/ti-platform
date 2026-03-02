@@ -30,6 +30,7 @@ import {
   Bug,
   Link2,
   Crosshair,
+  Telescope,
 } from "lucide-react";
 
 interface IntelCardProps {
@@ -140,15 +141,26 @@ export function IntelCard({ item }: IntelCardProps) {
               <Link2 className="h-3 w-3" /> {item.related_ioc_count} IOCs
             </span>
           )}
-          <Link
-            href={`/search?q=${encodeURIComponent(item.source_ref || item.cve_ids[0] || item.title)}&hunt=1`}
-            onClick={(e) => e.stopPropagation()}
-            className="flex items-center gap-1 text-primary/50 hover:text-primary transition-colors ml-auto"
-            title="Hunt — search local + internet"
-          >
-            <Crosshair className="h-3 w-3" />
-            <span className="text-[10px] font-medium">Hunt</span>
-          </Link>
+          <div className="flex items-center gap-1 ml-auto">
+            <Link
+              href={`/search?q=${encodeURIComponent(item.source_ref || item.cve_ids[0] || item.title)}&hunt=1`}
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 transition-colors"
+              title="Hunt — search local + internet"
+            >
+              <Crosshair className="h-3 w-3 text-blue-400" />
+              <span className="text-[10px] font-medium text-blue-400">Hunt</span>
+            </Link>
+            <Link
+              href={`/investigate?id=${encodeURIComponent(item.id)}&type=intel`}
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 transition-colors"
+              title="Investigate — relationship graph"
+            >
+              <Telescope className="h-3 w-3 text-purple-400" />
+              <span className="text-[10px] font-medium text-purple-400">Investigate</span>
+            </Link>
+          </div>
         </div>
 
         {/* Compact data indicators */}
