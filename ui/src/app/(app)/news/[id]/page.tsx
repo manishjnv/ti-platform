@@ -158,9 +158,80 @@ function TagList({
   );
 }
 
-// ── Prose paragraph ──────────────────────────────────────
+// ── Keyword highlighting ─────────────────────────────────
+const HIGHLIGHT_RULES: { pattern: RegExp; style: string }[] = [
+  // CVE IDs
+  { pattern: /\bCVE-\d{4}-\d{4,}\b/g, style: "font-semibold text-orange-400 bg-orange-500/10 px-1 rounded" },
+  // MITRE ATT&CK IDs
+  { pattern: /\b(T\d{4}(?:\.\d{3})?|TA\d{4})\b/g, style: "font-semibold text-blue-400 bg-blue-500/10 px-1 rounded" },
+  // Action verbs — green highlight for immediate next-steps
+  { pattern: /\b(patch|update|upgrade|block|disable|revoke|rotate|deploy|scan|isolate|remediate|mitigat(?:e|ion)|harden|restrict|enforce|audit|verify|review|monitor|detect|enable)\b/gi, style: "font-medium text-green-400" },
+  // Threat/severity terms — amber/red for urgency
+  { pattern: /\b(zero[- ]day|critical|exploit(?:ed|ation|s)?|ransom(?:ware)?|malware|backdoor|RCE|remote code execution|privilege escalation|data (?:breach|exfiltration|leak)|supply[- ]chain|APT|brute[- ]force|phishing|trojan|rootkit|C2|command[- ]and[- ]control|lateral movement)\b/gi, style: "font-medium text-amber-400" },
+  // Product/tech terms in quotes
+  { pattern: /"([^"]{2,40})"/g, style: "font-medium text-foreground/90" },
+  // IP addresses
+  { pattern: /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, style: "font-mono text-sky-400 bg-sky-500/10 px-1 rounded text-[11px]" },
+];
+
+function highlightText(text: string): React.ReactNode[] {
+  // Build a single merged regex with named groups
+  const allMatches: { start: number; end: number; text: string; style: string }[] = [];
+  for (const rule of HIGHLIGHT_RULES) {
+    const re = new RegExp(rule.pattern.source, rule.pattern.flags);
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      allMatches.push({ start: m.index, end: m.index + m[0].length, text: m[0], style: rule.style });
+    }
+  }
+  // Sort by position, remove overlaps
+  allMatches.sort((a, b) => a.start - b.start);
+  const filtered: typeof allMatches = [];
+  let lastEnd = 0;
+  for (const m of allMatches) {
+    if (m.start >= lastEnd) {
+      filtered.push(m);
+      lastEnd = m.end;
+    }
+  }
+  // Build nodes
+  const nodes: React.ReactNode[] = [];
+  let cursor = 0;
+  for (let i = 0; i < filtered.length; i++) {
+    const m = filtered[i];
+    if (cursor < m.start) nodes.push(text.slice(cursor, m.start));
+    nodes.push(<span key={`h-${i}`} className={m.style}>{m.text}</span>);
+    cursor = m.end;
+  }
+  if (cursor < text.length) nodes.push(text.slice(cursor));
+  return nodes.length > 0 ? nodes : [text];
+}
+
+// ── Prose paragraph with keyword highlighting ────────────
 function Prose({ text, className }: { text: string; className?: string }) {
-  return <p className={cn("text-sm leading-relaxed text-muted-foreground", className)}>{text}</p>;
+  return <p className={cn("text-sm leading-relaxed text-muted-foreground", className)}>{highlightText(text)}</p>;
+}
+
+// ── Actionable bullet with pointer + highlight ───────────
+function ActionBullet({
+  text,
+  icon: Icon,
+  accent = "text-muted-foreground",
+  accentBg = "bg-muted/50",
+}: {
+  text: string;
+  icon: React.ElementType;
+  accent?: string;
+  accentBg?: string;
+}) {
+  return (
+    <li className="text-xs leading-relaxed text-muted-foreground flex items-start gap-2.5 group">
+      <div className={cn("flex items-center justify-center h-5 w-5 rounded-md shrink-0 mt-0.5 transition-colors", accentBg, "group-hover:scale-110")}>
+        <Icon className={cn("h-3 w-3", accent)} />
+      </div>
+      <span>{highlightText(text)}</span>
+    </li>
+  );
 }
 
 // ── Main Detail Page ─────────────────────────────────────
@@ -349,10 +420,10 @@ export default function NewsDetailPage() {
         <Section icon={Lightbulb} title="Key Takeaways" accent="text-yellow-400">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
             {item.why_it_matters.map((point, i) => (
-              <div key={i} className="rounded-lg border border-yellow-500/10 bg-yellow-500/5 p-3">
+              <div key={i} className="rounded-lg border border-yellow-500/10 bg-yellow-500/5 p-3 hover:border-yellow-500/30 transition-colors">
                 <div className="flex items-start gap-2">
                   <span className="text-[10px] font-bold text-yellow-400 bg-yellow-500/10 rounded px-1.5 py-0.5 shrink-0">{i + 1}</span>
-                  <p className="text-xs leading-relaxed text-muted-foreground">{point}</p>
+                  <p className="text-xs leading-relaxed text-muted-foreground">{highlightText(point)}</p>
                 </div>
               </div>
             ))}
@@ -444,12 +515,9 @@ export default function NewsDetailPage() {
           )}
           {item.post_exploitation.length > 0 && (
             <Section icon={Zap} title="Post-Exploitation" accent="text-orange-400">
-              <ul className="space-y-1.5">
+              <ul className="space-y-2">
                 {item.post_exploitation.map((pe, i) => (
-                  <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
-                    <ChevronRight className="h-3 w-3 text-orange-400/60 shrink-0 mt-0.5" />
-                    {pe}
-                  </li>
+                  <ActionBullet key={i} text={pe} icon={ChevronRight} accent="text-orange-400/80" accentBg="bg-orange-500/10" />
                 ))}
               </ul>
             </Section>
@@ -558,28 +626,18 @@ export default function NewsDetailPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {item.detection_opportunities.length > 0 && (
             <Section icon={Radio} title="Detection Opportunities" accent="text-blue-400">
-              <ul className="space-y-2">
+              <ul className="space-y-2.5">
                 {item.detection_opportunities.map((det, i) => (
-                  <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
-                    <div className="flex items-center justify-center h-4 w-4 rounded-full bg-blue-500/10 shrink-0 mt-0.5">
-                      <Eye className="h-2.5 w-2.5 text-blue-400" />
-                    </div>
-                    {det}
-                  </li>
+                  <ActionBullet key={i} text={det} icon={Eye} accent="text-blue-400" accentBg="bg-blue-500/10" />
                 ))}
               </ul>
             </Section>
           )}
           {item.mitigation_recommendations.length > 0 && (
             <Section icon={CheckCircle2} title="Mitigation Recommendations" accent="text-green-400">
-              <ul className="space-y-2">
+              <ul className="space-y-2.5">
                 {item.mitigation_recommendations.map((mit, i) => (
-                  <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
-                    <div className="flex items-center justify-center h-4 w-4 rounded-full bg-green-500/10 shrink-0 mt-0.5">
-                      <CheckCircle2 className="h-2.5 w-2.5 text-green-400" />
-                    </div>
-                    {mit}
-                  </li>
+                  <ActionBullet key={i} text={mit} icon={CheckCircle2} accent="text-green-400" accentBg="bg-green-500/10" />
                 ))}
               </ul>
             </Section>
