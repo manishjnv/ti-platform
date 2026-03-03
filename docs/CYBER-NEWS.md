@@ -32,22 +32,27 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                         Scheduler                           │
 │  ingest_news (every 30 min)  │  enrich_news (every 5 min)  │
+│                              │  cleanup_stale (every 6 hr)  │
 └──────────────┬───────────────┴──────────────┬───────────────┘
                │                              │
                ▼                              ▼
 ┌──────────────────────┐       ┌──────────────────────────────┐
 │    RSS Feed Fetcher  │       │      AI Enrichment Worker    │
-│  20 feeds, 4 tiers   │       │  Groq multi-model fallback   │
-│  httpx + trafilatura │       │  20s throttle per item        │
-└──────────┬───────────┘       └──────────────┬───────────────┘
-           │                                  │
-           ▼                                  ▼
+│  19 feeds, 4 tiers   │       │  Groq → Cerebras fallback    │
+│  httpx + trafilatura │       │  1s throttle per item         │
+│                      │       │  Category enum validation    │
+│  ↓ Pre-score 70+     │       └──────────────┬───────────────┘
+│    keyword rules     │                      │
+│  ↓ Keep top 10/cycle │                      ▼
+│    (~15/hour max)    │
+└──────────┬───────────┘
+           │
+           ▼                  UI defaults to ai_enriched=true
 ┌──────────────────────────────────────────────────────────────┐
 │                       PostgreSQL (TimescaleDB)              │
 │                     news_items (41 columns)                  │
 │  source_hash UNIQUE │ GIN trigram │ partial idx ai_enriched  │
-└──────────────────────────────┬───────────────────────────────┘
-                               │
+└──────────────────────────────────────────────────────────────┘
                                ▼
 ┌──────────────────────────────────────────────────────────────┐
 │                     FastAPI Routes (/news)                   │
@@ -123,16 +128,66 @@
 ### Step-by-Step Flow
 
 ```
-1. Fetch all 20 RSS feeds in parallel (asyncio.gather, return_exceptions=True)
+1. Fetch all 19 RSS feeds in parallel (asyncio.gather, return_exceptions=True)
 2. Parse each feed → extract articles (title, link, published, description)
 3. Compute source_hash = SHA-256("{feed_name}:{article_url}")
-4. Level 1 dedup: Skip if source_hash already in DB
-5. Level 2 dedup: Cross-source headline similarity check (see §4)
-6. If duplicate found → merge content (see §4.3)
-7. If new → full-text extraction via trafilatura (see §5)
-8. Store in news_items table
-9. Queue for AI enrichment (next scheduler cycle)
+4. ★ PRE-SCORE every article by headline relevance (see §3.1)
+5. ★ RANK by pre-score + recency, keep only TOP 10 per cycle (~15/hr)
+6. Full-text extraction via trafilatura (only for kept articles)
+7. Level 1 dedup: Skip if source_hash already in DB
+8. Level 2 dedup: Cross-source headline similarity check (see §4)
+9. If duplicate found → merge content (see §4.3)
+10. Store in news_items table
+11. Queue for AI enrichment (next scheduler cycle, 5-min interval)
+12. UI shows ONLY ai_enriched=true articles by default
 ```
+
+### 3.1 Headline Relevance Pre-Scorer
+
+Before storing, every fetched article receives a **pre-score** based on
+headline + first 2000 chars of content. Only the top `MAX_ARTICLES_PER_CYCLE`
+(default: **10**) articles are kept per ingestion cycle.
+
+#### High-Value Keywords (additive scoring)
+
+| Category | Keywords (subset) | Points |
+|----------|-------------------|--------|
+| Active exploitation / zero-day | `zero-day`, `0-day`, `actively exploited`, `in the wild`, `kev`, `cisa adds` | +25 |
+| CVEs / vulnerabilities | `cve-`, `critical vulnerability`, `rce`, `remote code execution`, `privilege escalation` | +20 |
+| Named threat actors / APTs | `lazarus`, `cozy bear`, `fancy bear`, `volt typhoon`, `scattered spider`, `lockbit`, `alphv` … (18 groups) | +20 |
+| Ransomware / major breaches | `ransomware`, `data breach`, `million records`, `extortion`, `leaked` | +18 |
+| Malware families | `malware`, `trojan`, `backdoor`, `rootkit`, `infostealer`, `cobalt strike` | +15 |
+| Government / nation-state | `nation-state`, `espionage`, `cyber command`, `nsa`, `fbi`, `cisa`, `sanctions` | +15 |
+| Supply chain | `supply chain`, `npm`, `pypi`, `solarwinds`, `moveit` | +15 |
+| Tactical content | `ioc`, `sigma rule`, `yara`, `snort`, `suricata`, `detection`, `hunting` | +12 |
+| Major vendors | `microsoft`, `google`, `apple`, `cisco`, `palo alto`, `fortinet`, `crowdstrike` … | +10 |
+| Cloud / identity | `azure`, `aws`, `gcp`, `entra`, `oauth`, `saml`, `sso` | +10 |
+
+#### Low-Value Penalties (subtractive)
+
+| Pattern | Keywords | Penalty |
+|---------|----------|---------|
+| Marketing | `podcast`, `webinar`, `register now`, `sponsored` | -30 |
+| Jobs | `job opening`, `career`, `hiring`, `salary` | -30 |
+| Product launches | `product launch`, `new feature`, `announces partnership` | -15 |
+| Editorial | `opinion:`, `editorial`, `book review`, `interview with` | -10 |
+
+#### Source Tier Bonuses
+
+| Tier | Sources | Bonus |
+|------|---------|-------|
+| Tier 1 – Breaking News | BleepingComputer, The Hacker News, Krebs, The Record | +10–12 |
+| Tier 2 – Government | CISA Alerts | +15 |
+| Tier 3 – Vendor Research | Google TAG, Mandiant, Unit 42, Microsoft Security | +10–12 |
+| Tier 4 – Independent | Schneier, Graham Cluley, Threatpost | +5–6 |
+
+#### Recency Bonuses
+
+| Age | Bonus |
+|-----|-------|
+| < 6 hours | +10 |
+| 6–24 hours | +5 |
+| > 24 hours | +0 |
 
 ### HTML Stripping
 
@@ -672,14 +727,16 @@ CREATE TYPE confidence_level AS ENUM ('high', 'medium', 'low');
 
 | Task | Function | Interval | Queue | Delay Offset | Parameters |
 |------|----------|----------|-------|-------------|------------|
-| News Ingestion | `worker.tasks.ingest_news` | **30 min** | `default` | +2 min | All 20 feeds |
+| News Ingestion | `worker.tasks.ingest_news` | **30 min** | `default` | +2 min | Top 10 per cycle |
 | News Enrichment | `worker.tasks.enrich_news_batch` | **5 min** | `low` | +4 min | `batch_size=5` |
+| Stale News Cleanup | `worker.tasks.cleanup_stale_news` | **6 hours** | `low` | +10 min | `max_age_hours=6` |
 
 ### Scheduler Constants
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
-| `EXPECTED_JOB_COUNT` | 21 | Total scheduled jobs across all features |
+| `EXPECTED_JOB_COUNT` | 22 | Total scheduled jobs across all features |
+| `MAX_ARTICLES_PER_CYCLE` | 10 | Max articles stored per ingestion cycle |
 | `WATCHDOG_INTERVAL` | 120s | Job health check interval |
 | `HEARTBEAT_KEY` | `scheduler:heartbeat` | Redis key for heartbeat |
 | `HEARTBEAT_TTL` | 300s | Heartbeat expiry |
@@ -688,20 +745,42 @@ CREATE TYPE confidence_level AS ENUM ('high', 'medium', 'low');
 
 1. Fetch all RSS feeds (parallel, 20s timeout per feed)
 2. Parse entries, compute source hashes
-3. Load existing hashes from DB (batch query)
-4. Load last 48h headlines for cross-source dedup
-5. For each new article: dedup → extract full-text → store
-6. Log ingestion stats (new items, duplicates, merges)
+3. **Pre-score every article** (headline + content keywords)
+4. **Sort by score descending, keep top 10** (drops hundreds of low-value items)
+5. Extract full-text for kept articles only (saves bandwidth)
+6. Load existing hashes from DB (batch query)
+7. Load last 48h headlines for cross-source dedup
+8. For each article: dedup → store
+9. Log ingestion stats (fetched, stored, merged, dropped)
 
 ### Worker Task: `enrich_news_batch(batch_size=5)`
 
 1. Query `WHERE ai_enriched = FALSE ORDER BY created_at ASC LIMIT batch_size`
 2. For each item:
    a. Call `enrich_news_item(headline, raw_content[:10000])`
-   b. Parse JSON response, update all 28 enrichment columns
-   c. Set `ai_enriched = True`
-   d. Sleep **20 seconds** (rate limit protection)
+   b. **Validate category** against enum (`_normalize_category` with 27-entry fallback map)
+   c. **Validate confidence** against enum (`high|medium|low`)
+   d. Parse JSON response, update all 28 enrichment columns
+   e. `session.flush()` per item — one bad item doesn't crash batch
+   f. Set `ai_enriched = True`
+   g. Sleep **1 second** (Cerebras doesn't need long throttle)
 3. If AI returns `None`, item stays unenriched for next cycle
+4. Per-item try/except with rollback isolates failures
+
+### Worker Task: `cleanup_stale_news(max_age_hours=6)`
+
+1. Find unenriched items older than `max_age_hours`
+2. DELETE them — stale content replaced by fresher articles next cycle
+3. Runs every **6 hours**
+
+### Category Validation
+
+AI models sometimes return invalid categories (e.g., `security_operations`).
+The `_normalize_category()` function:
+
+1. Check if value is in `_VALID_NEWS_CATEGORIES` set (9 valid values)
+2. If not, look up `_CATEGORY_FALLBACK_MAP` (27 common hallucinated categories)
+3. If no mapping found, use item's existing category or default `active_threats`
 
 ---
 
@@ -753,8 +832,9 @@ All caching uses Redis via the app's `set_cached`/`get_cached` utility.
 
 ### Rate Limiting
 
-- **AI enrichment:** 20-second sleep between items (Groq free tier: 6,000 TPM per model)
+- **AI enrichment:** 1-second pause between items (Cerebras primary, Groq fallback)
 - **Full-text extraction:** Semaphore(10) concurrent fetches max
+- **Event loop reuse:** `_run_async()` reuses event loop per-thread via `threading.local()` to prevent "Event loop is closed" errors
 - **No API rate limiting** on news endpoints themselves (protected by auth only)
 
 ---
@@ -786,10 +866,18 @@ Quick-reference table of every configurable value:
 | AI temperature | 0.15 | `services/news.py` | AI |
 | AI provider count | 5 | `services/ai.py` | AI |
 | AI primary timeout | 30s | `core/config.py` | AI |
-| AI enrichment throttle | 20s | `worker/tasks.py` | AI |
+| AI enrichment throttle | 1s | `worker/tasks.py` | AI |
 | Enrichment batch size (scheduler) | 5 | `worker/scheduler.py` | Scheduling |
 | Ingestion interval | 30 min | `worker/scheduler.py` | Scheduling |
 | Enrichment interval | 5 min | `worker/scheduler.py` | Scheduling |
+| Cleanup interval | 6 hours | `worker/scheduler.py` | Scheduling |
+| Stale news max age | 6 hours | `worker/tasks.py` | Scheduling |
+| Max articles per cycle | 10 | `services/news.py` | Ingestion |
+| Pre-score keyword categories | 10 | `services/news.py` | Ingestion |
+| Source tier bonuses | 19 sources | `services/news.py` | Ingestion |
+| Low-value penalty rules | 4 categories | `services/news.py` | Ingestion |
+| Category validation map | 27 entries | `worker/tasks.py` | Validation |
+| Valid news categories | 9 | `models/models.py` | Validation |
 | Default relevance_score | 50 | `worker/tasks.py` | Defaults |
 | Default confidence | medium | `worker/tasks.py` | Defaults |
 | Default priority | medium | DB schema | Defaults |
