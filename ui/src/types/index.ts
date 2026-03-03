@@ -83,6 +83,16 @@ export interface NewsFeedStatus {
   last_checked: string | null;
 }
 
+export interface NewsPipelineStatus {
+  is_stale: boolean;
+  stored_last_hour: number;
+  stored_last_24h: number;
+  total_sources_ok: number;
+  total_sources_failing: number;
+  last_article_at: string | null;
+  status: string; // ok, stale, degraded, down
+}
+
 export interface StatusBarData {
   status: string;
   postgres: boolean;

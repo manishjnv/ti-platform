@@ -608,6 +608,10 @@ export async function getNewsFeedStatus(): Promise<import("@/types").NewsFeedSta
   return fetcher<import("@/types").NewsFeedStatus[]>("/news/feed-status");
 }
 
+export async function getNewsPipelineStatus(): Promise<import("@/types").NewsPipelineStatus> {
+  return fetcher<import("@/types").NewsPipelineStatus>("/news/pipeline-status");
+}
+
 export async function refreshNews(): Promise<{ status: string; job_id: string }> {
   return fetcher<{ status: string; job_id: string }>("/news/refresh", {
     method: "POST",

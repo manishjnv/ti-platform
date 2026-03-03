@@ -682,3 +682,14 @@ class NewsFeedStatusResponse(BaseModel):
     total_articles: int = 0
     consecutive_failures: int = 0
     last_checked: datetime | None = None
+
+
+class NewsPipelineStatusResponse(BaseModel):
+    """Overall health summary of the cyber news pipeline."""
+    is_stale: bool = False  # No new articles in last 1 hour
+    stored_last_hour: int = 0
+    stored_last_24h: int = 0
+    total_sources_ok: int = 0
+    total_sources_failing: int = 0
+    last_article_at: datetime | None = None
+    status: str = "ok"  # ok, stale, degraded, down

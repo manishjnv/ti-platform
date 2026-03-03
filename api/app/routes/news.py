@@ -33,6 +33,7 @@ from app.schemas import (
     NewsCategoryCount,
     NewsCategoriesResponse,
     NewsFeedStatusResponse,
+    NewsPipelineStatusResponse,
 )
 
 router = APIRouter(prefix="/news", tags=["news"])
@@ -63,6 +64,20 @@ async def news_feed_status(
                 status="unknown",
             ))
     return result
+
+
+@router.get("/pipeline-status", response_model=NewsPipelineStatusResponse)
+async def news_pipeline_status(
+    user: Annotated[User, Depends(require_viewer)],
+):
+    """Get overall health of the news ingestion pipeline.
+
+    Returns stale=true if no new articles were stored in the last hour.
+    """
+    from app.services.news import get_news_pipeline_status
+
+    data = await get_news_pipeline_status()
+    return NewsPipelineStatusResponse(**data)
 
 
 @router.get("", response_model=NewsListResponse)

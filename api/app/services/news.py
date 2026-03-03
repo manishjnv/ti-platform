@@ -508,9 +508,12 @@ def _pre_score_article(article: dict) -> int:
     return max(0, score)
 
 
-# Maximum NEW articles to keep per ingestion cycle.
-# 15/hour target ÷ 3 cycles/hour (every 20 min) = 5 avg, cap at 15 for burst.
-MAX_ARTICLES_PER_CYCLE = 15
+# ── Hourly Rate Control ──────────────────────────────────
+# Target: min 4, max 15 NEW articles per hour.
+# 4 cycles/hour (every 15 min) → target ~4 per cycle, cap adjusts dynamically.
+MAX_ARTICLES_PER_HOUR = 15
+MIN_ARTICLES_PER_HOUR = 4
+DEFAULT_PER_CYCLE = 5  # Normal per-cycle cap (4 cycles × 5 = 20, trimmed to 15/hr)
 
 
 async def _persist_feed_statuses(statuses: list[dict]) -> None:
@@ -578,13 +581,82 @@ async def get_news_feed_statuses() -> list:
         return result.scalars().all()
 
 
-async def fetch_all_feeds(known_hashes: set[str] | None = None) -> list[dict]:
+async def get_news_pipeline_status() -> dict:
+    """Check overall news pipeline health — is it stale?
+
+    Returns a dict with: is_stale, stored_last_hour, stored_last_24h,
+    total_sources_ok, total_sources_failing, last_article_at, status.
+    """
+    from sqlalchemy import select, func as sqlfunc
+    from app.core.database import async_session_factory
+    from app.models.models import NewsItem, NewsFeedStatus
+
+    async with async_session_factory() as session:
+        now = datetime.now(timezone.utc)
+        from datetime import timedelta as _td
+        one_hour_ago = now - _td(hours=1)
+        twenty_four_h_ago = now - _td(hours=24)
+
+        # Count articles stored in last 1 hour
+        r1 = await session.execute(
+            select(sqlfunc.count(NewsItem.id)).where(NewsItem.created_at >= one_hour_ago)
+        )
+        stored_last_hour = r1.scalar() or 0
+
+        # Count articles stored in last 24 hours
+        r24 = await session.execute(
+            select(sqlfunc.count(NewsItem.id)).where(NewsItem.created_at >= twenty_four_h_ago)
+        )
+        stored_last_24h = r24.scalar() or 0
+
+        # Last article timestamp
+        r_last = await session.execute(
+            select(sqlfunc.max(NewsItem.created_at))
+        )
+        last_article_at = r_last.scalar()
+
+        # Feed source health
+        feed_rows = await session.execute(select(NewsFeedStatus))
+        feeds = feed_rows.scalars().all()
+        sources_ok = sum(1 for f in feeds if f.status == "ok")
+        sources_failing = sum(1 for f in feeds if f.status in ("error", "timeout"))
+
+    is_stale = stored_last_hour == 0
+    # Determine overall status
+    if sources_ok == 0 and len(feeds) > 0:
+        status = "down"
+    elif is_stale and sources_failing > sources_ok:
+        status = "degraded"
+    elif is_stale:
+        status = "stale"
+    else:
+        status = "ok"
+
+    return {
+        "is_stale": is_stale,
+        "stored_last_hour": stored_last_hour,
+        "stored_last_24h": stored_last_24h,
+        "total_sources_ok": sources_ok,
+        "total_sources_failing": sources_failing,
+        "last_article_at": last_article_at,
+        "status": status,
+    }
+
+
+async def fetch_all_feeds(
+    known_hashes: set[str] | None = None,
+    stored_last_hour: int = 0,
+    source_24h_counts: dict[str, int] | None = None,
+) -> list[dict]:
     """Fetch all configured RSS feeds concurrently, then extract full article text.
 
-    Pre-scores every article by headline relevance and keeps only the top
-    MAX_ARTICLES_PER_CYCLE articles.  Articles whose source_hash already exists
-    in `known_hashes` are filtered out BEFORE the cap so that new content
-    always gets a chance to enter the pipeline.
+    Implements intelligent rate control:
+    - Dynamic per-cycle cap based on how many articles were stored in the last hour
+      (target: min 4, max 15 per hour).
+    - Source diversity: guarantees at least 1 article per source per day for sources
+      that haven't appeared in the last 24h — reserves slots before score-ranking.
+    - Articles whose source_hash already exists in `known_hashes` are filtered out
+      BEFORE the cap so that new content always gets a chance.
 
     Also persists per-feed status to news_feed_status table.
     """
@@ -621,7 +693,19 @@ async def fetch_all_feeds(known_hashes: set[str] | None = None) -> list[dict]:
     if not all_articles:
         return []
 
-    # ── Score and rank articles ──────────────────────────
+    # ── Dynamic per-cycle cap ────────────────────────────
+    # How many more articles can we store this hour?
+    headroom = max(0, MAX_ARTICLES_PER_HOUR - stored_last_hour)
+    # If below minimum floor, allow a burst to catch up
+    if stored_last_hour < MIN_ARTICLES_PER_HOUR:
+        cycle_cap = max(DEFAULT_PER_CYCLE, MIN_ARTICLES_PER_HOUR - stored_last_hour)
+    else:
+        cycle_cap = min(DEFAULT_PER_CYCLE, headroom)
+    # Never exceed remaining hourly headroom (unless floor needs it)
+    cycle_cap = max(1, min(cycle_cap, max(headroom, MIN_ARTICLES_PER_HOUR - stored_last_hour)))
+    logger.info("news_rate_control", stored_last_hour=stored_last_hour, headroom=headroom, cycle_cap=cycle_cap)
+
+    # ── Score all articles ───────────────────────────────
     for art in all_articles:
         art["_pre_score"] = _pre_score_article(art)
 
@@ -631,8 +715,41 @@ async def fetch_all_feeds(known_hashes: set[str] | None = None) -> list[dict]:
         reverse=True,
     )
 
-    # Keep only top N
-    kept = all_articles[:MAX_ARTICLES_PER_CYCLE]
+    # ── Source diversity: reserve slots for under-represented sources ─
+    source_counts_24h = source_24h_counts or {}
+    # Find sources with 0 articles in last 24h
+    underserved_sources = set()
+    for feed in NEWS_FEEDS:
+        if source_counts_24h.get(feed["name"], 0) == 0:
+            underserved_sources.add(feed["name"])
+
+    reserved: list[dict] = []  # 1 best article per underserved source
+    remaining: list[dict] = []
+
+    if underserved_sources:
+        # Pick the highest-scored article per underserved source
+        picked_sources: set[str] = set()
+        for art in all_articles:
+            src = art.get("source", "")
+            if src in underserved_sources and src not in picked_sources:
+                reserved.append(art)
+                picked_sources.add(src)
+            else:
+                remaining.append(art)
+        logger.info("news_source_diversity", reserved=len(reserved), underserved=len(underserved_sources))
+    else:
+        remaining = list(all_articles)
+
+    # ── Fill remaining slots from top-scored ──────────────
+    slots_left = max(0, cycle_cap - len(reserved))
+    # Avoid duplicates: remove reserved hashes from remaining
+    reserved_hashes = {a.get("source_hash") for a in reserved}
+    filler = [a for a in remaining if a.get("source_hash") not in reserved_hashes][:slots_left]
+
+    kept = reserved + filler
+    # Final cap at cycle_cap
+    kept = kept[:cycle_cap]
+
     dropped = len(all_articles) - len(kept)
     if dropped > 0:
         logger.info(
@@ -640,8 +757,9 @@ async def fetch_all_feeds(known_hashes: set[str] | None = None) -> list[dict]:
             total=len(all_articles),
             kept=len(kept),
             dropped=dropped,
-            min_score=kept[-1]["_pre_score"] if kept else 0,
-            max_score=kept[0]["_pre_score"] if kept else 0,
+            reserved_diversity=len(reserved),
+            min_score=min((a["_pre_score"] for a in kept), default=0),
+            max_score=max((a["_pre_score"] for a in kept), default=0),
         )
 
     # Clean up internal scoring key

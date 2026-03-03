@@ -70,6 +70,7 @@ import type {
   NewsCategoriesResponse,
   NewsCategory,
   NewsCategoryCount,
+  NewsPipelineStatus,
 } from "@/types";
 
 // ── Category config ──────────────────────────────────────
@@ -1101,6 +1102,7 @@ export default function CyberNewsPage() {
   // Data
   const [news, setNews] = useState<NewsListResponse | null>(null);
   const [categories, setCategories] = useState<NewsCategoriesResponse | null>(null);
+  const [pipelineStatus, setPipelineStatus] = useState<NewsPipelineStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [catLoading, setCatLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -1138,6 +1140,13 @@ export default function CyberNewsPage() {
     } finally {
       setCatLoading(false);
     }
+  }, []);
+
+  const fetchPipelineStatus = useCallback(async () => {
+    try {
+      const data = await api.getNewsPipelineStatus();
+      setPipelineStatus(data);
+    } catch { /* ignore */ }
   }, []);
 
   const fetchNews = useCallback(async (silent = false) => {
@@ -1182,12 +1191,14 @@ export default function CyberNewsPage() {
 
   useEffect(() => { fetchCategories(); }, [fetchCategories]);
   useEffect(() => { fetchNews(); }, [fetchNews]);
+  useEffect(() => { fetchPipelineStatus(); }, [fetchPipelineStatus]);
 
   // Auto-refresh every 60s
   useEffect(() => {
     autoRefreshRef.current = setInterval(() => {
       fetchNews(true);
       fetchCategories();
+      fetchPipelineStatus();
     }, 60000);
     return () => {
       if (autoRefreshRef.current) clearInterval(autoRefreshRef.current);
@@ -1298,10 +1309,27 @@ export default function CyberNewsPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1 text-[9px] text-muted-foreground/40" title="Auto-refreshes every 60s">
-              <Activity className="h-3 w-3 text-emerald-500 animate-pulse" />
-              <span className="hidden sm:inline">Live</span>
-            </div>
+            {pipelineStatus?.status === "ok" ? (
+              <div className="flex items-center gap-1 text-[9px] text-muted-foreground/40" title="Auto-refreshes every 60s">
+                <Activity className="h-3 w-3 text-emerald-500 animate-pulse" />
+                <span className="hidden sm:inline">Live</span>
+              </div>
+            ) : pipelineStatus?.status === "stale" ? (
+              <div className="flex items-center gap-1 text-[9px] text-yellow-400" title="No new articles in the last hour">
+                <AlertTriangle className="h-3 w-3" />
+                <span className="hidden sm:inline">Stale</span>
+              </div>
+            ) : pipelineStatus?.status === "degraded" || pipelineStatus?.status === "down" ? (
+              <div className="flex items-center gap-1 text-[9px] text-red-400" title="Pipeline issues detected">
+                <AlertTriangle className="h-3 w-3" />
+                <span className="hidden sm:inline">{pipelineStatus.status === "down" ? "Down" : "Degraded"}</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1 text-[9px] text-muted-foreground/40" title="Auto-refreshes every 60s">
+                <Activity className="h-3 w-3 text-emerald-500 animate-pulse" />
+                <span className="hidden sm:inline">Live</span>
+              </div>
+            )}
             <button
               onClick={handleRefresh}
               disabled={refreshing}
@@ -1318,6 +1346,32 @@ export default function CyberNewsPage() {
           onFilterCategory={(cat) => { setSelectedCategory(cat); setPage(1); }}
           onSortBy={(sort) => { setSortKey(sort); setPage(1); }}
         />
+
+        {/* ── Pipeline Status Banner ────────────────── */}
+        {pipelineStatus && pipelineStatus.status !== "ok" && (
+          <div className={cn(
+            "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium border",
+            pipelineStatus.status === "down"
+              ? "bg-red-500/10 border-red-500/30 text-red-400"
+              : pipelineStatus.status === "degraded"
+                ? "bg-orange-500/10 border-orange-500/30 text-orange-400"
+                : "bg-yellow-500/10 border-yellow-500/30 text-yellow-400",
+          )}>
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            <span>
+              {pipelineStatus.status === "down"
+                ? "News pipeline is down — all feed sources are failing"
+                : pipelineStatus.status === "degraded"
+                  ? `News pipeline degraded — ${pipelineStatus.total_sources_failing} sources failing, no new articles in the last hour`
+                  : `No new cyber news in the last hour (${pipelineStatus.stored_last_24h} in last 24h)`}
+            </span>
+            {pipelineStatus.last_article_at && (
+              <span className="text-muted-foreground ml-auto shrink-0">
+                Last article: {timeAgo(pipelineStatus.last_article_at)}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Main area ───────────────────────────────── */}

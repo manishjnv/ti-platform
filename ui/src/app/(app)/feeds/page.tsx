@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loading } from "@/components/Loading";
 import * as api from "@/lib/api";
-import type { NewsFeedStatus } from "@/types";
+import type { NewsFeedStatus, NewsPipelineStatus } from "@/types";
 import {
   Rss,
   CheckCircle2,
@@ -98,10 +98,12 @@ export default function FeedStatusPage() {
   const [activeTab, setActiveTab] = useState<TabType>("intel");
   const [newsFeeds, setNewsFeeds] = useState<NewsFeedStatus[]>([]);
   const [newsLoading, setNewsLoading] = useState(false);
+  const [pipelineStatus, setPipelineStatus] = useState<NewsPipelineStatus | null>(null);
 
   useEffect(() => {
     fetchDashboard();
     loadNewsFeeds();
+    loadPipelineStatus();
   }, [fetchDashboard]);
 
   async function loadNewsFeeds() {
@@ -114,6 +116,13 @@ export default function FeedStatusPage() {
     } finally {
       setNewsLoading(false);
     }
+  }
+
+  async function loadPipelineStatus() {
+    try {
+      const data = await api.getNewsPipelineStatus();
+      setPipelineStatus(data);
+    } catch { /* silent */ }
   }
 
   /* ── Intel Feeds data ─────────────────────────────── */
@@ -166,6 +175,7 @@ export default function FeedStatusPage() {
           onClick={() => {
             fetchDashboard();
             loadNewsFeeds();
+            loadPipelineStatus();
           }}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
         >
@@ -320,6 +330,31 @@ export default function FeedStatusPage() {
       {/* ─── News Feeds Tab ────────────────────────────── */}
       {activeTab === "news" && (
         <>
+          {/* Pipeline Status Banner */}
+          {pipelineStatus && pipelineStatus.status !== "ok" && (
+            <div className={`flex items-center gap-2 px-3 py-2 rounded-md text-xs font-medium border ${
+              pipelineStatus.status === "down"
+                ? "bg-red-500/10 border-red-500/30 text-red-400"
+                : pipelineStatus.status === "degraded"
+                  ? "bg-orange-500/10 border-orange-500/30 text-orange-400"
+                  : "bg-yellow-500/10 border-yellow-500/30 text-yellow-400"
+            }`}>
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              <span>
+                {pipelineStatus.status === "down"
+                  ? "News pipeline is down — all feed sources are failing"
+                  : pipelineStatus.status === "degraded"
+                    ? `News pipeline degraded — ${pipelineStatus.total_sources_failing} sources failing, no new articles in the last hour`
+                    : `No new cyber news in the last hour (${pipelineStatus.stored_last_24h} in last 24h)`}
+              </span>
+              {pipelineStatus.last_article_at && (
+                <span className="text-muted-foreground ml-auto shrink-0">
+                  Last article: {timeAgo(pipelineStatus.last_article_at)}
+                </span>
+              )}
+            </div>
+          )}
+
           {/* Stats */}
           <div className="grid grid-cols-4 gap-3">
             <Card className="border-border/50">

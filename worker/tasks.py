@@ -1294,12 +1294,15 @@ async def _download_epss_csv() -> str | None:
 def ingest_news() -> dict:
     """Fetch cyber news from RSS feeds, store new articles, queue AI enrichment.
 
+    Rate control: min 4, max 15 articles per hour.
+    Source diversity: at least 1 unique high-value article per source per day.
     Cross-source dedup: when multiple sources report the same story within
     48 hours, we keep the first article and merge supplementary content from
     the duplicates.  If the original was already AI-enriched it gets
     re-queued for enrichment with the richer merged content.
     """
     from datetime import timedelta
+    from collections import Counter
 
     from app.models.models import NewsItem
     from app.services.news import (
@@ -1323,13 +1326,35 @@ def ingest_news() -> dict:
                 NewsItem.raw_content,
                 NewsItem.ai_enriched,
                 NewsItem.correlated_sources,
+                NewsItem.created_at,
             ).where(NewsItem.created_at >= cutoff)
         ).all()
 
         # Build hash set FIRST, pass to fetch_all_feeds for pre-dedup
         hash_set = {r.source_hash for r in recent_rows}
 
-        articles = _run_async(fetch_all_feeds(known_hashes=hash_set))
+        # ── Compute hourly stored count (rate control) ──
+        one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+        stored_last_hour = sum(1 for r in recent_rows if r.created_at >= one_hour_ago)
+
+        # ── Compute per-source 24h counts (source diversity) ──
+        twenty_four_h_ago = datetime.now(timezone.utc) - timedelta(hours=24)
+        source_24h = Counter(
+            r.source for r in recent_rows if r.created_at >= twenty_four_h_ago
+        )
+        source_24h_counts = dict(source_24h)
+
+        logger.info(
+            "news_rate_info",
+            stored_last_hour=stored_last_hour,
+            sources_with_articles_24h=len(source_24h_counts),
+        )
+
+        articles = _run_async(fetch_all_feeds(
+            known_hashes=hash_set,
+            stored_last_hour=stored_last_hour,
+            source_24h_counts=source_24h_counts,
+        ))
         if not articles:
             logger.info("news_ingest_no_articles")
             return {"fetched": 0, "stored": 0}
