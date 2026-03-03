@@ -701,8 +701,8 @@ async def fetch_all_feeds(
         cycle_cap = max(DEFAULT_PER_CYCLE, MIN_ARTICLES_PER_HOUR - stored_last_hour)
     else:
         cycle_cap = min(DEFAULT_PER_CYCLE, headroom)
-    # Never exceed remaining hourly headroom (unless floor needs it)
-    cycle_cap = max(1, min(cycle_cap, max(headroom, MIN_ARTICLES_PER_HOUR - stored_last_hour)))
+    # At least 1 per cycle to keep pipeline active
+    cycle_cap = max(1, cycle_cap)
     logger.info("news_rate_control", stored_last_hour=stored_last_hour, headroom=headroom, cycle_cap=cycle_cap)
 
     # ── Score all articles ───────────────────────────────
@@ -747,8 +747,11 @@ async def fetch_all_feeds(
     filler = [a for a in remaining if a.get("source_hash") not in reserved_hashes][:slots_left]
 
     kept = reserved + filler
-    # Final cap at cycle_cap
-    kept = kept[:cycle_cap]
+    # Diversity reservations bypass hourly cap (max 1 per underserved source per day)
+    # but regular filler respects it. Total = reserved + min(filler, cycle_cap)
+    # Cap total at cycle_cap + diversity count (never more than 15 per cycle total)
+    max_total = min(cycle_cap + len(reserved), MAX_ARTICLES_PER_HOUR)
+    kept = kept[:max_total]
 
     dropped = len(all_articles) - len(kept)
     if dropped > 0:
