@@ -265,9 +265,13 @@ function CardSkeleton() {
 function QuickStatsBar({
   categories,
   news,
+  onFilterCategory,
+  onSortBy,
 }: {
   categories: NewsCategoriesResponse | null;
   news: NewsListResponse | null;
+  onFilterCategory?: (cat: string | null) => void;
+  onSortBy?: (sort: string) => void;
 }) {
   if (!categories || !news) return null;
 
@@ -280,22 +284,32 @@ function QuickStatsBar({
     ? Math.round(news.items.reduce((s, n) => s + n.relevance_score, 0) / news.items.length)
     : 0;
   const criticalCount = news.items.filter((n) => n.relevance_score >= 80).length;
+  const highCount = news.items.filter((n) => n.recommended_priority === "critical" || n.recommended_priority === "high").length;
   const todayCount = news.items.filter((n) => {
     if (!n.published_at) return false;
     const diff = Date.now() - new Date(n.published_at).getTime();
     return diff < 86400000;
   }).length;
+  const enrichedPct = news.items.length
+    ? Math.round((news.items.filter((n) => n.ai_enriched).length / news.items.length) * 100)
+    : 0;
+  const sourceCount = new Set(news.items.map((n) => n.source)).size;
 
-  const stats = [
-    { label: "Total", value: total, icon: Newspaper, color: "text-primary" },
-    { label: "Today", value: todayCount, icon: Activity, color: "text-emerald-400" },
-    { label: "Critical", value: criticalCount, icon: AlertTriangle, color: "text-red-400" },
-    { label: "Avg Score", value: avgRelevance, icon: TrendingUp, color: "text-yellow-400" },
+  const stats: { label: string; value: string | number; icon: React.ElementType; color: string; onClick?: () => void; title?: string }[] = [
+    { label: "Total", value: total, icon: Newspaper, color: "text-primary", onClick: () => onFilterCategory?.(null), title: "Show all articles" },
+    { label: "Today", value: todayCount, icon: Calendar, color: "text-emerald-400", onClick: () => onSortBy?.("published_at:desc"), title: "Sort by newest" },
+    { label: "Critical", value: criticalCount, icon: AlertTriangle, color: "text-red-400", onClick: () => onSortBy?.("relevance_score:desc"), title: "Sort by relevance (critical first)" },
+    { label: "High", value: highCount, icon: Shield, color: "text-orange-400", onClick: () => onSortBy?.("relevance_score:desc"), title: "Sort by priority" },
+    { label: "Avg Score", value: avgRelevance, icon: TrendingUp, color: "text-yellow-400", onClick: () => onSortBy?.("relevance_score:desc"), title: "Sort by relevance score" },
+    { label: "Sources", value: sourceCount, icon: Globe, color: "text-sky-400", title: "Unique sources on this page" },
+    { label: "Enriched", value: `${enrichedPct}%`, icon: Sparkles, color: "text-purple-400", title: "AI enrichment rate" },
     {
       label: "Top",
       value: topCategory ? CATEGORY_META[topCategory.category]?.shortLabel || topCategory.category : "\u2014",
       icon: BarChart3,
       color: topCategory ? CATEGORY_META[topCategory.category]?.color || "text-muted-foreground" : "text-muted-foreground",
+      onClick: topCategory ? () => onFilterCategory?.(topCategory.category) : undefined,
+      title: topCategory ? `Filter by ${CATEGORY_META[topCategory.category]?.label || topCategory.category}` : undefined,
     },
   ];
 
@@ -303,14 +317,25 @@ function QuickStatsBar({
     <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">
       {stats.map((s, i) => {
         const Icon = s.icon;
+        const isClickable = !!s.onClick;
         return (
           <React.Fragment key={s.label}>
             {i > 0 && <div className="h-4 w-px bg-border/30 shrink-0 mx-0.5" />}
-            <div className="flex items-center gap-1.5 shrink-0 px-2 py-1 rounded-md bg-card/30 border border-border/20">
+            <button
+              type="button"
+              onClick={s.onClick}
+              disabled={!isClickable}
+              title={s.title}
+              className={cn(
+                "flex items-center gap-1.5 shrink-0 px-2 py-1 rounded-md bg-card/30 border border-border/20 transition-all",
+                isClickable && "cursor-pointer hover:bg-card/60 hover:border-primary/30 hover:scale-[1.03] active:scale-100",
+                !isClickable && "cursor-default",
+              )}
+            >
               <Icon className={cn("h-3 w-3", s.color)} />
               <span className="text-[9px] text-muted-foreground/60">{s.label}</span>
               <span className={cn("text-[11px] font-bold", s.color)}>{s.value}</span>
-            </div>
+            </button>
           </React.Fragment>
         );
       })}
@@ -1274,7 +1299,12 @@ export default function CyberNewsPage() {
             </button>
           </div>
         </div>
-        <QuickStatsBar categories={categories} news={news} />
+        <QuickStatsBar
+          categories={categories}
+          news={news}
+          onFilterCategory={(cat) => { setSelectedCategory(cat); setPage(1); }}
+          onSortBy={(sort) => { setSortKey(sort); setPage(1); }}
+        />
       </div>
 
       {/* ── Main area ───────────────────────────────── */}

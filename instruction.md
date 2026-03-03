@@ -85,8 +85,63 @@ The **Investigate** page uses the `Telescope` icon in the sidebar for consistenc
 
 - **Do not remove existing UI features** — only add. If something moves, ensure it still exists somewhere accessible.
 - **For any major change**, update the relevant docs (`instruction.md`, `README.md`, or `docs/`).
+- **Responsive UI** — All pages must fit all screen sizes including mobile. See `docs/Instruction.md` § Responsive Design for breakpoints. Edge-to-edge layouts, no horizontal overflow.
 - **Develop locally** at `E:\code\ti-platform`, push to GitHub, deploy to VPS and test online.
 - **Deploy flow**: `git push origin main` → SSH to VPS → `git pull` → `docker compose build ui` → `docker compose up -d ui`.
+
+---
+
+## Keyword Highlighting
+
+All data-rich pages (intel detail, news detail, IOC tables, threat feed) must **visually highlight key entities** inline so analysts can scan quickly.
+
+### Keyword Types to Highlight
+
+| Keyword Type | Examples | Suggested Style |
+|---|---|---|
+| **Threat Actor (TA)** | APT29, Lazarus Group, FIN7 | `bg-red-500/15 text-red-400` rounded pill |
+| **CVE** | CVE-2024-3094 | `bg-orange-500/15 text-orange-400` rounded pill |
+| **Date / Timestamp** | 2026-03-01, January 2026 | `text-blue-300 font-medium` |
+| **Product / Technology** | Exchange Server, Chrome, Linux | `bg-cyan-500/10 text-cyan-400` rounded pill |
+| **Attack / Technique** | phishing, supply chain, RCE | `bg-purple-500/10 text-purple-400` rounded pill |
+| **Breach / Incident** | data breach, ransomware attack | `bg-rose-500/10 text-rose-300` |
+| **Organization** | Microsoft, CISA, FBI | `bg-emerald-500/10 text-emerald-400` rounded pill |
+| **Version / Number** | v3.1.2, 45,000 records, 10 million | `text-yellow-300 font-mono` |
+| **IOC** | IP address, hash, domain, URL | `bg-amber-500/10 text-amber-300 font-mono` rounded pill |
+| **Malware Family** | LockBit, Emotet, Cobalt Strike | `bg-red-500/10 text-red-300` rounded pill |
+
+### Highlighting Rules
+
+1. **Use subtle background tints** — never solid backgrounds that break dark-theme readability.
+2. **Rounded pill badges** (`rounded px-1.5 py-0.5 text-xs`) for entity types; inline `font-medium` for dates/numbers.
+3. **Clickable when actionable** — CVEs link to detail, TAs link to search, IOCs link to hunt.
+4. **Don't over-highlight** — if >40% of text is highlighted, reduce to the most important entities.
+5. **Consistent across pages** — same keyword type always uses the same color everywhere.
+
+---
+
+## Content Readability Standards
+
+All UI pages and components must maximize readability for quick analyst consumption.
+
+### Formatting Rules
+
+- **Bullet points over paragraphs** — Break dense text into bullet lists wherever possible. Never show a wall of text.
+- **Tables over lists for structured data** — Any data with 2+ attributes should use a table, not inline text.
+- **Bold key terms** — Lead each bullet with the key term in bold (e.g., **Impact:** data exfiltration).
+- **Short sentences** — Max ~15 words per bullet. Split if longer.
+- **Hierarchy** — Use headings, sub-sections, and dividers. Never dump all info at one level.
+
+### Where to Apply
+
+| Context | Format |
+|---|---|
+| AI enrichment output (summary, why_it_matters) | Bullet points, highlighted entities |
+| Intel detail page sections | Bullets + tables for IOCs, timeline, techniques |
+| News detail page | Sectioned cards with bullets per area |
+| Tooltip content | 2-3 line max, key info only |
+| Feed cards / list items | Badges + short labels, not sentences |
+| Dashboard stat cards | Single metric + trend indicator, no paragraphs |
 
 ---
 

@@ -206,11 +206,18 @@ function highlightText(
     }
   }
   allMatches.sort((a, b) => a.start - b.start);
+  // Deduplicate: limit same keyword to max 2 highlights
+  const kwCount = new Map<string, number>();
   const filtered: typeof allMatches = [];
   let lastEnd = 0;
   for (const m of allMatches) {
     if (m.start >= lastEnd) {
-      filtered.push(m);
+      const key = m.text.toLowerCase();
+      const count = kwCount.get(key) || 0;
+      if (count < 2) {
+        filtered.push(m);
+        kwCount.set(key, count + 1);
+      }
       lastEnd = m.end;
     }
   }
