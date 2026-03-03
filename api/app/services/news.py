@@ -729,15 +729,51 @@ async def enrich_news_item(headline: str, raw_content: str) -> dict | None:
     if not result:
         return None
 
-    # Parse JSON from response (strip markdown fences if present)
-    text = result.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*", "", text)
-        text = re.sub(r"\s*```$", "", text)
-
-    try:
-        data = json.loads(text)
+    # Robust JSON extraction — try multiple strategies
+    data = _extract_json(result)
+    if data:
         return data
+
+    logger.warning("news_ai_json_parse_error", headline=headline[:80])
+    return None
+
+
+def _extract_json(text: str) -> dict | None:
+    """Try multiple strategies to extract JSON from AI response text."""
+    text = text.strip()
+
+    # Strategy 1: Direct parse
+    try:
+        return json.loads(text)
     except json.JSONDecodeError:
-        logger.warning("news_ai_json_parse_error", headline=headline[:80])
-        return None
+        pass
+
+    # Strategy 2: Strip markdown fences (```json ... ```)
+    cleaned = re.sub(r"^```(?:json)?\s*", "", text)
+    cleaned = re.sub(r"\s*```\s*$", "", cleaned).strip()
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+
+    # Strategy 3: Find first { ... last } (outermost JSON object)
+    first_brace = text.find("{")
+    last_brace = text.rfind("}")
+    if first_brace != -1 and last_brace > first_brace:
+        candidate = text[first_brace:last_brace + 1]
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
+
+    # Strategy 4: Try fixing common issues — trailing commas, single quotes
+    if first_brace != -1 and last_brace > first_brace:
+        candidate = text[first_brace:last_brace + 1]
+        # Remove trailing commas before } or ]
+        candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
+
+    return None

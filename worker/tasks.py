@@ -1592,6 +1592,29 @@ def enrich_news_batch(batch_size: int = 10) -> dict:
                     enrich_news_item(item.headline, item.raw_content or "")
                 )
 
+                if not enrichment:
+                    # Check if item is old enough to apply fallback enrichment
+                    age_minutes = (datetime.now(timezone.utc) - item.created_at).total_seconds() / 60
+                    if age_minutes > 30:
+                        # Too many retries — apply basic fallback enrichment
+                        logger.warning("news_enrich_fallback", headline=item.headline[:80], age_min=int(age_minutes))
+                        item.summary = item.headline
+                        item.ai_enriched = True
+                        item.confidence = "low"
+                        item.relevance_score = 30
+                        item.recommended_priority = "low"
+                        try:
+                            session.flush()
+                        except Exception as fb_err:
+                            logger.error("news_enrich_fallback_flush_error", error=str(fb_err))
+                            session.rollback()
+                            errors += 1
+                            continue
+                        enriched_count += 1
+                    else:
+                        logger.warning("news_enrich_item_skip", headline=item.headline[:80])
+                    continue
+
                 if enrichment:
                     # Apply enrichment data — validate category against enum
                     raw_cat = enrichment.get("category", item.category or "active_threats")
@@ -1630,7 +1653,7 @@ def enrich_news_batch(batch_size: int = 10) -> dict:
                         continue
                     enriched_count += 1
                 else:
-                    # AI call failed (rate limit, timeout, etc.) — leave for next batch
+                    # Shouldn't reach here — handled above
                     logger.warning("news_enrich_item_skip", headline=item.headline[:80])
             except Exception as item_err:
                 logger.error("news_enrich_item_error", headline=item.headline[:80], error=str(item_err))
