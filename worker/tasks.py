@@ -9,7 +9,7 @@ import asyncio
 import re
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -1474,6 +1474,45 @@ def ingest_news() -> dict:
         session.close()
 
 
+def cleanup_stale_news(max_age_hours: int = 6) -> dict:
+    """Delete unenriched news items older than max_age_hours.
+
+    Keeps the pipeline lean — if an article wasn't enriched within a few hours
+    it's stale and should be replaced by fresher content in the next cycle.
+    """
+    from app.models.models import NewsItem
+
+    session = SyncSession()
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+        result = session.execute(
+            select(func.count(NewsItem.id))
+            .where(NewsItem.ai_enriched == False, NewsItem.created_at < cutoff)
+        )
+        stale_count = result.scalar() or 0
+
+        if stale_count > 0:
+            session.execute(
+                NewsItem.__table__.delete().where(
+                    NewsItem.ai_enriched == False,
+                    NewsItem.created_at < cutoff,
+                )
+            )
+            session.commit()
+            logger.info("news_cleanup_purged", count=stale_count, max_age_hours=max_age_hours)
+        else:
+            logger.info("news_cleanup_none")
+
+        return {"purged": stale_count}
+
+    except Exception as e:
+        logger.error("news_cleanup_error", error=str(e))
+        session.rollback()
+        return {"error": str(e)}
+    finally:
+        session.close()
+
+
 # Valid news_category enum values in PostgreSQL
 _VALID_NEWS_CATEGORIES = {
     "active_threats", "exploited_vulnerabilities", "ransomware_breaches",
@@ -1548,60 +1587,60 @@ def enrich_news_batch(batch_size: int = 10) -> dict:
         enriched_count = 0
         errors = 0
         for idx, item in enumerate(items):
-          try:
-            enrichment = _run_async(
-                enrich_news_item(item.headline, item.raw_content or "")
-            )
+            try:
+                enrichment = _run_async(
+                    enrich_news_item(item.headline, item.raw_content or "")
+                )
 
-            if enrichment:
-                # Apply enrichment data — validate category against enum
-                raw_cat = enrichment.get("category", item.category or "active_threats")
-                item.category = _normalize_category(raw_cat, item.category or "active_threats")
-                item.summary = enrichment.get("summary")
-                item.executive_brief = enrichment.get("executive_brief")
-                item.risk_assessment = enrichment.get("risk_assessment")
-                item.attack_narrative = enrichment.get("attack_narrative")
-                item.recommended_priority = enrichment.get("recommended_priority", "medium")
-                item.why_it_matters = enrichment.get("why_it_matters", [])
-                item.tags = enrichment.get("tags", [])
-                item.threat_actors = enrichment.get("threat_actors", [])
-                item.malware_families = enrichment.get("malware_families", [])
-                item.campaign_name = enrichment.get("campaign_name")
-                item.cves = enrichment.get("cves", [])
-                item.vulnerable_products = enrichment.get("vulnerable_products", [])
-                item.tactics_techniques = enrichment.get("tactics_techniques", [])
-                item.initial_access_vector = enrichment.get("initial_access_vector")
-                item.post_exploitation = enrichment.get("post_exploitation", [])
-                item.targeted_sectors = enrichment.get("targeted_sectors", [])
-                item.targeted_regions = enrichment.get("targeted_regions", [])
-                item.impacted_assets = enrichment.get("impacted_assets", [])
-                item.ioc_summary = enrichment.get("ioc_summary", {})
-                item.timeline = enrichment.get("timeline", [])
-                item.detection_opportunities = enrichment.get("detection_opportunities", [])
-                item.mitigation_recommendations = enrichment.get("mitigation_recommendations", [])
-                item.confidence = enrichment.get("confidence", "medium") if enrichment.get("confidence") in ("high", "medium", "low") else "medium"
-                item.relevance_score = max(1, min(100, enrichment.get("relevance_score", 50)))
-                item.ai_enriched = True
-                try:
-                    session.flush()  # Validate this single item immediately
-                except Exception as flush_err:
-                    logger.error("news_enrich_item_flush_error", headline=item.headline[:80], error=str(flush_err))
-                    session.rollback()
-                    errors += 1
-                    continue
-                enriched_count += 1
-            else:
-                # AI call failed (rate limit, timeout, etc.) — leave for next batch
-                logger.warning("news_enrich_item_skip", headline=item.headline[:80])
-          except Exception as item_err:
-            logger.error("news_enrich_item_error", headline=item.headline[:80], error=str(item_err))
-            session.rollback()
-            errors += 1
+                if enrichment:
+                    # Apply enrichment data — validate category against enum
+                    raw_cat = enrichment.get("category", item.category or "active_threats")
+                    item.category = _normalize_category(raw_cat, item.category or "active_threats")
+                    item.summary = enrichment.get("summary")
+                    item.executive_brief = enrichment.get("executive_brief")
+                    item.risk_assessment = enrichment.get("risk_assessment")
+                    item.attack_narrative = enrichment.get("attack_narrative")
+                    item.recommended_priority = enrichment.get("recommended_priority", "medium")
+                    item.why_it_matters = enrichment.get("why_it_matters", [])
+                    item.tags = enrichment.get("tags", [])
+                    item.threat_actors = enrichment.get("threat_actors", [])
+                    item.malware_families = enrichment.get("malware_families", [])
+                    item.campaign_name = enrichment.get("campaign_name")
+                    item.cves = enrichment.get("cves", [])
+                    item.vulnerable_products = enrichment.get("vulnerable_products", [])
+                    item.tactics_techniques = enrichment.get("tactics_techniques", [])
+                    item.initial_access_vector = enrichment.get("initial_access_vector")
+                    item.post_exploitation = enrichment.get("post_exploitation", [])
+                    item.targeted_sectors = enrichment.get("targeted_sectors", [])
+                    item.targeted_regions = enrichment.get("targeted_regions", [])
+                    item.impacted_assets = enrichment.get("impacted_assets", [])
+                    item.ioc_summary = enrichment.get("ioc_summary", {})
+                    item.timeline = enrichment.get("timeline", [])
+                    item.detection_opportunities = enrichment.get("detection_opportunities", [])
+                    item.mitigation_recommendations = enrichment.get("mitigation_recommendations", [])
+                    item.confidence = enrichment.get("confidence", "medium") if enrichment.get("confidence") in ("high", "medium", "low") else "medium"
+                    item.relevance_score = max(1, min(100, enrichment.get("relevance_score", 50)))
+                    item.ai_enriched = True
+                    try:
+                        session.flush()  # Validate this single item immediately
+                    except Exception as flush_err:
+                        logger.error("news_enrich_item_flush_error", headline=item.headline[:80], error=str(flush_err))
+                        session.rollback()
+                        errors += 1
+                        continue
+                    enriched_count += 1
+                else:
+                    # AI call failed (rate limit, timeout, etc.) — leave for next batch
+                    logger.warning("news_enrich_item_skip", headline=item.headline[:80])
+            except Exception as item_err:
+                logger.error("news_enrich_item_error", headline=item.headline[:80], error=str(item_err))
+                session.rollback()
+                errors += 1
 
-            # Throttle between items to avoid per-minute rate limits (TPM)
-            # Groq free tier: 6K TPM per model, our prompts use ~4.5K tokens
+            # Brief pause between items (1s) — Cerebras & Groq both handle
+            # this rate; 20s throttle removed since Cerebras is primary now
             if idx < len(items) - 1:
-                time.sleep(20)
+                time.sleep(1)
 
         session.commit()
         logger.info("news_enrich_complete", enriched=enriched_count, errors=errors)

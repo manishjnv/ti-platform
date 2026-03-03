@@ -399,8 +399,115 @@ async def fetch_rss_feed(feed: dict) -> list[dict]:
     return articles
 
 
+# ── Headline Relevance Pre-Scorer ────────────────────────
+# Used during ingestion to rank articles BEFORE storing them.
+# This lets us keep only the top N most relevant articles per cycle
+# so AI enrichment can keep pace and every displayed article is high-quality.
+
+# High-value keywords (each hit adds points)
+_RELEVANCE_KEYWORDS: list[tuple[list[str], int]] = [
+    # Active exploitation / zero-day (highest value)
+    (["zero-day", "0-day", "actively exploited", "in the wild", "kev", "cisa adds"], 25),
+    # CVEs, vulnerabilities
+    (["cve-", "critical vulnerability", "rce", "remote code execution", "privilege escalation"], 20),
+    # Named threat actors / APTs
+    (["apt", "lazarus", "cozy bear", "fancy bear", "turla", "sandworm", "volt typhoon",
+      "midnight blizzard", "scattered spider", "lockbit", "blackcat", "alphv", "clop",
+      "conti", "revil", "unc", "ta5", "fin7", "fin11"], 20),
+    # Ransomware / major breaches
+    (["ransomware", "data breach", "million records", "extortion", "leaked"], 18),
+    # Malware families
+    (["malware", "trojan", "backdoor", "rootkit", "infostealer", "rat", "botnet",
+      "cobalt strike", "mimikatz", "loader"], 15),
+    # Government / nation-state
+    (["nation-state", "nation state", "espionage", "cyber command", "nsa", "gchq",
+      "fbi", "cisa", "indictment", "sanctions"], 15),
+    # Tactical content (detections, IOCs)
+    (["ioc", "indicator", "sigma rule", "yara", "snort", "suricata", "detection",
+      "hunting", "forensic"], 12),
+    # Major vendors (product-specific vulns)
+    (["microsoft", "google", "apple", "cisco", "palo alto", "fortinet", "vmware",
+      "citrix", "ivanti", "sophos", "crowdstrike", "okta", "snowflake"], 10),
+    # Supply chain
+    (["supply chain", "npm", "pypi", "solarwinds", "3cx", "moveit"], 15),
+    # Cloud / identity
+    (["azure", "aws", "gcp", "entra", "oauth", "saml", "sso"], 10),
+]
+
+# Low-value patterns (reduce score — generic, non-actionable content)
+_LOW_VALUE_KEYWORDS: list[tuple[list[str], int]] = [
+    (["podcast", "webinar", "register now", "sponsored", "infographic"], -30),
+    (["job opening", "career", "hiring", "salary"], -30),
+    (["product launch", "new feature", "announces partnership"], -15),
+    (["opinion:", "editorial", "book review", "interview with"], -10),
+]
+
+# Source tier bonus (applied once per article)
+_SOURCE_TIER_BONUS: dict[str, int] = {
+    # Tier 1 — Major breaking news
+    "BleepingComputer": 10, "The Hacker News": 10, "Krebs on Security": 12,
+    "Dark Reading": 8, "SecurityWeek": 8, "The Record": 10, "CyberScoop": 8,
+    # Tier 2 — Government / CERT
+    "CISA Alerts": 15,
+    # Tier 3 — Vendor research (deep technical)
+    "Microsoft Security": 10, "Google TAG": 12, "Cisco Talos": 10,
+    "SentinelOne Labs": 10, "Unit 42": 12, "Mandiant": 12,
+    "Sophos News": 8, "WeLiveSecurity": 8,
+    # Tier 4 — Independent
+    "Schneier on Security": 6, "Graham Cluley": 5, "Threatpost": 5,
+}
+
+
+def _pre_score_article(article: dict) -> int:
+    """Compute a quick relevance score for an article based on headline + description.
+
+    Returns an integer score (higher = more relevant).
+    Used to rank articles before storing so we only keep the best per cycle.
+    """
+    text = f"{article['headline']} {article.get('raw_content', '')[:2000]}".lower()
+    score = 0
+
+    # Keyword scoring
+    for keywords, points in _RELEVANCE_KEYWORDS:
+        if any(k in text for k in keywords):
+            score += points
+
+    # Low-value penalty
+    for keywords, penalty in _LOW_VALUE_KEYWORDS:
+        if any(k in text for k in keywords):
+            score += penalty  # penalty is negative
+
+    # Source tier bonus
+    score += _SOURCE_TIER_BONUS.get(article.get("source", ""), 0)
+
+    # Recency bonus: articles less than 6 hours old get +10
+    pub = article.get("published_at")
+    if pub:
+        try:
+            from datetime import timedelta
+            age = datetime.now(timezone.utc) - pub
+            if age < timedelta(hours=6):
+                score += 10
+            elif age < timedelta(hours=24):
+                score += 5
+        except Exception:
+            pass
+
+    return max(0, score)
+
+
+# Maximum articles to keep per ingestion cycle.
+# 15/hour target ÷ 2 cycles/hour = ~8 per cycle (round up to 10 for buffer)
+MAX_ARTICLES_PER_CYCLE = 10
+
+
 async def fetch_all_feeds() -> list[dict]:
-    """Fetch all configured RSS feeds concurrently, then extract full article text."""
+    """Fetch all configured RSS feeds concurrently, then extract full article text.
+
+    Pre-scores every article by headline relevance and keeps only the top
+    MAX_ARTICLES_PER_CYCLE articles.  This ensures AI enrichment can keep pace
+    and only high-quality content enters the pipeline.
+    """
     import asyncio
     tasks = [fetch_rss_feed(feed) for feed in NEWS_FEEDS]
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -414,17 +521,46 @@ async def fetch_all_feeds() -> list[dict]:
 
     logger.info("news_rss_fetched", total=len(all_articles), sources=len(NEWS_FEEDS))
 
-    # Extract full article text (replaces short RSS summaries)
-    if all_articles:
-        all_articles = list(await _enrich_articles_with_fulltext(all_articles))
-        full_count = sum(1 for a in all_articles if len(a.get("raw_content", "")) > 1000)
+    if not all_articles:
+        return []
+
+    # ── Score and rank articles ──────────────────────────
+    for art in all_articles:
+        art["_pre_score"] = _pre_score_article(art)
+
+    # Sort by pre-score descending, then by recency
+    all_articles.sort(
+        key=lambda a: (a["_pre_score"], a.get("published_at") or datetime.min.replace(tzinfo=timezone.utc)),
+        reverse=True,
+    )
+
+    # Keep only top N
+    kept = all_articles[:MAX_ARTICLES_PER_CYCLE]
+    dropped = len(all_articles) - len(kept)
+    if dropped > 0:
         logger.info(
-            "news_fulltext_done",
+            "news_pre_score_filter",
             total=len(all_articles),
-            full_text=full_count,
+            kept=len(kept),
+            dropped=dropped,
+            min_score=kept[-1]["_pre_score"] if kept else 0,
+            max_score=kept[0]["_pre_score"] if kept else 0,
         )
 
-    return all_articles
+    # Clean up internal scoring key
+    for art in kept:
+        art.pop("_pre_score", None)
+
+    # Extract full article text (replaces short RSS summaries)
+    kept = list(await _enrich_articles_with_fulltext(kept))
+    full_count = sum(1 for a in kept if len(a.get("raw_content", "")) > 1000)
+    logger.info(
+        "news_fulltext_done",
+        total=len(kept),
+        full_text=full_count,
+    )
+
+    return kept
 
 
 # ── AI Enrichment ────────────────────────────────────────

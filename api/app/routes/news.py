@@ -125,12 +125,13 @@ async def news_categories(
     if cached:
         return cached
 
-    # Category counts
+    # Category counts — only enriched items (matches default UI filter)
     count_q = (
         select(
             NewsItem.category,
             func.count(NewsItem.id).label("count"),
         )
+        .where(NewsItem.ai_enriched == True)
         .group_by(NewsItem.category)
     )
     result = await db.execute(count_q)
@@ -143,7 +144,7 @@ async def news_categories(
         # Get latest headline for this category
         latest_q = (
             select(NewsItem.headline, NewsItem.published_at)
-            .where(NewsItem.category == cat)
+            .where(NewsItem.category == cat, NewsItem.ai_enriched == True)
             .order_by(desc(NewsItem.published_at))
             .limit(1)
         )
@@ -160,7 +161,7 @@ async def news_categories(
     # Sort by count descending
     categories.sort(key=lambda c: c.count, reverse=True)
 
-    total_result = await db.execute(select(func.count(NewsItem.id)))
+    total_result = await db.execute(select(func.count(NewsItem.id)).where(NewsItem.ai_enriched == True))
     total = total_result.scalar() or 0
 
     response = NewsCategoriesResponse(categories=categories, total=total)

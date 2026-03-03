@@ -376,6 +376,7 @@ export default function CyberNewsPage() {
         page_size: 20,
         sort_by: field,
         sort_order: dir,
+        ai_enriched: true,    // Only show AI-enriched articles with full analysis
       };
       if (selectedCategory) params.category = selectedCategory;
       if (searchQuery.trim()) params.search = searchQuery.trim();
