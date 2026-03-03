@@ -318,12 +318,15 @@ def setup_schedules():
         meta={"task": "news_enrichment"},
     )
 
-    # ─── News Re-Enrichment (fallback upgrade) — every 30 min ─
+    # ─── News Re-Enrichment (fallback upgrade) — every 15 min ─
+    # Rechecks articles that got headline-only fallback enrichment and
+    # upgrades them when AI tokens are available (resets daily).
+    # Smart backoff: aborts early if providers are rate-limited.
     scheduler.schedule(
         scheduled_time=datetime.now(timezone.utc) + timedelta(minutes=8),
         func="worker.tasks.re_enrich_fallback_news",
-        kwargs={"batch_size": 5},
-        interval=timedelta(minutes=30).total_seconds(),
+        kwargs={"batch_size": 10},
+        interval=timedelta(minutes=15).total_seconds(),
         queue_name="low",
         meta={"task": "news_re_enrichment"},
     )

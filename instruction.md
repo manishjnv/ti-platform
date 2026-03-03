@@ -179,3 +179,28 @@ BleepingComputer, The Hacker News, Krebs on Security, Dark Reading, SecurityWeek
 ### AI Enrichment Schema
 
 Each article is enriched into structured JSON with: summary, why_it_matters, threat_actors, malware_families, CVEs, MITRE ATT&CK techniques, IOC summary, timeline, detection/mitigation, relevance_score (1-100), confidence (high/medium/low).
+
+### Re-Enrichment Pipeline
+
+When AI provider tokens are exhausted (daily quota limits), articles receive **fallback enrichment** — headline-only summary, `confidence=low`, `relevance_score=30`, no executive_brief.
+
+The `re_enrich_fallback_news()` task automatically upgrades these once tokens reset:
+
+| Setting | Value |
+|---------|-------|
+| Schedule | Every 15 minutes |
+| Batch size | 10 articles per run |
+| Retry window | 48 hours from article creation |
+| Detection criteria | `ai_enriched=True`, `confidence=low`, `score<=30`, no `executive_brief` |
+| Smart backoff | Aborts after 2 consecutive failures (all providers rate-limited) |
+| Priority | Newest articles first |
+
+**Flow:**
+1. Article ingested → `enrich_news_batch()` attempts AI enrichment every 5 min
+2. If all AI providers fail for >30 min → fallback enrichment (headline-only) applied
+3. `re_enrich_fallback_news()` picks up fallback articles every 15 min
+4. If tokens available → upgrades to full enrichment (summary, executive_brief, tags, etc.)
+5. If tokens still exhausted → smart backoff, retries next cycle
+6. Once daily quotas reset → all remaining fallback articles get fully enriched
+
+Both `enrich_news_batch()` and `re_enrich_fallback_news()` use smart backoff to stop wasting API calls when providers are rate-limited.

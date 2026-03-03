@@ -1613,6 +1613,7 @@ def enrich_news_batch(batch_size: int = 10) -> dict:
 
         enriched_count = 0
         errors = 0
+        consecutive_failures = 0
         for idx, item in enumerate(items):
             try:
                 enrichment = _run_async(
@@ -1620,10 +1621,13 @@ def enrich_news_batch(batch_size: int = 10) -> dict:
                 )
 
                 if not enrichment:
+                    consecutive_failures += 1
                     # Check if item is old enough to apply fallback enrichment
                     age_minutes = (datetime.now(timezone.utc) - item.created_at).total_seconds() / 60
                     if age_minutes > 30:
                         # Too many retries — apply basic fallback enrichment
+                        # The re_enrich_fallback_news task will upgrade these
+                        # once AI tokens reset (daily quota resets)
                         logger.warning("news_enrich_fallback", headline=item.headline[:80], age_min=int(age_minutes))
                         item.summary = item.headline
                         item.ai_enriched = True
@@ -1640,51 +1644,62 @@ def enrich_news_batch(batch_size: int = 10) -> dict:
                         enriched_count += 1
                     else:
                         logger.warning("news_enrich_item_skip", headline=item.headline[:80])
+
+                    # Smart backoff: if 3+ consecutive failures, providers are
+                    # likely all rate-limited — stop wasting API calls
+                    if consecutive_failures >= 3:
+                        remaining = len(items) - idx - 1
+                        logger.warning(
+                            "news_enrich_backoff",
+                            reason="consecutive_failures",
+                            skipped=remaining,
+                        )
+                        break
                     continue
 
-                if enrichment:
-                    # Apply enrichment data — validate category against enum
-                    raw_cat = enrichment.get("category", item.category or "active_threats")
-                    item.category = _normalize_category(raw_cat, item.category or "active_threats")
-                    item.summary = enrichment.get("summary")
-                    item.executive_brief = enrichment.get("executive_brief")
-                    item.risk_assessment = enrichment.get("risk_assessment")
-                    item.attack_narrative = enrichment.get("attack_narrative")
-                    item.recommended_priority = enrichment.get("recommended_priority", "medium")
-                    item.why_it_matters = enrichment.get("why_it_matters", [])
-                    item.tags = enrichment.get("tags", [])
-                    item.threat_actors = enrichment.get("threat_actors", [])
-                    item.malware_families = enrichment.get("malware_families", [])
-                    item.campaign_name = enrichment.get("campaign_name")
-                    item.cves = enrichment.get("cves", [])
-                    item.vulnerable_products = enrichment.get("vulnerable_products", [])
-                    item.tactics_techniques = enrichment.get("tactics_techniques", [])
-                    item.initial_access_vector = enrichment.get("initial_access_vector")
-                    item.post_exploitation = enrichment.get("post_exploitation", [])
-                    item.targeted_sectors = enrichment.get("targeted_sectors", [])
-                    item.targeted_regions = enrichment.get("targeted_regions", [])
-                    item.impacted_assets = enrichment.get("impacted_assets", [])
-                    item.ioc_summary = enrichment.get("ioc_summary", {})
-                    item.timeline = enrichment.get("timeline", [])
-                    item.detection_opportunities = enrichment.get("detection_opportunities", [])
-                    item.mitigation_recommendations = enrichment.get("mitigation_recommendations", [])
-                    item.yara_rule = enrichment.get("yara_rule")
-                    item.kql_rule = enrichment.get("kql_rule")
-                    item.reference_links = enrichment.get("reference_links", [])
-                    item.confidence = enrichment.get("confidence", "medium") if enrichment.get("confidence") in ("high", "medium", "low") else "medium"
-                    item.relevance_score = max(1, min(100, enrichment.get("relevance_score", 50)))
-                    item.ai_enriched = True
-                    try:
-                        session.flush()  # Validate this single item immediately
-                    except Exception as flush_err:
-                        logger.error("news_enrich_item_flush_error", headline=item.headline[:80], error=str(flush_err))
-                        session.rollback()
-                        errors += 1
-                        continue
-                    enriched_count += 1
-                else:
-                    # Shouldn't reach here — handled above
-                    logger.warning("news_enrich_item_skip", headline=item.headline[:80])
+                # Success — reset consecutive failure counter
+                consecutive_failures = 0
+
+                # Apply enrichment data — validate category against enum
+                raw_cat = enrichment.get("category", item.category or "active_threats")
+                item.category = _normalize_category(raw_cat, item.category or "active_threats")
+                item.summary = enrichment.get("summary")
+                item.executive_brief = enrichment.get("executive_brief")
+                item.risk_assessment = enrichment.get("risk_assessment")
+                item.attack_narrative = enrichment.get("attack_narrative")
+                item.recommended_priority = enrichment.get("recommended_priority", "medium")
+                item.why_it_matters = enrichment.get("why_it_matters", [])
+                item.tags = enrichment.get("tags", [])
+                item.threat_actors = enrichment.get("threat_actors", [])
+                item.malware_families = enrichment.get("malware_families", [])
+                item.campaign_name = enrichment.get("campaign_name")
+                item.cves = enrichment.get("cves", [])
+                item.vulnerable_products = enrichment.get("vulnerable_products", [])
+                item.tactics_techniques = enrichment.get("tactics_techniques", [])
+                item.initial_access_vector = enrichment.get("initial_access_vector")
+                item.post_exploitation = enrichment.get("post_exploitation", [])
+                item.targeted_sectors = enrichment.get("targeted_sectors", [])
+                item.targeted_regions = enrichment.get("targeted_regions", [])
+                item.impacted_assets = enrichment.get("impacted_assets", [])
+                item.ioc_summary = enrichment.get("ioc_summary", {})
+                item.timeline = enrichment.get("timeline", [])
+                item.detection_opportunities = enrichment.get("detection_opportunities", [])
+                item.mitigation_recommendations = enrichment.get("mitigation_recommendations", [])
+                item.yara_rule = enrichment.get("yara_rule")
+                item.kql_rule = enrichment.get("kql_rule")
+                item.reference_links = enrichment.get("reference_links", [])
+                item.confidence = enrichment.get("confidence", "medium") if enrichment.get("confidence") in ("high", "medium", "low") else "medium"
+                item.relevance_score = max(1, min(100, enrichment.get("relevance_score", 50)))
+                item.ai_enriched = True
+                try:
+                    session.flush()  # Validate this single item immediately
+                except Exception as flush_err:
+                    logger.error("news_enrich_item_flush_error", headline=item.headline[:80], error=str(flush_err))
+                    session.rollback()
+                    errors += 1
+                    continue
+                enriched_count += 1
+
             except Exception as item_err:
                 logger.error("news_enrich_item_error", headline=item.headline[:80], error=str(item_err))
                 session.rollback()
@@ -1707,7 +1722,7 @@ def enrich_news_batch(batch_size: int = 10) -> dict:
         session.close()
 
 
-def re_enrich_fallback_news(batch_size: int = 5) -> dict:
+def re_enrich_fallback_news(batch_size: int = 10) -> dict:
     """Re-attempt AI enrichment for articles that received only fallback data.
 
     Fallback-enriched articles have ai_enriched=True but only headline as
@@ -1716,8 +1731,14 @@ def re_enrich_fallback_news(batch_size: int = 5) -> dict:
     again.  If enrichment succeeds, the article is upgraded to full quality.
     If it fails again, the article is left as-is and retried next cycle.
 
-    Only retries articles created in the last 24 hours to avoid wasting API
-    calls on articles that are no longer relevant.
+    Smart backoff: if 2 consecutive articles fail (all providers exhausted),
+    the task aborts early to avoid wasting time when daily token quotas are
+    depleted.  The scheduler will retry next cycle — once tokens reset (daily),
+    articles get properly enriched automatically.
+
+    Only retries articles created in the last 48 hours to cover the scenario
+    where articles are ingested late in the day, tokens are exhausted, and
+    quotas don't reset until the following day.
     """
     import time
 
@@ -1728,7 +1749,23 @@ def re_enrich_fallback_news(batch_size: int = 5) -> dict:
     session = SyncSession()
 
     try:
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
+
+        # Count total fallback articles remaining (for logging)
+        total_fallback = session.execute(
+            select(func.count(NewsItem.id))
+            .where(
+                NewsItem.ai_enriched == True,
+                NewsItem.confidence == "low",
+                NewsItem.relevance_score <= 30,
+                (NewsItem.executive_brief == None) | (NewsItem.executive_brief == ""),
+                NewsItem.created_at > cutoff,
+            )
+        ).scalar() or 0
+
+        if total_fallback == 0:
+            logger.info("news_re_enrich_no_items")
+            return {"re_enriched": 0, "remaining": 0}
 
         # Find fallback-enriched articles: ai_enriched=True but missing
         # executive_brief and with low confidence / score
@@ -1746,13 +1783,10 @@ def re_enrich_fallback_news(batch_size: int = 5) -> dict:
         )
         items = result.scalars().all()
 
-        if not items:
-            logger.info("news_re_enrich_no_items")
-            return {"re_enriched": 0, "skipped": 0}
-
-        logger.info("news_re_enrich_found", count=len(items))
+        logger.info("news_re_enrich_found", batch=len(items), total_fallback=total_fallback)
         re_enriched = 0
         errors = 0
+        consecutive_failures = 0
 
         for idx, item in enumerate(items):
             try:
@@ -1761,14 +1795,32 @@ def re_enrich_fallback_news(batch_size: int = 5) -> dict:
                 )
 
                 if not enrichment:
+                    consecutive_failures += 1
+                    errors += 1
                     logger.warning(
                         "news_re_enrich_still_failed",
                         headline=item.headline[:80],
+                        consecutive_fails=consecutive_failures,
                     )
-                    errors += 1
+
+                    # Smart backoff: if 2+ consecutive failures, all providers
+                    # are likely rate-limited — stop wasting API calls and wait
+                    # for next scheduled run (tokens reset daily)
+                    if consecutive_failures >= 2:
+                        remaining = len(items) - idx - 1
+                        logger.warning(
+                            "news_re_enrich_backoff",
+                            reason="consecutive_failures",
+                            skipped=remaining,
+                            total_fallback=total_fallback,
+                        )
+                        break
                     continue
 
-                # Success — upgrade from fallback to full enrichment
+                # Success — reset consecutive failure counter
+                consecutive_failures = 0
+
+                # Upgrade from fallback to full enrichment
                 raw_cat = enrichment.get("category", item.category or "active_threats")
                 item.category = _normalize_category(raw_cat, item.category or "active_threats")
                 item.summary = enrichment.get("summary")
@@ -1831,18 +1883,34 @@ def re_enrich_fallback_news(batch_size: int = 5) -> dict:
                 )
                 session.rollback()
                 errors += 1
+                consecutive_failures += 1
+
+                if consecutive_failures >= 2:
+                    logger.warning(
+                        "news_re_enrich_backoff",
+                        reason="consecutive_exceptions",
+                        total_fallback=total_fallback,
+                    )
+                    break
 
             if idx < len(items) - 1:
                 time.sleep(1)
 
         session.commit()
+
+        remaining = total_fallback - re_enriched
         logger.info(
             "news_re_enrich_complete",
             re_enriched=re_enriched,
             errors=errors,
-            total=len(items),
+            batch=len(items),
+            remaining_fallback=remaining,
         )
-        return {"re_enriched": re_enriched, "errors": errors}
+        return {
+            "re_enriched": re_enriched,
+            "errors": errors,
+            "remaining": remaining,
+        }
 
     except Exception as e:
         logger.error("news_re_enrich_error", error=str(e))
