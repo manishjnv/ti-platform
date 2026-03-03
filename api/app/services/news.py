@@ -723,6 +723,9 @@ executive_brief GOOD: "Volexity observed UTA0218 deploying a Python reverse shel
   "timeline": [{"date": "YYYY-MM-DD or null", "event": "description"}],
   "detection_opportunities": ["3-5 items. Each MUST name a log source, query pattern, or signature ID. Examples: 'Sigma rule for regsvr32 loading DLL from user temp folder', 'Snort SID 300125 for CobaltStrike beacon HTTP profile', 'Windows Event 4688 + CommandLine containing certutil -urlcache'. No vague 'monitor for anomalies'."],
   "mitigation_recommendations": ["3-5 items. Each MUST name the specific fix: patch version, config change command, GPO setting, or firewall rule. Example: 'Disable PAN-OS telemetry: set deviceconfig system device-telemetry device-health-performance no', 'Block .iso/.img at email gateway via transport rule'. No generic 'apply patches'."],
+  "yara_rule": "A complete, working YARA rule for detecting the malware/threat described. Include: rule name (snake_case reflecting the threat), meta (author='IntelWatch AI', description, date, reference, threat_level), strings section with relevant patterns (file artifacts, registry keys, mutexes, embedded strings, byte patterns from the article), and a condition that combines them logically. If the article is policy/regulation/informational with no detectable artifacts, return null. Example format:\nrule threat_name {\n  meta:\n    author = \"IntelWatch AI\"\n    description = \"Detects ...\"\n    date = \"YYYY-MM-DD\"\n    threat_level = \"high\"\n  strings:\n    $s1 = \"string_pattern\" ascii wide\n    $s2 = { hex pattern }\n  condition:\n    uint16(0) == 0x5A4D and 2 of ($s*)\n}",
+  "kql_rule": "A complete, working KQL (Kusto Query Language) detection query for Microsoft Sentinel / Defender XDR. Target the most relevant log table (DeviceProcessEvents, DeviceNetworkEvents, DeviceFileEvents, SecurityEvent, SigninLogs, EmailEvents, etc.). Include: comments explaining what is detected, the table name, where/filter clauses with specific IOCs/patterns from the article, project clause selecting relevant columns, optional summarize for aggregation. If no actionable detection is possible, return null. Example format:\n// Detect [threat description]\nDeviceProcessEvents\n| where Timestamp > ago(30d)\n| where ProcessCommandLine has_any (\"pattern1\", \"pattern2\")\n| project Timestamp, DeviceName, AccountName, ProcessCommandLine\n| sort by Timestamp desc",
+  "reference_links": ["1-5 source URLs referenced in or related to the article. Include: the original article URL, vendor advisory URLs, CVE detail links (https://nvd.nist.gov/vuln/detail/CVE-...), CISA KEV links, threat research blog links. Only include real, plausible URLs that are directly mentioned or strongly implied by the content. Do NOT fabricate URLs."],
   "recommended_priority": "critical|high|medium|low",
   "confidence": "high|medium|low",
   "relevance_score": 50
@@ -738,7 +741,7 @@ async def enrich_news_item(headline: str, raw_content: str) -> dict | None:
     result = await chat_completion(
         system_prompt=_NEWS_ENRICHMENT_SYSTEM,
         user_prompt=user_prompt,
-        max_tokens=3500,
+        max_tokens=5000,
         temperature=0.15,
     )
 

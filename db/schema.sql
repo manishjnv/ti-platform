@@ -491,6 +491,11 @@ CREATE TABLE IF NOT EXISTS news_items (
     detection_opportunities TEXT[] NOT NULL DEFAULT '{}',
     mitigation_recommendations TEXT[] NOT NULL DEFAULT '{}',
 
+    -- Detection engineering (AI-generated)
+    yara_rule               TEXT,
+    kql_rule                TEXT,
+    reference_links         TEXT[] NOT NULL DEFAULT '{}',
+
     -- Scoring
     confidence              confidence_level NOT NULL DEFAULT 'medium',
     relevance_score         SMALLINT NOT NULL DEFAULT 50 CHECK (relevance_score >= 0 AND relevance_score <= 100),

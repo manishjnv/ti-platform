@@ -637,6 +637,10 @@ class NewsItemResponse(BaseModel):
     detection_opportunities: list[str] = Field(default_factory=list)
     mitigation_recommendations: list[str] = Field(default_factory=list)
 
+    yara_rule: str | None = None
+    kql_rule: str | None = None
+    reference_links: list[str] = Field(default_factory=list)
+
     confidence: ConfidenceLevel = ConfidenceLevel.medium
     relevance_score: int = 50
     ai_enriched: bool = False

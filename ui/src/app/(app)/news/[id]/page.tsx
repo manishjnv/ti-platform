@@ -43,6 +43,9 @@ import {
   FileDown,
   FileCode,
   FileType2,
+  Copy,
+  Check,
+  Link2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -347,6 +350,7 @@ export default function NewsDetailPage() {
   const [loading, setLoading] = useState(true);
   const [reportLoading, setReportLoading] = useState(false);
   const [iocKeyword, setIocKeyword] = useState<string | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const handleKeywordClick = useCallback((kw: string) => {
     setIocKeyword(kw);
@@ -742,6 +746,73 @@ export default function NewsDetailPage() {
             </Section>
           )}
         </div>
+      )}
+
+      {/* ── YARA & KQL Detection Rules (side-by-side) ── */}
+      {(item.yara_rule || item.kql_rule) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {item.yara_rule && (
+            <Section icon={FileCode} title="YARA Rule" accent="text-amber-400">
+              <div className="relative group">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(item.yara_rule!);
+                    setCopiedField("yara");
+                    setTimeout(() => setCopiedField(null), 2000);
+                  }}
+                  className="absolute top-2 right-2 z-10 p-1.5 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Copy YARA rule"
+                >
+                  {copiedField === "yara" ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
+                </button>
+                <pre className="text-[11px] font-mono leading-relaxed text-muted-foreground bg-black/30 rounded-lg p-4 overflow-x-auto whitespace-pre-wrap border border-amber-500/10">
+                  {item.yara_rule}
+                </pre>
+              </div>
+            </Section>
+          )}
+          {item.kql_rule && (
+            <Section icon={FileType2} title="KQL Detection Query" accent="text-cyan-400">
+              <div className="relative group">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(item.kql_rule!);
+                    setCopiedField("kql");
+                    setTimeout(() => setCopiedField(null), 2000);
+                  }}
+                  className="absolute top-2 right-2 z-10 p-1.5 rounded-md bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Copy KQL query"
+                >
+                  {copiedField === "kql" ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
+                </button>
+                <pre className="text-[11px] font-mono leading-relaxed text-muted-foreground bg-black/30 rounded-lg p-4 overflow-x-auto whitespace-pre-wrap border border-cyan-500/10">
+                  {item.kql_rule}
+                </pre>
+              </div>
+            </Section>
+          )}
+        </div>
+      )}
+
+      {/* ── Reference Links ────────────────────────────── */}
+      {item.reference_links && item.reference_links.length > 0 && (
+        <Section icon={Link2} title="Reference Sources" accent="text-violet-400">
+          <ul className="space-y-2">
+            {item.reference_links.map((link, i) => (
+              <li key={i}>
+                <a
+                  href={link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-xs text-violet-400 hover:text-violet-300 hover:underline transition-colors group"
+                >
+                  <ExternalLink className="h-3 w-3 shrink-0 opacity-60 group-hover:opacity-100" />
+                  <span className="break-all">{link}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </Section>
       )}
 
       {/* ── Tags ───────────────────────────────────────── */}

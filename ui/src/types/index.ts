@@ -669,6 +669,9 @@ export interface NewsItem {
   timeline: Array<{ date: string | null; event: string }>;
   detection_opportunities: string[];
   mitigation_recommendations: string[];
+  yara_rule: string | null;
+  kql_rule: string | null;
+  reference_links: string[];
   confidence: ConfidenceLevel;
   relevance_score: number;
   ai_enriched: boolean;

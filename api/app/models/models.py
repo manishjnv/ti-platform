@@ -364,6 +364,11 @@ class NewsItem(Base):
     detection_opportunities: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
     mitigation_recommendations: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
 
+    # Detection engineering (AI-generated)
+    yara_rule: Mapped[str | None] = mapped_column(Text)
+    kql_rule: Mapped[str | None] = mapped_column(Text)
+    reference_links: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+
     # Scoring
     confidence: Mapped[str] = mapped_column(
         SAEnum("high", "medium", "low", name="confidence_level", create_type=False),
