@@ -82,7 +82,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <AuthGuard>
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
-        <div className="flex-1 flex flex-col overflow-hidden md:ml-11">
+        <div className="flex-1 flex flex-col overflow-hidden">
           {/* Top header bar */}
           <header className="h-12 shrink-0 border-b border-gray-200/60 dark:border-border/40 bg-white/80 dark:bg-card/80 backdrop-blur-sm flex items-center gap-3 px-3 md:gap-4 md:px-4 lg:px-6">
           {/* Mobile hamburger */}

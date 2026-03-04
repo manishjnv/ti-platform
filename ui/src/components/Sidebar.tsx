@@ -76,29 +76,28 @@ function DesktopSidebar() {
     <aside
       className={cn(
         "hidden md:flex flex-col border-r border-border/50 bg-sidebar transition-all duration-300 ease-in-out shrink-0 relative group/sidebar",
-        "fixed inset-y-0 left-0 z-30",
-        sidebarOpen ? "w-44" : "w-11"
+        sidebarOpen ? "w-48" : "w-[52px]"
       )}
     >
       {/* Logo */}
-      <div className="flex h-12 items-center border-b border-border/50 px-1.5 gap-1.5 shrink-0">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 shrink-0 mx-auto">
-          <Shield className="h-3.5 w-3.5 text-primary" />
+      <div className="flex h-14 items-center border-b border-border/50 px-2.5 gap-2 shrink-0">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 shrink-0">
+          <Shield className="h-4 w-4 text-primary" />
         </div>
         {sidebarOpen && (
           <div className="flex flex-col flex-1 min-w-0">
-            <span className="text-[12px] font-bold tracking-tight leading-none">IntelWatch</span>
-            <span className="text-[9px] text-muted-foreground leading-none mt-0.5">TI Platform</span>
+            <span className="text-sm font-bold tracking-tight leading-none">IntelWatch</span>
+            <span className="text-[10px] text-muted-foreground leading-none mt-0.5">TI Platform</span>
           </div>
         )}
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-1.5 px-1 space-y-2">
+      <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-3">
         {NAV_SECTIONS.map((section) => (
           <div key={section.label}>
             {sidebarOpen && (
-              <p className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/60 px-1.5 mb-0.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 px-2 mb-1">
                 {section.label}
               </p>
             )}
@@ -113,14 +112,14 @@ function DesktopSidebar() {
                     href={item.href}
                     title={!sidebarOpen ? item.label : undefined}
                     className={cn(
-                      "flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] font-medium transition-all duration-150",
+                      "flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] font-medium transition-all duration-150",
                       !sidebarOpen && "justify-center px-0",
                       active
                         ? "bg-primary/10 text-primary shadow-sm"
                         : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
                     )}
                   >
-                    <Icon className={cn("h-3.5 w-3.5 shrink-0", active && "text-primary")} />
+                    <Icon className={cn("h-4 w-4 shrink-0", active && "text-primary")} />
                     {sidebarOpen && <span className="truncate">{item.label}</span>}
                   </Link>
                 );
@@ -132,15 +131,15 @@ function DesktopSidebar() {
 
       {/* User */}
       {user && (
-        <div className="border-t border-border/50 px-1.5 py-1.5">
-          <div className="flex items-center gap-1.5">
-            <div className="h-5 w-5 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mx-auto">
-              <User className="h-2.5 w-2.5 text-primary" />
+        <div className="border-t border-border/50 px-2 py-2">
+          <div className="flex items-center gap-2">
+            <div className="h-6 w-6 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+              <User className="h-3 w-3 text-primary" />
             </div>
             {sidebarOpen && (
               <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-medium truncate">{user.name || user.email}</p>
-                <p className="text-[8px] text-muted-foreground capitalize">{user.role}</p>
+                <p className="text-[11px] font-medium truncate">{user.name || user.email}</p>
+                <p className="text-[9px] text-muted-foreground capitalize">{user.role}</p>
               </div>
             )}
           </div>
@@ -151,8 +150,8 @@ function DesktopSidebar() {
       <button
         onClick={toggleSidebar}
         className={cn(
-          "absolute -right-3 top-[52px] z-30",
-          "w-5 h-5 rounded-full",
+          "absolute -right-3 top-[60px] z-30",
+          "w-6 h-6 rounded-full",
           "bg-primary/20 border border-primary/50 shadow-lg shadow-primary/20",
           "flex items-center justify-center",
           "text-primary hover:text-primary-foreground hover:bg-primary hover:border-primary",
@@ -164,9 +163,9 @@ function DesktopSidebar() {
         aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
       >
         {sidebarOpen ? (
-          <ChevronLeft className="h-2.5 w-2.5" />
+          <ChevronLeft className="h-3 w-3" />
         ) : (
-          <ChevronRight className="h-2.5 w-2.5" />
+          <ChevronRight className="h-3 w-3" />
         )}
       </button>
     </aside>
