@@ -821,5 +821,3 @@ function DrillDownPanel({
     </Card>
   );
 }
-  );
-}
