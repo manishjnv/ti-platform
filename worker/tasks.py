@@ -1687,12 +1687,13 @@ def enrich_news_batch(batch_size: int = 10) -> dict:
                 item.mitigation_recommendations = enrichment.get("mitigation_recommendations", [])
                 item.yara_rule = enrichment.get("yara_rule")
                 item.kql_rule = enrichment.get("kql_rule")
-                # Always put the actual source URL first, then AI-suggested links (deduped)
+                # Always put the actual source URL first, then ONLY refs found in raw_content
+                raw_text = item.raw_content or ""
                 ai_refs = enrichment.get("reference_links", [])
                 seen = {item.source_url}
                 deduped_refs = [item.source_url]
                 for ref in ai_refs:
-                    if ref and ref not in seen:
+                    if ref and ref not in seen and ref in raw_text:
                         seen.add(ref)
                         deduped_refs.append(ref)
                 item.reference_links = deduped_refs
@@ -1855,12 +1856,13 @@ def re_enrich_fallback_news(batch_size: int = 10) -> dict:
                 item.mitigation_recommendations = enrichment.get("mitigation_recommendations", [])
                 item.yara_rule = enrichment.get("yara_rule")
                 item.kql_rule = enrichment.get("kql_rule")
-                # Always put the actual source URL first, then AI-suggested links (deduped)
+                # Always put the actual source URL first, then ONLY refs found in raw_content
+                raw_text = item.raw_content or ""
                 ai_refs = enrichment.get("reference_links", [])
                 seen = {item.source_url}
                 deduped_refs = [item.source_url]
                 for ref in ai_refs:
-                    if ref and ref not in seen:
+                    if ref and ref not in seen and ref in raw_text:
                         seen.add(ref)
                         deduped_refs.append(ref)
                 item.reference_links = deduped_refs
@@ -1930,6 +1932,48 @@ def re_enrich_fallback_news(batch_size: int = 10) -> dict:
 
     except Exception as e:
         logger.error("news_re_enrich_error", error=str(e))
+        session.rollback()
+        return {"error": str(e)}
+    finally:
+        session.close()
+
+
+def cleanup_hallucinated_urls():
+    """One-time backfill: remove AI-hallucinated URLs from reference_links.
+    Keeps only: source_url + URLs found verbatim in raw_content."""
+    session = SessionLocal()
+    try:
+        items = session.query(NewsItem).filter(
+            NewsItem.reference_links.isnot(None),
+        ).all()
+
+        cleaned = 0
+        for item in items:
+            refs = item.reference_links or []
+            if len(refs) <= 1:
+                continue  # Only source_url or empty
+
+            raw_text = item.raw_content or ""
+            source = item.source_url or ""
+
+            kept = [source] if source else []
+            seen = set(kept)
+            for ref in refs:
+                if ref and ref not in seen and ref != source and ref in raw_text:
+                    seen.add(ref)
+                    kept.append(ref)
+
+            if len(kept) != len(refs):
+                removed = len(refs) - len(kept)
+                item.reference_links = kept
+                cleaned += 1
+                logger.info("news_url_cleanup", headline=item.headline[:60], removed=removed, kept=len(kept))
+
+        session.commit()
+        logger.info("news_url_cleanup_complete", total_items=len(items), cleaned=cleaned)
+        return {"total": len(items), "cleaned": cleaned}
+    except Exception as e:
+        logger.error("news_url_cleanup_error", error=str(e))
         session.rollback()
         return {"error": str(e)}
     finally:
