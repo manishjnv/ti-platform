@@ -1350,11 +1350,13 @@ def ingest_news() -> dict:
             sources_with_articles_24h=len(source_24h_counts),
         )
 
-        articles = _run_async(fetch_all_feeds(
+        feed_result = _run_async(fetch_all_feeds(
             known_hashes=hash_set,
             stored_last_hour=stored_last_hour,
             source_24h_counts=source_24h_counts,
         ))
+        articles = feed_result.get("articles", []) if isinstance(feed_result, dict) else feed_result
+        cycle_cap = feed_result.get("cycle_cap", 5) if isinstance(feed_result, dict) else 5
         if not articles:
             logger.info("news_ingest_no_articles")
             return {"fetched": 0, "stored": 0}
@@ -1369,6 +1371,10 @@ def ingest_news() -> dict:
         skipped_dup = 0
 
         for article in articles:
+            # Rate limit: stop storing once we reach the cycle cap
+            if stored >= cycle_cap:
+                break
+
             # 1. Exact source_hash dedup (same source + same URL)
             if article["source_hash"] in hash_set:
                 continue

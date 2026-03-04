@@ -653,14 +653,20 @@ async def fetch_all_feeds(
     known_hashes: set[str] | None = None,
     stored_last_hour: int = 0,
     source_24h_counts: dict[str, int] | None = None,
-) -> list[dict]:
+) -> dict:
     """Fetch all configured RSS feeds concurrently, then extract full article text.
+
+    Returns a dict with keys:
+      - "articles": list of article dicts ready for dedup + storage
+      - "cycle_cap": how many NEW articles should be stored this cycle
 
     Implements intelligent rate control:
     - Dynamic per-cycle cap based on how many articles were stored in the last hour
       (target: min 4, max 15 per hour).
     - Source diversity: guarantees at least 1 article per source per day for sources
       that haven't appeared in the last 24h — reserves slots before score-ranking.
+    - Returns a 3× buffer so the caller's cross-source dedup can reject some
+      articles and still fill the cycle_cap with genuinely new stories.
     - Articles whose source_hash already exists in `known_hashes` are filtered out
       BEFORE the cap so that new content always gets a chance.
 
@@ -686,7 +692,7 @@ async def fetch_all_feeds(
     logger.info("news_rss_fetched", total=len(all_articles), sources=len(NEWS_FEEDS))
 
     if not all_articles:
-        return []
+        return {"articles": [], "cycle_cap": 0}
 
     # ── Filter out already-stored articles BEFORE scoring ─
     if known_hashes:
@@ -697,7 +703,7 @@ async def fetch_all_feeds(
             logger.info("news_pre_dedup", before=before, after=len(all_articles), skipped=skipped)
 
     if not all_articles:
-        return []
+        return {"articles": [], "cycle_cap": 0}
 
     # ── Dynamic per-cycle cap ────────────────────────────
     # How many more articles can we store this hour?
@@ -747,16 +753,17 @@ async def fetch_all_feeds(
         remaining = list(all_articles)
 
     # ── Fill remaining slots from top-scored ──────────────
-    slots_left = max(0, cycle_cap - len(reserved))
+    # Return 3× cycle_cap buffer so caller's cross-source dedup can
+    # reject some articles and still fill the cycle_cap with new stories.
+    buffer_size = cycle_cap * 3
+    slots_left = max(0, buffer_size - len(reserved))
     # Avoid duplicates: remove reserved hashes from remaining
     reserved_hashes = {a.get("source_hash") for a in reserved}
     filler = [a for a in remaining if a.get("source_hash") not in reserved_hashes][:slots_left]
 
     kept = reserved + filler
-    # Diversity reservations bypass hourly cap (max 1 per underserved source per day)
-    # but regular filler respects it. Total = reserved + min(filler, cycle_cap)
-    # Cap total at cycle_cap + diversity count (never more than 15 per cycle total)
-    max_total = min(cycle_cap + len(reserved), MAX_ARTICLES_PER_HOUR)
+    # Cap total buffer (diversity reservations + filler)
+    max_total = min(buffer_size + len(reserved), MAX_ARTICLES_PER_HOUR * 2)
     kept = kept[:max_total]
 
     dropped = len(all_articles) - len(kept)
@@ -784,7 +791,7 @@ async def fetch_all_feeds(
         full_text=full_count,
     )
 
-    return kept
+    return {"articles": kept, "cycle_cap": cycle_cap}
 
 
 # ── AI Enrichment ────────────────────────────────────────
