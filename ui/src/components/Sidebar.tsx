@@ -146,6 +146,24 @@ function DesktopSidebar() {
         </div>
       )}
 
+      {/* Bottom collapse/expand bar */}
+      <div className="border-t border-border/50 px-2 py-1.5">
+        <button
+          onClick={toggleSidebar}
+          className="w-full flex items-center justify-center gap-2 rounded-md px-2 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
+          title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+        >
+          {sidebarOpen ? (
+            <>
+              <PanelLeftClose className="h-4 w-4" />
+              <span>Collapse</span>
+            </>
+          ) : (
+            <PanelLeftOpen className="h-4 w-4" />
+          )}
+        </button>
+      </div>
+
       {/* Floating toggle pill — always visible, highlighted */}
       <button
         onClick={toggleSidebar}
