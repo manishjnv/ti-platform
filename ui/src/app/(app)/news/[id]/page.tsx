@@ -168,6 +168,8 @@ function TagList({
 
 // ── Keyword highlighting (clickable → IOC search) ────────
 const HIGHLIGHT_RULES: { pattern: RegExp; style: string; searchable: boolean }[] = [
+  // AI-bolded key intelligence terms (**term**) — highest priority
+  { pattern: /\*\*([^*]{2,60})\*\*/g, style: "font-semibold text-cyan-300 bg-cyan-500/10 px-0.5 rounded", searchable: false },
   // CVE IDs
   { pattern: /\bCVE-\d{4}-\d{4,}\b/g, style: "font-semibold text-orange-400 bg-orange-500/10 px-1 rounded cursor-pointer hover:bg-orange-500/20 transition-colors", searchable: true },
   // MITRE ATT&CK IDs
@@ -178,6 +180,9 @@ const HIGHLIGHT_RULES: { pattern: RegExp; style: string; searchable: boolean }[]
   { pattern: /\b[a-f0-9]{64}\b/gi, style: "font-mono text-purple-400 bg-purple-500/10 px-1 rounded text-[10px] cursor-pointer hover:bg-purple-500/20 transition-colors", searchable: true },
   { pattern: /\b[a-f0-9]{40}\b/gi, style: "font-mono text-purple-400 bg-purple-500/10 px-1 rounded text-[10px] cursor-pointer hover:bg-purple-500/20 transition-colors", searchable: true },
   { pattern: /\b[a-f0-9]{32}\b/gi, style: "font-mono text-purple-400 bg-purple-500/10 px-1 rounded text-[10px] cursor-pointer hover:bg-purple-500/20 transition-colors", searchable: true },
+  // Data quantities (170GB, 2.3 million records, $4.5M, etc.)
+  { pattern: /\b\d+(?:\.\d+)?\s*(?:GB|TB|MB|PB|KB|million|billion|thousand)\b/gi, style: "font-semibold text-red-400 bg-red-500/10 px-0.5 rounded", searchable: false },
+  { pattern: /\$\d+(?:\.\d+)?\s*(?:M|B|K|million|billion)?\b/gi, style: "font-semibold text-red-400 bg-red-500/10 px-0.5 rounded", searchable: false },
   // Threat actor names (APT groups, known actors)
   { pattern: /\b(APT\d+|UNC\d+|UAT-\d+|FIN\d+|Lazarus|Fancy Bear|Cozy Bear|Turla|Sandworm|Kimsuky|ScarCruft|Volt Typhoon|Storm-\d+|Midnight Blizzard|Scattered Spider)\b/gi, style: "font-semibold text-purple-400 bg-purple-500/10 px-1 rounded cursor-pointer hover:bg-purple-500/20 transition-colors", searchable: true },
   // Version numbers (e.g., v2.1.3, 10.0.1)
@@ -189,9 +194,9 @@ const HIGHLIGHT_RULES: { pattern: RegExp; style: string; searchable: boolean }[]
   // CVSS scores (e.g., 9.8/10, CVSS 7.5)
   { pattern: /\b(?:CVSS[:\s]*)?\d{1,2}\.\d\/10\b/gi, style: "font-semibold text-red-400 bg-red-500/10 px-1 rounded", searchable: false },
   // Action verbs — green highlight
-  { pattern: /\b(patch|update|upgrade|block|disable|revoke|rotate|deploy|scan|isolate|remediate|mitigat(?:e|ion)|harden|restrict|enforce|audit|verify|review|monitor|detect|enable)\b/gi, style: "font-medium text-green-400", searchable: false },
+  { pattern: /\b(patch|update|upgrade|block|disable|revoke|rotate|deploy|scan|isolate|remediate|mitigat(?:e|ion)|harden|restrict|enforce|audit|verify|review|monitor|detect|enable|contained|restored|recovered|neutralized)\b/gi, style: "font-medium text-green-400", searchable: false },
   // Threat/severity terms — amber/red for urgency
-  { pattern: /\b(zero[- ]day|critical|exploit(?:ed|ation|s)?|ransom(?:ware)?|malware|backdoor|RCE|remote code execution|privilege escalation|data (?:breach|exfiltration|leak)|supply[- ]chain|APT|brute[- ]force|phishing|trojan|rootkit|C2|command[- ]and[- ]control|lateral movement)\b/gi, style: "font-medium text-amber-400", searchable: false },
+  { pattern: /\b(zero[- ]day|critical|exploit(?:ed|ation|s)?|ransom(?:ware)?|malware|backdoor|RCE|remote code execution|privilege escalation|data (?:breach|exfiltration|leak|wiper)|supply[- ]chain|APT|brute[- ]force|phishing|trojan|rootkit|C2|command[- ]and[- ]control|lateral movement|data wiper|credential[- ]stuffing|wiper)\b/gi, style: "font-medium text-amber-400", searchable: false },
   // Quoted terms (product names, etc.)
   { pattern: /"([^"]{2,40})"/g, style: "font-medium text-foreground/90 cursor-pointer hover:text-primary transition-colors", searchable: true },
 ];
@@ -200,12 +205,15 @@ function highlightText(
   text: string,
   onKeywordClick?: (kw: string) => void,
 ): React.ReactNode[] {
-  const allMatches: { start: number; end: number; text: string; style: string; searchable: boolean }[] = [];
+  const allMatches: { start: number; end: number; text: string; displayText: string; style: string; searchable: boolean }[] = [];
   for (const rule of HIGHLIGHT_RULES) {
     const re = new RegExp(rule.pattern.source, rule.pattern.flags);
     let m: RegExpExecArray | null;
     while ((m = re.exec(text)) !== null) {
-      allMatches.push({ start: m.index, end: m.index + m[0].length, text: m[0], style: rule.style, searchable: rule.searchable });
+      // For **bold** markers: use capture group as display text (strip asterisks)
+      const isBoldMarker = m[0].startsWith("**") && m[0].endsWith("**");
+      const displayText = isBoldMarker && m[1] ? m[1] : m[0];
+      allMatches.push({ start: m.index, end: m.index + m[0].length, text: m[0], displayText, style: rule.style, searchable: rule.searchable });
     }
   }
   allMatches.sort((a, b) => a.start - b.start);
@@ -231,7 +239,7 @@ function highlightText(
     if (cursor < m.start) nodes.push(text.slice(cursor, m.start));
     if (m.searchable && onKeywordClick) {
       // Strip surrounding quotes for search
-      const searchTerm = m.text.replace(/^"|"$/g, "");
+      const searchTerm = m.displayText.replace(/^"|"$/g, "");
       nodes.push(
         <button
           key={`h-${i}`}
@@ -240,11 +248,11 @@ function highlightText(
           className={cn(m.style, "inline")}
           title={`Search IOC: ${searchTerm}`}
         >
-          {m.text}
+          {m.displayText}
         </button>,
       );
     } else {
-      nodes.push(<span key={`h-${i}`} className={m.style}>{m.text}</span>);
+      nodes.push(<span key={`h-${i}`} className={m.style}>{m.displayText}</span>);
     }
     cursor = m.end;
   }

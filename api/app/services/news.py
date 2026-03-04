@@ -799,6 +799,16 @@ Given a cybersecurity news headline + content, produce a structured JSON intelli
    - attack_narrative: HOW the attack works step-by-step
    - why_it_matters: ACTION ITEMS for defenders
 5. **NO GENERIC ADVICE** — every bullet must contain at least one SPECIFIC name (CVE, product, tool, actor, date, version, organization).
+6. **BOLD KEY INTELLIGENCE** — In summary, executive_brief, risk_assessment, and attack_narrative fields, wrap the most important technical terms in **double asterisks** for visual emphasis. Bold ONLY these categories:
+   - **Organization/victim names**: company names, government agencies, targeted entities (e.g., **AkzoNobel**, **Microsoft**, **CISA**)
+   - **Threat actor & malware names**: APT groups, ransomware families, tools (e.g., **Anubis ransomware**, **Lazarus Group**, **Cobalt Strike**)
+   - **Data quantities & impact metrics**: stolen data size, record counts, financial impact (e.g., **170GB**, **2.3 million records**, **$4.5M ransom**)
+   - **Attack techniques & tools**: specific methods used (e.g., **data wiper**, **credential stuffing**, **supply chain compromise**)
+   - **Data types compromised**: what was leaked/stolen (e.g., **confidential agreements**, **email addresses**, **source code**)
+   - **Remediation actions taken**: containment/response status (e.g., **contained the breach**, **patched within 24h**, **services restored**)
+   - **Industry/sector names**: when relevant to targeting (e.g., **chemical manufacturing**, **defense contractor**)
+   - **Product names with versions**: affected software (e.g., **PAN-OS 10.2**, **Exchange Server 2019**)
+   Do NOT bold common words, conjunctions, or entire sentences. Bold only the KEY noun phrases (1-4 words each). Aim for 5-15 bolded terms per text field.
 
 ## QUALITY RULES — READ CAREFULLY
 
