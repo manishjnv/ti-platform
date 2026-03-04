@@ -807,8 +807,12 @@ Given a cybersecurity news headline + content, produce a structured JSON intelli
    - **Data types compromised**: what was leaked/stolen (e.g., **confidential agreements**, **email addresses**, **source code**)
    - **Remediation actions taken**: containment/response status (e.g., **contained the breach**, **patched within 24h**, **services restored**)
    - **Industry/sector names**: when relevant to targeting (e.g., **chemical manufacturing**, **defense contractor**)
-   - **Product names with versions**: affected software (e.g., **PAN-OS 10.2**, **Exchange Server 2019**)
-   Do NOT bold common words, conjunctions, or entire sentences. Bold only the KEY noun phrases (1-4 words each). Aim for 5-15 bolded terms per text field.
+   - **Product names with versions**: affected software (e.g., **PAN-OS 10.2**, **Exchange Server 2019**, **VMware Aria Operations 8.x**)
+   - **Vulnerability/flaw names**: the type of flaw or weakness (e.g., **RCE flaw**, **SQL injection**, **buffer overflow**, **deserialization vulnerability**, **authentication bypass**)
+   - **CVE identifiers**: always bold CVE IDs (e.g., **CVE-2025-12345**, **CVE-2024-3400**)
+   - **Severity & CVSS ratings**: severity levels and scores (e.g., **critical severity**, **CVSS 9.8**, **high-severity**, **actively exploited**)
+   - **Key dates & event timelines**: when events happened (e.g., **March 4, 2026**, **since January 2025**, **patched on February 28**)
+   Do NOT bold common words, conjunctions, or entire sentences. Bold only the KEY noun phrases (1-5 words each). Aim for 8-20 bolded terms per text field.
 
 ## QUALITY RULES — READ CAREFULLY
 

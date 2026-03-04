@@ -472,6 +472,33 @@ export default function NewsDetailPage() {
                   {item.confidence} confidence
                 </Badge>
 
+                {/* Key intel keyword tags */}
+                {item.cves?.slice(0, 3).map((cve) => (
+                  <Badge key={cve} variant="outline" className="text-[10px] h-5 px-2 border border-orange-500/30 text-orange-400 bg-orange-500/5 font-mono">
+                    {cve}
+                  </Badge>
+                ))}
+                {item.threat_actors?.slice(0, 2).map((actor) => (
+                  <Badge key={actor} variant="outline" className="text-[10px] h-5 px-2 border border-purple-500/30 text-purple-400 bg-purple-500/5">
+                    {actor}
+                  </Badge>
+                ))}
+                {item.malware_families?.slice(0, 2).map((mw) => (
+                  <Badge key={mw} variant="outline" className="text-[10px] h-5 px-2 border border-rose-500/30 text-rose-400 bg-rose-500/5">
+                    {mw}
+                  </Badge>
+                ))}
+                {item.vulnerable_products?.slice(0, 2).map((vp) => (
+                  <Badge key={vp} variant="outline" className="text-[10px] h-5 px-2 border border-cyan-500/30 text-cyan-400 bg-cyan-500/5 font-mono">
+                    {vp}
+                  </Badge>
+                ))}
+                {item.initial_access_vector && (
+                  <Badge variant="outline" className="text-[10px] h-5 px-2 border border-amber-500/30 text-amber-400 bg-amber-500/5">
+                    {item.initial_access_vector}
+                  </Badge>
+                )}
+
                 <div className="flex items-center gap-2 ml-auto">
                   <ReportDropdown onDownload={handleDownloadReport} loading={reportLoading} />
                   <a
