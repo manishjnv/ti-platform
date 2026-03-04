@@ -2,13 +2,26 @@
 	email admin@intelwatch.in
 }
 
+(security-headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		X-XSS-Protection "1; mode=block"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Content-Security-Policy "frame-ancestors 'none'"
+		-Server
+	}
+}
+
 intelwatch.in, www.intelwatch.in {
 	# www → apex redirect
 	@www host www.intelwatch.in
 	redir @www https://intelwatch.in{uri} permanent
 
-	# Force HTTPS — tell browsers to always use HTTPS
-	header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+	# Security headers on all responses
+	import security-headers
 
 	# API routes → FastAPI
 	reverse_proxy /api/* api:8000
