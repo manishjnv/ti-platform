@@ -1941,7 +1941,7 @@ def re_enrich_fallback_news(batch_size: int = 10) -> dict:
 def cleanup_hallucinated_urls():
     """One-time backfill: remove AI-hallucinated URLs from reference_links.
     Keeps only: source_url + URLs found verbatim in raw_content."""
-    session = SessionLocal()
+    session = SyncSession()
     try:
         items = session.query(NewsItem).filter(
             NewsItem.reference_links.isnot(None),
