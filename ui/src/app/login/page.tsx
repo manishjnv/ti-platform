@@ -145,7 +145,7 @@ function LoginContent() {
           {/* Login Card */}
           <div className="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm p-6 shadow-xl">
             <div className="text-center mb-6">
-              <h2 className="text-lg font-semibold">Welcome back</h2>
+              <h2 className="text-lg font-semibold">Welcome</h2>
               <p className="text-sm text-muted-foreground mt-1">
                 Sign in to access your threat intelligence dashboard
               </p>
