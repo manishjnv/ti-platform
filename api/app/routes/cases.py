@@ -66,6 +66,16 @@ async def _enrich_case(db: AsyncSession, c, include_items: bool = False) -> Case
         resp.items = [CaseItemResponse.model_validate(i) for i in items]
 
         activities = await case_service.get_case_activities(db, c.id)
+
+        # Batch-load user emails for activities
+        activity_user_ids = {a.user_id for a in activities if a.user_id}
+        activity_user_map: dict[uuid.UUID, str] = {}
+        if activity_user_ids:
+            rows = (await db.execute(
+                select(User.id, User.email).where(User.id.in_(list(activity_user_ids)))
+            )).all()
+            activity_user_map = {r[0]: r[1] for r in rows}
+
         enriched_activities = []
         for a in activities:
             ar = CaseActivityResponse(
@@ -78,11 +88,7 @@ async def _enrich_case(db: AsyncSession, c, include_items: bool = False) -> Case
                 created_at=a.created_at,
             )
             if a.user_id:
-                u = (await db.execute(
-                    select(User).where(User.id == a.user_id)
-                )).scalar_one_or_none()
-                if u:
-                    ar.user_email = u.email
+                ar.user_email = activity_user_map.get(a.user_id)
             enriched_activities.append(ar)
         resp.activities = enriched_activities
 
@@ -121,11 +127,27 @@ async def list_cases(
     )
     pages = max(1, -(-total // page_size))
 
+    # Batch-load user emails for owner/assignee enrichment
+    user_ids = set()
+    for c in cases:
+        user_ids.add(c.owner_id)
+        if c.assignee_id:
+            user_ids.add(c.assignee_id)
+    user_map: dict[uuid.UUID, str] = {}
+    if user_ids:
+        rows = (await db.execute(
+            select(User.id, User.email).where(User.id.in_(list(user_ids)))
+        )).all()
+        user_map = {r[0]: r[1] for r in rows}
+
     enriched = []
     for c in cases:
         resp = CaseResponse.model_validate(c)
         resp.items = []
         resp.activities = []
+        resp.owner_email = user_map.get(c.owner_id)
+        if c.assignee_id:
+            resp.assignee_email = user_map.get(c.assignee_id)
         enriched.append(resp)
 
     return CaseListResponse(
@@ -233,11 +255,13 @@ async def add_item(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Link an intel item, IOC, or technique to a case."""
-    item = await case_service.add_case_item(db, case_id, user.id, body.model_dump())
-    if not item:
-        raise HTTPException(400, "Case not found or item already linked")
+    result = await case_service.add_case_item(db, case_id, user.id, body.model_dump())
+    if result == "duplicate":
+        raise HTTPException(409, "Item already linked to this case")
+    if not result:
+        raise HTTPException(400, "Case not found")
     await db.commit()
-    return CaseItemResponse.model_validate(item)
+    return CaseItemResponse.model_validate(result)
 
 
 @router.delete("/{case_id}/items/{item_id}")
@@ -248,7 +272,7 @@ async def remove_item(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Remove a linked item from a case."""
-    ok = await case_service.remove_case_item(db, case_id, item_id)
+    ok = await case_service.remove_case_item(db, case_id, item_id, user_id=user.id)
     if not ok:
         raise HTTPException(404, "Item not found")
     await db.commit()

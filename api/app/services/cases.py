@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import delete, func, select, case as sa_case
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
@@ -145,7 +146,7 @@ async def add_case_item(
     case_id: uuid.UUID,
     user_id: uuid.UUID,
     data: dict,
-) -> CaseItem | None:
+) -> CaseItem | str | None:
     c = await get_case(db, case_id)
     if not c:
         return None
@@ -170,7 +171,11 @@ async def add_case_item(
         c.linked_observable_count += 1
     c.updated_at = datetime.now(timezone.utc)
 
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        return "duplicate"
     await db.refresh(item)
 
     await _add_activity(
@@ -181,13 +186,20 @@ async def add_case_item(
     return item
 
 
-async def remove_case_item(db: AsyncSession, case_id: uuid.UUID, item_id: uuid.UUID) -> bool:
+async def remove_case_item(
+    db: AsyncSession,
+    case_id: uuid.UUID,
+    item_id: uuid.UUID,
+    user_id: uuid.UUID | None = None,
+) -> bool:
     result = await db.execute(
         select(CaseItem).where(CaseItem.id == item_id, CaseItem.case_id == case_id)
     )
     item = result.scalar_one_or_none()
     if not item:
         return False
+
+    item_label = f"{item.item_type}: {item.item_title or item.item_id}"
 
     # Update counter
     c = await get_case(db, case_id)
@@ -201,6 +213,10 @@ async def remove_case_item(db: AsyncSession, case_id: uuid.UUID, item_id: uuid.U
         c.updated_at = datetime.now(timezone.utc)
 
     await db.execute(delete(CaseItem).where(CaseItem.id == item_id))
+
+    if user_id:
+        await _add_activity(db, case_id, user_id, "item_removed", f"Removed {item_label}")
+
     return True
 
 

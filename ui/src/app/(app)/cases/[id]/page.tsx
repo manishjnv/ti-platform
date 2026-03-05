@@ -272,8 +272,13 @@ export default function CaseDetailPage() {
 
   const handleAddItem = async (data: { item_type: string; item_id: string; item_title?: string; notes?: string }) => {
     if (!caseData) return;
-    await addCaseItem(caseData.id, data);
-    fetchCase();
+    try {
+      await addCaseItem(caseData.id, data);
+      fetchCase();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to link item";
+      alert(msg.includes("409") ? "Item already linked to this case" : msg);
+    }
   };
 
   const handleRemoveItem = async (itemId: string) => {

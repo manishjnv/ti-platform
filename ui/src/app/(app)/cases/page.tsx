@@ -22,6 +22,7 @@ import type {
   CasePriority,
   CaseType,
   CaseCreate,
+  Severity,
 } from "@/types";
 import {
   Briefcase,
@@ -89,9 +90,19 @@ function CreateCaseModal({
   const [description, setDescription] = useState("");
   const [caseType, setCaseType] = useState<CaseType>("investigation");
   const [priority, setPriority] = useState<CasePriority>("medium");
+  const [severity, setSeverity] = useState<Severity>("medium");
+  const [tlp, setTlp] = useState("TLP:GREEN");
+  const [tagInput, setTagInput] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   if (!open) return null;
+
+  const addTag = () => {
+    const t = tagInput.trim().toLowerCase();
+    if (t && !tags.includes(t)) setTags([...tags, t]);
+    setTagInput("");
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,11 +114,17 @@ function CreateCaseModal({
         description: description.trim() || undefined,
         case_type: caseType,
         priority,
+        severity,
+        tlp,
+        tags: tags.length > 0 ? tags : undefined,
       });
       setTitle("");
       setDescription("");
       setCaseType("investigation");
       setPriority("medium");
+      setSeverity("medium");
+      setTlp("TLP:GREEN");
+      setTags([]);
       onCreated();
       onClose();
     } catch {
@@ -174,6 +191,58 @@ function CreateCaseModal({
                 ))}
               </select>
             </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Severity</label>
+              <select
+                value={severity}
+                onChange={(e) => setSeverity(e.target.value as Severity)}
+                className="w-full mt-1 px-3 py-2 rounded-lg bg-muted/50 border border-border text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+                <option value="info">Info</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">TLP</label>
+              <select
+                value={tlp}
+                onChange={(e) => setTlp(e.target.value)}
+                className="w-full mt-1 px-3 py-2 rounded-lg bg-muted/50 border border-border text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="TLP:RED">TLP:RED</option>
+                <option value="TLP:AMBER+STRICT">TLP:AMBER+STRICT</option>
+                <option value="TLP:AMBER">TLP:AMBER</option>
+                <option value="TLP:GREEN">TLP:GREEN</option>
+                <option value="TLP:CLEAR">TLP:CLEAR</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Tags</label>
+            <div className="flex gap-2 mt-1">
+              <input
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }}
+                placeholder="Add tag and press Enter"
+                className="flex-1 px-3 py-2 rounded-lg bg-muted/50 border border-border text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <Button type="button" variant="ghost" size="sm" onClick={addTag} disabled={!tagInput.trim()}>Add</Button>
+            </div>
+            {tags.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-2">
+                {tags.map((t) => (
+                  <Badge key={t} variant="outline" className="text-[10px] px-1.5 py-0 bg-muted/50 cursor-pointer hover:bg-destructive/10" onClick={() => setTags(tags.filter((x) => x !== t))}>
+                    {t} <X className="h-2.5 w-2.5 ml-0.5" />
+                  </Badge>
+                ))}
+              </div>
+            )}
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" size="sm" type="button" onClick={onClose}>
@@ -255,8 +324,12 @@ export default function CasesPage() {
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm("Delete this case?")) return;
-    await deleteCase(id);
-    fetchData(page);
+    try {
+      await deleteCase(id);
+      fetchData(page);
+    } catch {
+      alert("Failed to delete case");
+    }
   };
 
   if (loading && cases.length === 0) return <Loading />;
@@ -455,6 +528,9 @@ export default function CasesPage() {
                       <span>
                         {new Date(c.updated_at).toLocaleDateString()}
                       </span>
+                      {c.owner_email && (
+                        <span className="truncate max-w-[100px]" title={c.owner_email}>{c.owner_email.split('@')[0]}</span>
+                      )}
                       {c.assignee_email && (
                         <span className="truncate max-w-[120px]">→ {c.assignee_email}</span>
                       )}
