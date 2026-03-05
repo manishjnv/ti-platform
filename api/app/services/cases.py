@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import csv
+import io
+import json
 import uuid
 from datetime import datetime, timezone
 
@@ -13,6 +16,23 @@ from app.core.logging import get_logger
 from app.models.models import Case, CaseItem, CaseActivity, User
 
 logger = get_logger(__name__)
+
+# ─── Status Transition Rules ─────────────────────────────
+
+ALLOWED_TRANSITIONS: dict[str, set[str]] = {
+    "new": {"in_progress", "pending", "closed"},
+    "in_progress": {"pending", "resolved", "closed"},
+    "pending": {"in_progress", "resolved", "closed"},
+    "resolved": {"closed", "in_progress"},
+    "closed": {"in_progress"},
+}
+
+
+def validate_status_transition(current: str, target: str) -> bool:
+    """Check whether a status transition is allowed."""
+    if current == target:
+        return True
+    return target in ALLOWED_TRANSITIONS.get(current, set())
 
 
 # ─── CRUD ─────────────────────────────────────────────────
@@ -63,6 +83,11 @@ async def list_cases(
     search: str | None = None,
     sort_by: str = "updated_at",
     sort_order: str = "desc",
+    severity: str | None = None,
+    tlp: str | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    tag: str | None = None,
 ) -> tuple[list[Case], int]:
     query = select(Case)
 
@@ -74,6 +99,16 @@ async def list_cases(
         query = query.where(Case.case_type == case_type)
     if assignee_id:
         query = query.where(Case.assignee_id == assignee_id)
+    if severity:
+        query = query.where(Case.severity == severity)
+    if tlp:
+        query = query.where(Case.tlp == tlp)
+    if date_from:
+        query = query.where(Case.created_at >= date_from)
+    if date_to:
+        query = query.where(Case.created_at <= date_to)
+    if tag:
+        query = query.where(Case.tags.contains([tag]))
     if search:
         query = query.where(Case.title.ilike(f"%{search}%"))
 
@@ -93,10 +128,15 @@ async def update_case(
     case_id: uuid.UUID,
     user_id: uuid.UUID,
     data: dict,
-) -> Case | None:
+) -> Case | str | None:
     c = await get_case(db, case_id)
     if not c:
         return None
+
+    # Validate status transition
+    if "status" in data and data["status"] != c.status:
+        if not validate_status_transition(c.status, data["status"]):
+            return "invalid_transition"
 
     changes = []
     for key, value in data.items():
@@ -306,3 +346,149 @@ async def get_case_stats(db: AsyncSession) -> dict:
         "by_type": by_type,
         "recent_closed": recent_closed,
     }
+
+
+# ─── Bulk Operations ──────────────────────────────────────
+
+
+async def bulk_update_status(
+    db: AsyncSession,
+    case_ids: list[uuid.UUID],
+    status: str,
+    user_id: uuid.UUID,
+) -> int:
+    """Update status for multiple cases. Returns count of updated."""
+    updated = 0
+    for cid in case_ids:
+        c = await get_case(db, cid)
+        if not c:
+            continue
+        if not validate_status_transition(c.status, status):
+            continue
+        old = c.status
+        c.status = status
+        if status in ("resolved", "closed") and not c.closed_at:
+            c.closed_at = datetime.now(timezone.utc)
+        elif status not in ("resolved", "closed"):
+            c.closed_at = None
+        c.updated_at = datetime.now(timezone.utc)
+        await _add_activity(db, cid, user_id, "status_changed", f"status: {old} → {status}")
+        updated += 1
+    return updated
+
+
+async def bulk_delete(
+    db: AsyncSession,
+    case_ids: list[uuid.UUID],
+) -> int:
+    """Delete multiple cases. Returns count of deleted."""
+    deleted = 0
+    for cid in case_ids:
+        if await delete_case(db, cid):
+            deleted += 1
+    return deleted
+
+
+async def bulk_assign(
+    db: AsyncSession,
+    case_ids: list[uuid.UUID],
+    assignee_id: uuid.UUID | None,
+    user_id: uuid.UUID,
+) -> int:
+    """Assign multiple cases. Returns count of updated."""
+    updated = 0
+    for cid in case_ids:
+        c = await get_case(db, cid)
+        if not c:
+            continue
+        old_id = c.assignee_id
+        c.assignee_id = assignee_id
+        c.updated_at = datetime.now(timezone.utc)
+        await _add_activity(db, cid, user_id, "assigned", f"assignee: {old_id} → {assignee_id}")
+        updated += 1
+    return updated
+
+
+# ─── Export ───────────────────────────────────────────────
+
+
+async def export_cases_json(db: AsyncSession, case_ids: list[uuid.UUID] | None = None) -> str:
+    """Export cases as JSON string."""
+    if case_ids:
+        result = await db.execute(select(Case).where(Case.id.in_(case_ids)))
+    else:
+        result = await db.execute(select(Case).order_by(Case.updated_at.desc()))
+    cases = list(result.scalars().all())
+
+    export_data = []
+    for c in cases:
+        items_result = await db.execute(
+            select(CaseItem).where(CaseItem.case_id == c.id)
+        )
+        items = list(items_result.scalars().all())
+
+        export_data.append({
+            "id": str(c.id),
+            "title": c.title,
+            "description": c.description,
+            "case_type": c.case_type,
+            "status": c.status,
+            "priority": c.priority,
+            "severity": c.severity,
+            "tlp": c.tlp,
+            "tags": c.tags,
+            "linked_intel_count": c.linked_intel_count,
+            "linked_ioc_count": c.linked_ioc_count,
+            "linked_observable_count": c.linked_observable_count,
+            "created_at": c.created_at.isoformat(),
+            "updated_at": c.updated_at.isoformat(),
+            "closed_at": c.closed_at.isoformat() if c.closed_at else None,
+            "items": [
+                {
+                    "item_type": i.item_type,
+                    "item_id": i.item_id,
+                    "item_title": i.item_title,
+                    "notes": i.notes,
+                }
+                for i in items
+            ],
+        })
+
+    return json.dumps(export_data, indent=2)
+
+
+async def export_cases_csv(db: AsyncSession, case_ids: list[uuid.UUID] | None = None) -> str:
+    """Export cases as CSV string."""
+    if case_ids:
+        result = await db.execute(select(Case).where(Case.id.in_(case_ids)))
+    else:
+        result = await db.execute(select(Case).order_by(Case.updated_at.desc()))
+    cases = list(result.scalars().all())
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "ID", "Title", "Description", "Type", "Status", "Priority",
+        "Severity", "TLP", "Tags", "Intel", "IOCs", "Observables",
+        "Created", "Updated", "Closed",
+    ])
+    for c in cases:
+        writer.writerow([
+            str(c.id), c.title, c.description or "", c.case_type,
+            c.status, c.priority, c.severity, c.tlp,
+            "; ".join(c.tags), c.linked_intel_count, c.linked_ioc_count,
+            c.linked_observable_count,
+            c.created_at.isoformat(), c.updated_at.isoformat(),
+            c.closed_at.isoformat() if c.closed_at else "",
+        ])
+    return output.getvalue()
+
+
+async def get_assignable_users(db: AsyncSession) -> list[dict]:
+    """Get users that can be assigned to cases (admin + analyst)."""
+    result = await db.execute(
+        select(User.id, User.email, User.name)
+        .where(User.is_active == True, User.role.in_(["admin", "analyst"]))
+        .order_by(User.email)
+    )
+    return [{"id": str(r[0]), "email": r[1], "name": r[2]} for r in result.all()]

@@ -12,6 +12,7 @@ import {
   addCaseComment,
   addCaseItem,
   removeCaseItem,
+  getCaseAssignees,
 } from "@/lib/api";
 import type {
   Case,
@@ -20,7 +21,10 @@ import type {
   CaseType,
   CaseItem,
   CaseActivity,
+  Severity,
+  Assignee,
 } from "@/types";
+import { ALLOWED_TRANSITIONS } from "@/types";
 import {
   ArrowLeft,
   Briefcase,
@@ -214,6 +218,7 @@ export default function CaseDetailPage() {
   const [commenting, setCommenting] = useState(false);
   const [showAddItem, setShowAddItem] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [assignees, setAssignees] = useState<Assignee[]>([]);
 
   // Edit state
   const [editTitle, setEditTitle] = useState("");
@@ -221,6 +226,11 @@ export default function CaseDetailPage() {
   const [editStatus, setEditStatus] = useState<CaseStatus>("new");
   const [editPriority, setEditPriority] = useState<CasePriority>("medium");
   const [editType, setEditType] = useState<CaseType>("investigation");
+  const [editSeverity, setEditSeverity] = useState<Severity>("medium");
+  const [editTlp, setEditTlp] = useState("TLP:GREEN");
+  const [editTags, setEditTags] = useState<string[]>([]);
+  const [editTagInput, setEditTagInput] = useState("");
+  const [editAssigneeId, setEditAssigneeId] = useState("");
 
   const fetchCase = useCallback(async () => {
     setLoading(true);
@@ -232,6 +242,10 @@ export default function CaseDetailPage() {
       setEditStatus(data.status);
       setEditPriority(data.priority);
       setEditType(data.case_type);
+      setEditSeverity(data.severity as Severity);
+      setEditTlp(data.tlp);
+      setEditTags([...data.tags]);
+      setEditAssigneeId(data.assignee_id || "");
     } catch {
       // Not found
     } finally {
@@ -243,6 +257,16 @@ export default function CaseDetailPage() {
     fetchCase();
   }, [fetchCase]);
 
+  useEffect(() => {
+    getCaseAssignees().then(setAssignees).catch(() => {});
+  }, []);
+
+  const addEditTag = () => {
+    const t = editTagInput.trim().toLowerCase();
+    if (t && !editTags.includes(t)) setEditTags([...editTags, t]);
+    setEditTagInput("");
+  };
+
   const handleSave = async () => {
     if (!caseData) return;
     await updateCase(caseData.id, {
@@ -251,6 +275,10 @@ export default function CaseDetailPage() {
       status: editStatus,
       priority: editPriority,
       case_type: editType,
+      severity: editSeverity,
+      tlp: editTlp,
+      tags: editTags,
+      assignee_id: editAssigneeId || undefined,
     });
     setEditing(false);
     fetchCase();
@@ -387,7 +415,7 @@ export default function CaseDetailPage() {
           {/* Edit fields */}
           {editing && (
             <Card>
-              <CardContent className="p-4">
+              <CardContent className="p-4 space-y-3">
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="text-[10px] font-medium text-muted-foreground uppercase">Status</label>
@@ -396,8 +424,10 @@ export default function CaseDetailPage() {
                       onChange={(e) => setEditStatus(e.target.value as CaseStatus)}
                       className="w-full mt-1 px-2 py-1.5 rounded-md bg-muted/50 border border-border text-xs"
                     >
-                      {Object.entries(STATUS_CONFIG).map(([k, v]) => (
-                        <option key={k} value={k}>{v.label}</option>
+                      {/* Show current + allowed transitions */}
+                      <option value={caseData.status}>{STATUS_CONFIG[caseData.status]?.label}</option>
+                      {(ALLOWED_TRANSITIONS[caseData.status] || []).filter((s) => s !== caseData.status).map((s) => (
+                        <option key={s} value={s}>{STATUS_CONFIG[s]?.label}</option>
                       ))}
                     </select>
                   </div>
@@ -426,6 +456,71 @@ export default function CaseDetailPage() {
                     </select>
                   </div>
                 </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-[10px] font-medium text-muted-foreground uppercase">Severity</label>
+                    <select
+                      value={editSeverity}
+                      onChange={(e) => setEditSeverity(e.target.value as Severity)}
+                      className="w-full mt-1 px-2 py-1.5 rounded-md bg-muted/50 border border-border text-xs"
+                    >
+                      <option value="critical">Critical</option>
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                      <option value="low">Low</option>
+                      <option value="info">Info</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-medium text-muted-foreground uppercase">TLP</label>
+                    <select
+                      value={editTlp}
+                      onChange={(e) => setEditTlp(e.target.value)}
+                      className="w-full mt-1 px-2 py-1.5 rounded-md bg-muted/50 border border-border text-xs"
+                    >
+                      <option value="TLP:RED">TLP:RED</option>
+                      <option value="TLP:AMBER+STRICT">TLP:AMBER+STRICT</option>
+                      <option value="TLP:AMBER">TLP:AMBER</option>
+                      <option value="TLP:GREEN">TLP:GREEN</option>
+                      <option value="TLP:CLEAR">TLP:CLEAR</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-medium text-muted-foreground uppercase">Assignee</label>
+                    <select
+                      value={editAssigneeId}
+                      onChange={(e) => setEditAssigneeId(e.target.value)}
+                      className="w-full mt-1 px-2 py-1.5 rounded-md bg-muted/50 border border-border text-xs"
+                    >
+                      <option value="">Unassigned</option>
+                      {assignees.map((a) => (
+                        <option key={a.id} value={a.id}>{a.name || a.email}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase">Tags</label>
+                  <div className="flex gap-2 mt-1">
+                    <input
+                      value={editTagInput}
+                      onChange={(e) => setEditTagInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addEditTag(); } }}
+                      placeholder="Add tag..."
+                      className="flex-1 px-2 py-1.5 rounded-md bg-muted/50 border border-border text-xs"
+                    />
+                    <Button type="button" variant="ghost" size="sm" className="text-xs" onClick={addEditTag} disabled={!editTagInput.trim()}>Add</Button>
+                  </div>
+                  {editTags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {editTags.map((t) => (
+                        <Badge key={t} variant="outline" className="text-[10px] px-1.5 py-0 bg-muted/50 cursor-pointer hover:bg-destructive/10" onClick={() => setEditTags(editTags.filter((x) => x !== t))}>
+                          {t} <X className="h-2.5 w-2.5 ml-0.5" />
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
           )}
@@ -451,10 +546,16 @@ export default function CaseDetailPage() {
                 <div className="space-y-1.5">
                   {caseData.items.map((item) => {
                     const ItemIcon = ITEM_TYPE_ICONS[item.item_type] || FileText;
+                    const itemHref = item.item_type === "intel"
+                      ? `/intel/${item.item_id}`
+                      : item.item_type === "ioc"
+                        ? `/search?q=${encodeURIComponent(item.item_title || item.item_id)}`
+                        : null;
                     return (
                       <div
                         key={item.id}
-                        className="flex items-center gap-2 p-2 rounded-lg bg-muted/30 hover:bg-muted/50 group text-xs"
+                        className={`flex items-center gap-2 p-2 rounded-lg bg-muted/30 hover:bg-muted/50 group text-xs ${itemHref ? "cursor-pointer" : ""}`}
+                        onClick={() => itemHref && router.push(itemHref)}
                       >
                         <ItemIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                         <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0">

@@ -4,6 +4,11 @@ Provides:
 - GET    /cases              — list cases (paginated, filtered)
 - POST   /cases              — create a new case
 - GET    /cases/stats        — aggregate case statistics
+- GET    /cases/assignees    — users eligible for assignment
+- GET    /cases/export       — export cases as JSON or CSV
+- POST   /cases/bulk/status  — bulk status update
+- POST   /cases/bulk/assign  — bulk assign
+- POST   /cases/bulk/delete  — bulk delete
 - GET    /cases/{id}         — get case with items & timeline
 - PUT    /cases/{id}         — update a case
 - DELETE /cases/{id}         — delete a case
@@ -15,9 +20,11 @@ Provides:
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import PlainTextResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -111,6 +118,11 @@ async def list_cases(
     search: str | None = Query(None),
     sort_by: str = Query("updated_at"),
     sort_order: str = Query("desc"),
+    severity: str | None = Query(None),
+    tlp: str | None = Query(None),
+    date_from: datetime | None = Query(None),
+    date_to: datetime | None = Query(None),
+    tag: str | None = Query(None),
 ):
     """List cases with pagination and filters."""
     cases, total = await case_service.list_cases(
@@ -124,6 +136,11 @@ async def list_cases(
         search=search,
         sort_by=sort_by,
         sort_order=sort_order,
+        severity=severity,
+        tlp=tlp,
+        date_from=date_from,
+        date_to=date_to,
+        tag=tag,
     )
     pages = max(1, -(-total // page_size))
 
@@ -177,7 +194,7 @@ async def create_case(
     return await _enrich_case(db, c)
 
 
-# ─── Stats ────────────────────────────────────────────────
+# ─── Stats & Assignees ────────────────────────────────────
 
 
 @router.get("/stats", response_model=CaseStatsResponse)
@@ -188,6 +205,100 @@ async def get_stats(
     """Get aggregate case statistics."""
     stats = await case_service.get_case_stats(db)
     return CaseStatsResponse(**stats)
+
+
+@router.get("/assignees")
+async def get_assignees(
+    user: Annotated[User, Depends(require_viewer)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Get users eligible for case assignment (admin + analyst)."""
+    return await case_service.get_assignable_users(db)
+
+
+# ─── Export ─────────────────────────────────────────────
+
+
+@router.get("/export")
+async def export_cases(
+    user: Annotated[User, Depends(require_viewer)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    format: str = Query("json", pattern="^(json|csv)$"),
+    ids: str | None = Query(None, description="Comma-separated case UUIDs"),
+):
+    """Export cases as JSON or CSV."""
+    case_ids = None
+    if ids:
+        try:
+            case_ids = [uuid.UUID(i.strip()) for i in ids.split(",") if i.strip()]
+        except ValueError:
+            raise HTTPException(400, "Invalid case ID format")
+
+    if format == "csv":
+        data = await case_service.export_cases_csv(db, case_ids)
+        return PlainTextResponse(
+            data,
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=cases.csv"},
+        )
+    else:
+        data = await case_service.export_cases_json(db, case_ids)
+        return PlainTextResponse(
+            data,
+            media_type="application/json",
+            headers={"Content-Disposition": "attachment; filename=cases.json"},
+        )
+
+
+# ─── Bulk Operations ────────────────────────────────────
+
+
+@router.post("/bulk/status")
+async def bulk_status(
+    body: dict,
+    user: Annotated[User, Depends(require_analyst)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Bulk update case status."""
+    case_ids = [uuid.UUID(i) for i in body.get("case_ids", [])]
+    status = body.get("status", "")
+    if not case_ids or not status:
+        raise HTTPException(400, "case_ids and status required")
+    count = await case_service.bulk_update_status(db, case_ids, status, user.id)
+    await db.commit()
+    return {"updated": count}
+
+
+@router.post("/bulk/assign")
+async def bulk_assign(
+    body: dict,
+    user: Annotated[User, Depends(require_analyst)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Bulk assign cases."""
+    case_ids = [uuid.UUID(i) for i in body.get("case_ids", [])]
+    assignee_id = body.get("assignee_id")
+    if not case_ids:
+        raise HTTPException(400, "case_ids required")
+    aid = uuid.UUID(assignee_id) if assignee_id else None
+    count = await case_service.bulk_assign(db, case_ids, aid, user.id)
+    await db.commit()
+    return {"updated": count}
+
+
+@router.post("/bulk/delete")
+async def bulk_delete(
+    body: dict,
+    user: Annotated[User, Depends(require_analyst)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Bulk delete cases."""
+    case_ids = [uuid.UUID(i) for i in body.get("case_ids", [])]
+    if not case_ids:
+        raise HTTPException(400, "case_ids required")
+    count = await case_service.bulk_delete(db, case_ids)
+    await db.commit()
+    return {"deleted": count}
 
 
 # ─── Single Case ─────────────────────────────────────────
@@ -224,6 +335,10 @@ async def update_case(
             data[key] = data[key].value
 
     c = await case_service.update_case(db, case_id, user.id, data)
+    if c == "invalid_transition":
+        raise HTTPException(
+            422, "Invalid status transition. Check allowed transitions."
+        )
     if not c:
         raise HTTPException(404, "Case not found")
     await db.commit()

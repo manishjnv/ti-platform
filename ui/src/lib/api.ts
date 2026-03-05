@@ -661,6 +661,11 @@ export async function getCases(params: {
   search?: string;
   sort_by?: string;
   sort_order?: string;
+  severity?: string;
+  tlp?: string;
+  date_from?: string;
+  date_to?: string;
+  tag?: string;
 } = {}): Promise<import("@/types").CaseListResponse> {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {
@@ -721,4 +726,35 @@ export async function addCaseComment(caseId: string, comment: string): Promise<i
     method: "POST",
     body: JSON.stringify({ comment }),
   });
+}
+
+export async function getCaseAssignees(): Promise<import("@/types").Assignee[]> {
+  return fetcher<import("@/types").Assignee[]>("/cases/assignees");
+}
+
+export async function bulkUpdateCaseStatus(caseIds: string[], status: string): Promise<{ updated: number }> {
+  return fetcher<{ updated: number }>("/cases/bulk/status", {
+    method: "POST",
+    body: JSON.stringify({ case_ids: caseIds, status }),
+  });
+}
+
+export async function bulkAssignCases(caseIds: string[], assigneeId: string | null): Promise<{ updated: number }> {
+  return fetcher<{ updated: number }>("/cases/bulk/assign", {
+    method: "POST",
+    body: JSON.stringify({ case_ids: caseIds, assignee_id: assigneeId }),
+  });
+}
+
+export async function bulkDeleteCases(caseIds: string[]): Promise<{ deleted: number }> {
+  return fetcher<{ deleted: number }>("/cases/bulk/delete", {
+    method: "POST",
+    body: JSON.stringify({ case_ids: caseIds }),
+  });
+}
+
+export function getCaseExportUrl(format: "json" | "csv", ids?: string[]): string {
+  const base = `${process.env.NEXT_PUBLIC_API_URL || "/api/v1"}/cases/export?format=${format}`;
+  if (ids && ids.length > 0) return `${base}&ids=${ids.join(",")}`;
+  return base;
 }

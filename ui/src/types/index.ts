@@ -854,3 +854,17 @@ export interface CaseStats {
   by_type: Record<string, number>;
   recent_closed: number;
 }
+
+export interface Assignee {
+  id: string;
+  email: string;
+  name: string | null;
+}
+
+export const ALLOWED_TRANSITIONS: Record<CaseStatus, CaseStatus[]> = {
+  new: ['in_progress', 'pending', 'closed'],
+  in_progress: ['pending', 'resolved', 'closed'],
+  pending: ['in_progress', 'resolved', 'closed'],
+  resolved: ['closed', 'in_progress'],
+  closed: ['in_progress'],
+};

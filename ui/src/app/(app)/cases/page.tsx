@@ -13,6 +13,11 @@ import {
   getCaseStats,
   createCase,
   deleteCase,
+  getCaseAssignees,
+  bulkUpdateCaseStatus,
+  bulkDeleteCases,
+  bulkAssignCases,
+  getCaseExportUrl,
 } from "@/lib/api";
 import type {
   Case,
@@ -23,6 +28,7 @@ import type {
   CaseType,
   CaseCreate,
   Severity,
+  Assignee,
 } from "@/types";
 import {
   Briefcase,
@@ -41,6 +47,10 @@ import {
   HelpCircle,
   Trash2,
   X,
+  Download,
+  CheckSquare,
+  Square,
+  Users,
 } from "lucide-react";
 
 /* ── Config Maps ──────────────────────────────────────── */
@@ -81,10 +91,12 @@ function CreateCaseModal({
   open,
   onClose,
   onCreated,
+  assignees,
 }: {
   open: boolean;
   onClose: () => void;
   onCreated: () => void;
+  assignees: Assignee[];
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -94,6 +106,7 @@ function CreateCaseModal({
   const [tlp, setTlp] = useState("TLP:GREEN");
   const [tagInput, setTagInput] = useState("");
   const [tags, setTags] = useState<string[]>([]);
+  const [assigneeId, setAssigneeId] = useState("");
   const [saving, setSaving] = useState(false);
 
   if (!open) return null;
@@ -117,6 +130,7 @@ function CreateCaseModal({
         severity,
         tlp,
         tags: tags.length > 0 ? tags : undefined,
+        assignee_id: assigneeId || undefined,
       });
       setTitle("");
       setDescription("");
@@ -125,6 +139,7 @@ function CreateCaseModal({
       setSeverity("medium");
       setTlp("TLP:GREEN");
       setTags([]);
+      setAssigneeId("");
       onCreated();
       onClose();
     } catch {
@@ -244,6 +259,21 @@ function CreateCaseModal({
               </div>
             )}
           </div>
+          {assignees.length > 0 && (
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Assignee</label>
+              <select
+                value={assigneeId}
+                onChange={(e) => setAssigneeId(e.target.value)}
+                className="w-full mt-1 px-3 py-2 rounded-lg bg-muted/50 border border-border text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="">Unassigned</option>
+                {assignees.map((a) => (
+                  <option key={a.id} value={a.id}>{a.name || a.email}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" size="sm" type="button" onClick={onClose}>
               Cancel
@@ -268,13 +298,22 @@ export default function CasesPage() {
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<CaseStats | null>(null);
+  const [assignees, setAssignees] = useState<Assignee[]>([]);
 
   const [showFilters, setShowFilters] = useState(false);
   const [statusFilter, setStatusFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
+  const [severityFilter, setSeverityFilter] = useState("");
+  const [tlpFilter, setTlpFilter] = useState("");
+  const [tagFilter, setTagFilter] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+
+  // Bulk selection
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState("");
+  const [bulkAssignee, setBulkAssignee] = useState("");
 
   const fetchData = useCallback(
     async (p = 1) => {
@@ -288,6 +327,9 @@ export default function CasesPage() {
             priority: priorityFilter || undefined,
             case_type: typeFilter || undefined,
             search: searchTerm || undefined,
+            severity: severityFilter || undefined,
+            tlp: tlpFilter || undefined,
+            tag: tagFilter || undefined,
           }),
           getCaseStats(),
         ]);
@@ -302,12 +344,16 @@ export default function CasesPage() {
         setLoading(false);
       }
     },
-    [statusFilter, priorityFilter, typeFilter, searchTerm]
+    [statusFilter, priorityFilter, typeFilter, searchTerm, severityFilter, tlpFilter, tagFilter]
   );
 
   useEffect(() => {
     fetchData(1);
   }, [fetchData]);
+
+  useEffect(() => {
+    getCaseAssignees().then(setAssignees).catch(() => {});
+  }, []);
 
   const handlePageChange = (p: number) => {
     fetchData(p);
@@ -318,7 +364,54 @@ export default function CasesPage() {
     setStatusFilter("");
     setPriorityFilter("");
     setTypeFilter("");
+    setSeverityFilter("");
+    setTlpFilter("");
+    setTagFilter("");
     setSearchTerm("");
+  };
+
+  const toggleSelect = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selected.size === cases.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(cases.map((c) => c.id)));
+    }
+  };
+
+  const handleBulkAction = async () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0 || !bulkAction) return;
+    try {
+      if (bulkAction === "delete") {
+        if (!confirm(`Delete ${ids.length} case(s)?`)) return;
+        await bulkDeleteCases(ids);
+      } else if (bulkAction === "assign" && bulkAssignee) {
+        await bulkAssignCases(ids, bulkAssignee);
+      } else if (["new", "in_progress", "pending", "resolved", "closed"].includes(bulkAction)) {
+        await bulkUpdateCaseStatus(ids, bulkAction as CaseStatus);
+      }
+      setSelected(new Set());
+      setBulkAction("");
+      setBulkAssignee("");
+      fetchData(page);
+    } catch {
+      alert("Some bulk operations failed");
+      fetchData(page);
+    }
+  };
+
+  const handleExport = (format: "json" | "csv") => {
+    const ids = selected.size > 0 ? Array.from(selected) : undefined;
+    window.open(getCaseExportUrl(format, ids), "_blank");
   };
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
@@ -364,6 +457,15 @@ export default function CasesPage() {
             className="text-xs"
           >
             <RefreshCw className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleExport("csv")}
+            className="text-xs"
+            title="Export CSV"
+          >
+            <Download className="h-3.5 w-3.5" />
           </Button>
           <Button size="sm" onClick={() => setShowCreate(true)} className="text-xs">
             <Plus className="h-3.5 w-3.5 mr-1" />
@@ -455,6 +557,46 @@ export default function CasesPage() {
                   ))}
                 </select>
               </div>
+              <div>
+                <label className="text-[10px] font-medium text-muted-foreground uppercase">Severity</label>
+                <select
+                  value={severityFilter}
+                  onChange={(e) => setSeverityFilter(e.target.value)}
+                  className="mt-1 block w-full px-2 py-1.5 rounded-md bg-muted/50 border border-border text-xs"
+                >
+                  <option value="">All</option>
+                  <option value="critical">Critical</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                  <option value="info">Info</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-muted-foreground uppercase">TLP</label>
+                <select
+                  value={tlpFilter}
+                  onChange={(e) => setTlpFilter(e.target.value)}
+                  className="mt-1 block w-full px-2 py-1.5 rounded-md bg-muted/50 border border-border text-xs"
+                >
+                  <option value="">All</option>
+                  <option value="TLP:RED">TLP:RED</option>
+                  <option value="TLP:AMBER+STRICT">TLP:AMBER+STRICT</option>
+                  <option value="TLP:AMBER">TLP:AMBER</option>
+                  <option value="TLP:GREEN">TLP:GREEN</option>
+                  <option value="TLP:CLEAR">TLP:CLEAR</option>
+                </select>
+              </div>
+              <div className="min-w-[120px]">
+                <label className="text-[10px] font-medium text-muted-foreground uppercase">Tag</label>
+                <input
+                  value={tagFilter}
+                  onChange={(e) => setTagFilter(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && fetchData(1)}
+                  placeholder="e.g. ransomware"
+                  className="mt-1 block w-full px-2 py-1.5 rounded-md bg-muted/50 border border-border text-xs"
+                />
+              </div>
               <div className="flex gap-2">
                 <Button size="sm" className="text-xs" onClick={() => fetchData(1)}>
                   Apply
@@ -468,8 +610,66 @@ export default function CasesPage() {
         </Card>
       )}
 
+      {/* Bulk Action Bar */}
+      {selected.size > 0 && (
+        <Card>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-xs font-medium">{selected.size} selected</span>
+              <select
+                value={bulkAction}
+                onChange={(e) => setBulkAction(e.target.value)}
+                className="px-2 py-1.5 rounded-md bg-muted/50 border border-border text-xs"
+              >
+                <option value="">Bulk action...</option>
+                <optgroup label="Set Status">
+                  <option value="new">→ New</option>
+                  <option value="in_progress">→ In Progress</option>
+                  <option value="pending">→ Pending</option>
+                  <option value="resolved">→ Resolved</option>
+                  <option value="closed">→ Closed</option>
+                </optgroup>
+                <option value="assign">Assign to...</option>
+                <option value="delete">Delete</option>
+              </select>
+              {bulkAction === "assign" && (
+                <select
+                  value={bulkAssignee}
+                  onChange={(e) => setBulkAssignee(e.target.value)}
+                  className="px-2 py-1.5 rounded-md bg-muted/50 border border-border text-xs"
+                >
+                  <option value="">Select user...</option>
+                  {assignees.map((a) => (
+                    <option key={a.id} value={a.id}>{a.name || a.email}</option>
+                  ))}
+                </select>
+              )}
+              <Button
+                size="sm"
+                className="text-xs"
+                onClick={handleBulkAction}
+                disabled={!bulkAction || (bulkAction === "assign" && !bulkAssignee)}
+              >
+                Apply
+              </Button>
+              <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setSelected(new Set()); setBulkAction(""); }}>
+                Cancel
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Case List */}
       <div className="space-y-2">
+        {cases.length > 0 && (
+          <div className="flex items-center gap-2 px-1">
+            <button onClick={toggleSelectAll} className="text-muted-foreground hover:text-foreground">
+              {selected.size === cases.length ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+            </button>
+            <span className="text-[10px] text-muted-foreground">Select all</span>
+          </div>
+        )}
         {cases.map((c) => {
           const statusCfg = STATUS_CONFIG[c.status] || STATUS_CONFIG.new;
           const priorityCfg = PRIORITY_CONFIG[c.priority] || PRIORITY_CONFIG.medium;
@@ -485,6 +685,14 @@ export default function CasesPage() {
             >
               <CardContent className="p-3">
                 <div className="flex items-start gap-3">
+                  {/* Select checkbox */}
+                  <button
+                    onClick={(e) => toggleSelect(c.id, e)}
+                    className="mt-0.5 text-muted-foreground hover:text-foreground shrink-0"
+                  >
+                    {selected.has(c.id) ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4" />}
+                  </button>
+
                   {/* Priority indicator */}
                   <div className={`mt-0.5 w-1.5 h-10 rounded-full ${
                     c.priority === "critical" ? "bg-red-500" :
@@ -599,6 +807,7 @@ export default function CasesPage() {
         open={showCreate}
         onClose={() => setShowCreate(false)}
         onCreated={() => fetchData(1)}
+        assignees={assignees}
       />
     </div>
   );
