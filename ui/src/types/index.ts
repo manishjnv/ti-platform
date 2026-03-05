@@ -156,6 +156,28 @@ export interface MalwareInsight {
   regions: string[];
 }
 
+export interface ExecutiveSummaryItem {
+  id: string;
+  title: string;
+  severity: string;
+  risk_score: number;
+  source: string;
+  date: string | null;
+  tags: string[];
+  cve_ids: string[];
+}
+
+export interface ExecutiveSummary {
+  total: number;
+  recent_7d: number;
+  avg_risk: number;
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  top_items: ExecutiveSummaryItem[];
+}
+
 export interface DashboardInsights {
   trending_products: Record<string, TrendingProduct[]>;
   threat_actors: ThreatActorInsight[];
@@ -168,6 +190,7 @@ export interface DashboardInsights {
   ingestion_trend: TrendPoint[];
   exploit_summary: ExploitSummary;
   top_cves: TopCVEInsight[];
+  executive_summaries: Record<string, ExecutiveSummary>;
 }
 
 export interface GeoInsight {

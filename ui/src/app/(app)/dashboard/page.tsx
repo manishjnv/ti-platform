@@ -31,6 +31,10 @@ import {
   ChevronRight,
   ExternalLink,
   Eye,
+  Swords,
+  Target,
+  ShieldAlert,
+  Flame,
 } from "lucide-react";
 import {
   BarChart,
@@ -576,6 +580,102 @@ export default function DashboardPage() {
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">High EPSS (&ge;0.5)</p>
             <p className="text-lg font-bold text-purple-400">{insights.exploit_summary.high_epss_count.toLocaleString()}</p>
           </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════
+          EXECUTIVE SUMMARIES: Threat Actors, Campaigns, Exploits, Advisories
+          ═══════════════════════════════════════════════════════ */}
+      {insights?.executive_summaries && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {([
+            { key: "threat_actor", label: "Threat Actors", icon: <Skull className="h-4 w-4" />, accent: "text-red-400", accentBg: "bg-red-500/10", barColor: "bg-red-500", borderColor: "border-red-500/30" },
+            { key: "campaign", label: "Campaigns", icon: <Swords className="h-4 w-4" />, accent: "text-violet-400", accentBg: "bg-violet-500/10", barColor: "bg-violet-500", borderColor: "border-violet-500/30" },
+            { key: "exploit", label: "Exploits", icon: <Flame className="h-4 w-4" />, accent: "text-pink-400", accentBg: "bg-pink-500/10", barColor: "bg-pink-500", borderColor: "border-pink-500/30" },
+            { key: "advisory", label: "Advisories", icon: <ShieldAlert className="h-4 w-4" />, accent: "text-blue-400", accentBg: "bg-blue-500/10", barColor: "bg-blue-500", borderColor: "border-blue-500/30" },
+          ] as const).map(({ key, label, icon, accent, accentBg, barColor, borderColor }) => {
+            const s = insights.executive_summaries?.[key];
+            if (!s || s.total === 0) return null;
+            return (
+              <Card key={key} className={cn("border-l-2", borderColor)}>
+                <CardHeader className="pb-2 pt-4 px-5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={cn("flex items-center justify-center h-7 w-7 rounded-md", accent, accentBg)}>
+                        {icon}
+                      </span>
+                      <div>
+                        <CardTitle className="text-sm font-semibold">{label}</CardTitle>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          {s.total} total · {s.recent_7d} new this week · Avg risk {s.avg_risk}
+                        </p>
+                      </div>
+                    </div>
+                    <Link
+                      href={`/threats?feed_type=${key}`}
+                      className={cn("text-xs hover:underline flex items-center gap-1", accent)}
+                    >
+                      View all <ExternalLink className="h-3 w-3" />
+                    </Link>
+                  </div>
+                </CardHeader>
+                <CardContent className="px-5 pb-4 space-y-3">
+                  {/* Severity mini-bar */}
+                  <div className="flex items-center gap-1.5">
+                    {[
+                      { label: "Critical", count: s.critical, color: "bg-red-500" },
+                      { label: "High", count: s.high, color: "bg-orange-500" },
+                      { label: "Medium", count: s.medium, color: "bg-yellow-500" },
+                      { label: "Low", count: s.low, color: "bg-green-500" },
+                    ].map((sev) =>
+                      sev.count > 0 ? (
+                        <span key={sev.label} className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium text-white", sev.color)}>
+                          {sev.count} {sev.label}
+                        </span>
+                      ) : null
+                    )}
+                  </div>
+                  {/* Top items list */}
+                  <div className="space-y-1.5">
+                    {s.top_items.map((item, idx) => (
+                      <Link
+                        key={item.id}
+                        href={`/intel/${item.id}`}
+                        className="flex items-center gap-2.5 p-2 rounded-lg border bg-card hover:bg-accent/50 transition-colors group"
+                      >
+                        <span className={cn(
+                          "flex items-center justify-center h-7 w-7 rounded text-[11px] font-bold shrink-0",
+                          RISK_BG(item.risk_score)
+                        )}>
+                          {item.risk_score}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium truncate group-hover:text-primary transition-colors">
+                            {item.title}
+                          </p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <Badge variant={item.severity as any} className="text-[9px] px-1 py-0">
+                              {item.severity.toUpperCase()}
+                            </Badge>
+                            <span className="text-[10px] text-muted-foreground">{item.source}</span>
+                            {item.cve_ids.length > 0 && (
+                              <span className="text-[10px] font-mono text-primary">{item.cve_ids[0]}</span>
+                            )}
+                            {item.date && (
+                              <span className="text-[10px] text-muted-foreground">
+                                {new Date(item.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/30 group-hover:text-primary shrink-0" />
+                      </Link>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 

@@ -530,6 +530,56 @@ async def get_dashboard_insights(db: AsyncSession) -> dict:
         for r in top_cve_rows
     ]
 
+    # ── Executive Summaries by feed_type ─
+    exec_summaries: dict[str, dict] = {}
+    for ft in ("threat_actor", "campaign", "exploit", "advisory"):
+        summary_q = text(
+            "SELECT "
+            "  count(*) AS total, "
+            "  count(*) FILTER (WHERE COALESCE(published_at, ingested_at) >= NOW() - INTERVAL '7 days') AS recent_7d, "
+            "  round(avg(risk_score)::numeric, 1) AS avg_risk, "
+            "  count(*) FILTER (WHERE severity::text = 'critical') AS critical_count, "
+            "  count(*) FILTER (WHERE severity::text = 'high') AS high_count, "
+            "  count(*) FILTER (WHERE severity::text = 'medium') AS medium_count, "
+            "  count(*) FILTER (WHERE severity::text = 'low') AS low_count "
+            "FROM intel_items WHERE feed_type::text = :ft"
+        )
+        s_row = (await db.execute(summary_q, {"ft": ft})).one()
+
+        top_items_q = text(
+            "SELECT id, title, severity::text, risk_score, source_name, "
+            "COALESCE(published_at, ingested_at) AS pub_date, "
+            "tags, cve_ids "
+            "FROM intel_items WHERE feed_type::text = :ft "
+            "ORDER BY risk_score DESC, COALESCE(published_at, ingested_at) DESC "
+            "LIMIT 5"
+        )
+        top_rows = (await db.execute(top_items_q, {"ft": ft})).all()
+        top_items = [
+            {
+                "id": str(r[0]),
+                "title": r[1],
+                "severity": r[2],
+                "risk_score": r[3],
+                "source": r[4],
+                "date": r[5].isoformat() if r[5] else None,
+                "tags": (r[6] or [])[:5],
+                "cve_ids": (r[7] or [])[:3],
+            }
+            for r in top_rows
+        ]
+
+        exec_summaries[ft] = {
+            "total": s_row[0],
+            "recent_7d": s_row[1],
+            "avg_risk": float(s_row[2] or 0),
+            "critical": s_row[3],
+            "high": s_row[4],
+            "medium": s_row[5],
+            "low": s_row[6],
+            "top_items": top_items,
+        }
+
     return {
         "trending_products": trending_products,
         "threat_actors": threat_actors,
@@ -542,6 +592,7 @@ async def get_dashboard_insights(db: AsyncSession) -> dict:
         "ingestion_trend": ingestion_trend,
         "exploit_summary": exploit_summary,
         "top_cves": top_cves,
+        "executive_summaries": exec_summaries,
     }
 
 
