@@ -371,13 +371,7 @@ async def fetch_rss_feed(feed: dict) -> dict:
             entries = root.findall("atom:entry", ns) or root.findall("entry")
             for entry in entries:
                 title = (entry.findtext("atom:title", namespaces=ns) or entry.findtext("title") or "").strip()
-                # Use explicit 'is not None' checks — ElementTree Elements
-                # with no children are falsy, so 'or' chains skip valid <link/> tags.
-                link_el = entry.find("atom:link[@rel='alternate']", ns)
-                if link_el is None:
-                    link_el = entry.find("atom:link", ns)
-                if link_el is None:
-                    link_el = entry.find("link")
+                link_el = entry.find("atom:link[@rel='alternate']", ns) or entry.find("atom:link", ns) or entry.find("link")
                 link = ""
                 if link_el is not None:
                     link = link_el.get("href", "").strip()
@@ -514,12 +508,9 @@ def _pre_score_article(article: dict) -> int:
     return max(0, score)
 
 
-# ── Hourly Rate Control ──────────────────────────────────
-# Target: min 4, max 15 NEW articles per hour.
-# 4 cycles/hour (every 15 min) → target ~4 per cycle, cap adjusts dynamically.
-MAX_ARTICLES_PER_HOUR = 15
-MIN_ARTICLES_PER_HOUR = 4
-DEFAULT_PER_CYCLE = 5  # Normal per-cycle cap (4 cycles × 5 = 20, trimmed to 15/hr)
+# Maximum articles to keep per ingestion cycle.
+# 15/hour target ÷ 2 cycles/hour = ~8 per cycle (round up to 10 for buffer)
+MAX_ARTICLES_PER_CYCLE = 10
 
 
 async def _persist_feed_statuses(statuses: list[dict]) -> None:
@@ -582,56 +573,64 @@ async def get_news_feed_statuses() -> list:
 
     async with async_session_factory() as session:
         result = await session.execute(
-            select(NewsFeedStatus).order_by(NewsFeedStatus.total_articles.desc())
+            select(NewsFeedStatus).order_by(NewsFeedStatus.source_name)
         )
         return result.scalars().all()
 
 
 async def get_news_pipeline_status() -> dict:
-    """Check overall news pipeline health — is it stale?
+    """Compute overall pipeline health: stale detection, source health, last article time.
 
-    Returns a dict with: is_stale, stored_last_hour, stored_last_24h,
-    total_sources_ok, total_sources_failing, last_article_at, status.
+    Returns a dict matching NewsPipelineStatusResponse schema:
+      is_stale, stored_last_hour, stored_last_24h,
+      total_sources_ok, total_sources_failing,
+      last_article_at, status
     """
-    from sqlalchemy import select, func as sqlfunc
+    from sqlalchemy import select, func
     from app.core.database import async_session_factory
     from app.models.models import NewsItem, NewsFeedStatus
 
-    async with async_session_factory() as session:
-        now = datetime.now(timezone.utc)
-        from datetime import timedelta as _td
-        one_hour_ago = now - _td(hours=1)
-        twenty_four_h_ago = now - _td(hours=24)
+    from datetime import timedelta
 
-        # Count articles stored in last 1 hour
+    now = datetime.now(timezone.utc)
+    one_hour_ago = now - timedelta(hours=1)
+    twenty_four_hours_ago = now - timedelta(hours=24)
+
+    async with async_session_factory() as session:
+        # Articles stored in last hour
         r1 = await session.execute(
-            select(sqlfunc.count(NewsItem.id)).where(NewsItem.created_at >= one_hour_ago)
+            select(func.count(NewsItem.id)).where(NewsItem.created_at >= one_hour_ago)
         )
         stored_last_hour = r1.scalar() or 0
 
-        # Count articles stored in last 24 hours
-        r24 = await session.execute(
-            select(sqlfunc.count(NewsItem.id)).where(NewsItem.created_at >= twenty_four_h_ago)
+        # Articles stored in last 24 hours
+        r2 = await session.execute(
+            select(func.count(NewsItem.id)).where(NewsItem.created_at >= twenty_four_hours_ago)
         )
-        stored_last_24h = r24.scalar() or 0
+        stored_last_24h = r2.scalar() or 0
 
-        # Last article timestamp
-        r_last = await session.execute(
-            select(sqlfunc.max(NewsItem.created_at))
+        # Most recent article timestamp
+        r3 = await session.execute(
+            select(func.max(NewsItem.created_at))
         )
-        last_article_at = r_last.scalar()
+        last_article_at = r3.scalar()
 
-        # Feed source health
-        feed_rows = await session.execute(select(NewsFeedStatus))
-        feeds = feed_rows.scalars().all()
-        sources_ok = sum(1 for f in feeds if f.status == "ok")
-        sources_failing = sum(1 for f in feeds if f.status in ("error", "timeout"))
+        # Source health from news_feed_status table
+        r4 = await session.execute(
+            select(
+                func.count(NewsFeedStatus.source_name).filter(NewsFeedStatus.status == "ok").label("ok"),
+                func.count(NewsFeedStatus.source_name).filter(NewsFeedStatus.status != "ok").label("failing"),
+            )
+        )
+        source_row = r4.one()
+        total_sources_ok = source_row.ok or 0
+        total_sources_failing = source_row.failing or 0
 
     is_stale = stored_last_hour == 0
-    # Determine overall status
-    if sources_ok == 0 and len(feeds) > 0:
+    # Determine status
+    if total_sources_ok == 0 and total_sources_failing > 0:
         status = "down"
-    elif is_stale and sources_failing > sources_ok:
+    elif is_stale and total_sources_failing > 0:
         status = "degraded"
     elif is_stale:
         status = "stale"
@@ -642,33 +641,25 @@ async def get_news_pipeline_status() -> dict:
         "is_stale": is_stale,
         "stored_last_hour": stored_last_hour,
         "stored_last_24h": stored_last_24h,
-        "total_sources_ok": sources_ok,
-        "total_sources_failing": sources_failing,
+        "total_sources_ok": total_sources_ok,
+        "total_sources_failing": total_sources_failing,
         "last_article_at": last_article_at,
         "status": status,
     }
 
 
-async def fetch_all_feeds(
-    known_hashes: set[str] | None = None,
-    stored_last_hour: int = 0,
-    source_24h_counts: dict[str, int] | None = None,
-) -> dict:
+async def fetch_all_feeds(known_hashes: set[str] | None = None) -> list[dict]:
     """Fetch all configured RSS feeds concurrently, then extract full article text.
 
-    Returns a dict with keys:
-      - "articles": list of article dicts ready for dedup + storage
-      - "cycle_cap": how many NEW articles should be stored this cycle
+    Pre-scores every article by headline relevance and keeps only the top
+    MAX_ARTICLES_PER_CYCLE articles.  This ensures AI enrichment can keep pace
+    and only high-quality content enters the pipeline.
 
-    Implements intelligent rate control:
-    - Dynamic per-cycle cap based on how many articles were stored in the last hour
-      (target: min 4, max 15 per hour).
-    - Source diversity: guarantees at least 1 article per source per day for sources
-      that haven't appeared in the last 24h — reserves slots before score-ranking.
-    - Returns a 3× buffer so the caller's cross-source dedup can reject some
-      articles and still fill the cycle_cap with genuinely new stories.
-    - Articles whose source_hash already exists in `known_hashes` are filtered out
-      BEFORE the cap so that new content always gets a chance.
+    Args:
+        known_hashes: Set of source_hash values already in the database.
+            Articles matching these hashes are excluded *before* the top-N
+            cut so that new articles aren't crowded out by already-ingested
+            high-scoring stories.
 
     Also persists per-feed status to news_feed_status table.
     """
@@ -692,32 +683,28 @@ async def fetch_all_feeds(
     logger.info("news_rss_fetched", total=len(all_articles), sources=len(NEWS_FEEDS))
 
     if not all_articles:
-        return {"articles": [], "cycle_cap": 0}
+        return []
 
-    # ── Filter out already-stored articles BEFORE scoring ─
+    # ── Filter out already-ingested articles ─────────────
+    # This MUST happen before the top-N cut; otherwise the same
+    # high-scoring articles that were already stored keep occupying
+    # all slots and genuinely new articles never reach the DB.
     if known_hashes:
         before = len(all_articles)
-        all_articles = [a for a in all_articles if a.get("source_hash") not in known_hashes]
-        skipped = before - len(all_articles)
-        if skipped:
-            logger.info("news_pre_dedup", before=before, after=len(all_articles), skipped=skipped)
+        all_articles = [a for a in all_articles if a["source_hash"] not in known_hashes]
+        filtered = before - len(all_articles)
+        if filtered:
+            logger.info(
+                "news_known_hash_filter",
+                before=before,
+                after=len(all_articles),
+                filtered=filtered,
+            )
 
     if not all_articles:
-        return {"articles": [], "cycle_cap": 0}
+        return []
 
-    # ── Dynamic per-cycle cap ────────────────────────────
-    # How many more articles can we store this hour?
-    headroom = max(0, MAX_ARTICLES_PER_HOUR - stored_last_hour)
-    # If below minimum floor, allow a burst to catch up
-    if stored_last_hour < MIN_ARTICLES_PER_HOUR:
-        cycle_cap = max(DEFAULT_PER_CYCLE, MIN_ARTICLES_PER_HOUR - stored_last_hour)
-    else:
-        cycle_cap = min(DEFAULT_PER_CYCLE, headroom)
-    # At least 1 per cycle to keep pipeline active
-    cycle_cap = max(1, cycle_cap)
-    logger.info("news_rate_control", stored_last_hour=stored_last_hour, headroom=headroom, cycle_cap=cycle_cap)
-
-    # ── Score all articles ───────────────────────────────
+    # ── Score and rank articles ──────────────────────────
     for art in all_articles:
         art["_pre_score"] = _pre_score_article(art)
 
@@ -727,45 +714,8 @@ async def fetch_all_feeds(
         reverse=True,
     )
 
-    # ── Source diversity: reserve slots for under-represented sources ─
-    source_counts_24h = source_24h_counts or {}
-    # Find sources with 0 articles in last 24h
-    underserved_sources = set()
-    for feed in NEWS_FEEDS:
-        if source_counts_24h.get(feed["name"], 0) == 0:
-            underserved_sources.add(feed["name"])
-
-    reserved: list[dict] = []  # 1 best article per underserved source
-    remaining: list[dict] = []
-
-    if underserved_sources:
-        # Pick the highest-scored article per underserved source
-        picked_sources: set[str] = set()
-        for art in all_articles:
-            src = art.get("source", "")
-            if src in underserved_sources and src not in picked_sources:
-                reserved.append(art)
-                picked_sources.add(src)
-            else:
-                remaining.append(art)
-        logger.info("news_source_diversity", reserved=len(reserved), underserved=len(underserved_sources))
-    else:
-        remaining = list(all_articles)
-
-    # ── Fill remaining slots from top-scored ──────────────
-    # Return 3× cycle_cap buffer so caller's cross-source dedup can
-    # reject some articles and still fill the cycle_cap with new stories.
-    buffer_size = cycle_cap * 3
-    slots_left = max(0, buffer_size - len(reserved))
-    # Avoid duplicates: remove reserved hashes from remaining
-    reserved_hashes = {a.get("source_hash") for a in reserved}
-    filler = [a for a in remaining if a.get("source_hash") not in reserved_hashes][:slots_left]
-
-    kept = reserved + filler
-    # Cap total buffer (diversity reservations + filler)
-    max_total = min(buffer_size + len(reserved), MAX_ARTICLES_PER_HOUR * 2)
-    kept = kept[:max_total]
-
+    # Keep only top N
+    kept = all_articles[:MAX_ARTICLES_PER_CYCLE]
     dropped = len(all_articles) - len(kept)
     if dropped > 0:
         logger.info(
@@ -773,9 +723,8 @@ async def fetch_all_feeds(
             total=len(all_articles),
             kept=len(kept),
             dropped=dropped,
-            reserved_diversity=len(reserved),
-            min_score=min((a["_pre_score"] for a in kept), default=0),
-            max_score=max((a["_pre_score"] for a in kept), default=0),
+            min_score=kept[-1]["_pre_score"] if kept else 0,
+            max_score=kept[0]["_pre_score"] if kept else 0,
         )
 
     # Clean up internal scoring key
@@ -791,7 +740,7 @@ async def fetch_all_feeds(
         full_text=full_count,
     )
 
-    return {"articles": kept, "cycle_cap": cycle_cap}
+    return kept
 
 
 # ── AI Enrichment ────────────────────────────────────────
@@ -800,41 +749,12 @@ _NEWS_ENRICHMENT_SYSTEM = """You are a senior cyber threat intelligence analyst 
 
 Given a cybersecurity news headline + content, produce a structured JSON intelligence brief.
 
-## FORMATTING RULES — MANDATORY
-
-1. **USE BULLET POINTS** everywhere possible. Every array field (why_it_matters, detection_opportunities, mitigation_recommendations, post_exploitation) must use SHORT, punchy bullet items — never paragraphs.
-2. **COMPRESS AGGRESSIVELY** — strip every filler word. Each bullet/sentence must deliver a NEW fact. Target 50% fewer words than a typical article summary. If a sentence adds no new information beyond what's already stated, DELETE it.
-3. **HIGHLIGHT ENTITIES INLINE** — always name-drop: threat actor names, CVE IDs, product names with versions, campaign names, dates (YYYY-MM-DD), organization names, specific attack techniques. These get highlighted in the UI automatically.
-4. **NO DUPLICATE INFORMATION** — do not repeat the same fact across summary, executive_brief, risk_assessment, and why_it_matters. Each field has a DIFFERENT purpose:
-   - summary: WHAT happened + WHO affected (2-3 sentences)
-   - executive_brief: Full technical narrative for a CISO briefing
-   - risk_assessment: WHO is at risk + business impact
-   - attack_narrative: HOW the attack works step-by-step
-   - why_it_matters: ACTION ITEMS for defenders
-5. **NO GENERIC ADVICE** — every bullet must contain at least one SPECIFIC name (CVE, product, tool, actor, date, version, organization).
-6. **BOLD KEY INTELLIGENCE** — In summary, executive_brief, risk_assessment, and attack_narrative fields, wrap the most important technical terms in **double asterisks** for visual emphasis. Bold ONLY these categories:
-   - **Organization/victim names**: company names, government agencies, targeted entities (e.g., **AkzoNobel**, **Microsoft**, **CISA**)
-   - **Threat actor & malware names**: APT groups, ransomware families, tools (e.g., **Anubis ransomware**, **Lazarus Group**, **Cobalt Strike**)
-   - **Data quantities & impact metrics**: stolen data size, record counts, financial impact (e.g., **170GB**, **2.3 million records**, **$4.5M ransom**)
-   - **Attack techniques & tools**: specific methods used (e.g., **data wiper**, **credential stuffing**, **supply chain compromise**)
-   - **Data types compromised**: what was leaked/stolen (e.g., **confidential agreements**, **email addresses**, **source code**)
-   - **Remediation actions taken**: containment/response status (e.g., **contained the breach**, **patched within 24h**, **services restored**)
-   - **Industry/sector names**: when relevant to targeting (e.g., **chemical manufacturing**, **defense contractor**)
-   - **Product names with versions**: affected software (e.g., **PAN-OS 10.2**, **Exchange Server 2019**, **VMware Aria Operations 8.x**)
-   - **Vulnerability/flaw names**: the type of flaw or weakness (e.g., **RCE flaw**, **SQL injection**, **buffer overflow**, **deserialization vulnerability**, **authentication bypass**)
-   - **CVE identifiers**: always bold CVE IDs (e.g., **CVE-2025-12345**, **CVE-2024-3400**)
-   - **Severity & CVSS ratings**: severity levels and scores (e.g., **critical severity**, **CVSS 9.8**, **high-severity**, **actively exploited**)
-   - **Key dates & event timelines**: when events happened (e.g., **March 4, 2026**, **since January 2025**, **patched on February 28**)
-   Do NOT bold common words, conjunctions, or entire sentences. Bold only the KEY noun phrases (1-5 words each). Aim for 8-20 bolded terms per text field.
-
 ## QUALITY RULES — READ CAREFULLY
 
 **BANNED PHRASES (never use these — they are meaningless filler):**
 - "timely patching is crucial", "apply patches and updates", "keep software up to date"
 - "monitor for suspicious/unusual activity", "implement robust security controls"
 - "organizations should prioritize security", "stay vigilant"
-- "this incident highlights the importance of...", "this serves as a reminder..."
-- "underscores the need for...", "reinforces the importance of..."
 - Any sentence that could apply to ANY article generically is FILLER — delete it.
 
 **REQUIRED QUALITY: every bullet/sentence must contain at least ONE of:**
@@ -843,7 +763,6 @@ Given a cybersecurity news headline + content, produce a structured JSON intelli
 - A measurable action with a clear owner (e.g., "IAM team should audit OAuth app grants in Entra ID within 48h")
 - A named threat group, malware hash, or campaign identifier
 - A quantified business impact (dollar amount, number of records, downtime hours)
-- A specific date, version number, or organization name
 
 **EXAMPLES — BAD vs GOOD:**
 
@@ -862,11 +781,11 @@ executive_brief GOOD: "Volexity observed UTA0218 deploying a Python reverse shel
 ## JSON SCHEMA — return ONLY valid JSON, no markdown fences:
 {
   "category": "active_threats|exploited_vulnerabilities|ransomware_breaches|nation_state|cloud_identity|ot_ics|security_research|tools_technology|policy_regulation",
-  "summary": "2-3 SHORT sentences. Lead with WHAT happened + specific names/CVEs, then WHO is affected, then SO WHAT. Max 60 words.",
-  "executive_brief": "5-8 sentences structured as: (1) What happened with specific names/dates, (2) Technical mechanism in 1-2 sentences, (3) Scope of impact with numbers, (4) Vendor/CERT response status, (5) Strategic significance. Must name-drop every relevant entity. ZERO filler.",
-  "risk_assessment": "3-4 sentences: (1) WHO is at risk — name specific products, versions, configurations, (2) Business impact — data loss, ransomware, espionage, supply chain, (3) Exploitability — public PoC, active exploitation, attack complexity. Include quantified risk where possible.",
-  "attack_narrative": "4-6 sentences describing the technical attack chain step-by-step. Name specific tools, protocols, and techniques at each stage. Use arrow notation: 'Initial access via X → Dropped Y → C2 over Z → Lateral movement via W → Exfil to Q'.",
-  "why_it_matters": ["3-5 SHORT action items. Each starts with a verb: 'Patch...', 'Block...', 'Audit...', 'Hunt for...', 'Escalate if...'. Each MUST name a specific CVE/product/tool/actor. Max 20 words per bullet. NO generic advice."],
+  "summary": "2-3 sentences. Lead with WHAT happened, then WHO is affected, then SO WHAT for defenders.",
+  "executive_brief": "6-10 sentences structured as: (1) What happened with specific names/dates, (2) Technical mechanism in 1-2 sentences, (3) Scope of impact with numbers if available, (4) Vendor/CERT response status, (5) What this means strategically for enterprises. NEVER use filler.",
+  "risk_assessment": "3-4 sentences: (1) Who is at risk — name specific products, versions, configurations, (2) What is the business impact — data loss, ransomware, espionage, supply chain, (3) Exploitability — is there a public PoC, is it in active exploitation, what is the attack complexity.",
+  "attack_narrative": "4-6 sentences describing the technical attack chain step-by-step. Name specific tools, protocols, and techniques at each stage. Example: 'Initial access via spearphish with ISO attachment → Dropped QakBot loader via regsvr32 → C2 over HTTPS to 185.x.x.x → Cobalt Strike beacon deployed → LSASS dumped via Nanodump → Lateral movement via PSExec → Data staged in C:\\ProgramData → Exfil via Rclone to Mega.nz'.",
+  "why_it_matters": ["3-5 points. Each MUST contain a specific product, CVE, threshold, or named entity. Start each with a verb: 'Patch...', 'Block...', 'Audit...', 'Hunt for...', 'Escalate if...'. No generic advice."],
   "tags": ["8-12 keywords: CVE IDs, product names, malware names, technique names, affected platforms"],
   "threat_actors": ["Named APT groups with aliases in parens, e.g., 'APT29 (Cozy Bear / Midnight Blizzard)'. Empty [] only if truly unknown."],
   "malware_families": ["Named malware, RATs, loaders, tools. Include dual-use tools (Cobalt Strike, Mimikatz, Impacket). Empty [] only if none involved."],
@@ -883,9 +802,6 @@ executive_brief GOOD: "Volexity observed UTA0218 deploying a Python reverse shel
   "timeline": [{"date": "YYYY-MM-DD or null", "event": "description"}],
   "detection_opportunities": ["3-5 items. Each MUST name a log source, query pattern, or signature ID. Examples: 'Sigma rule for regsvr32 loading DLL from user temp folder', 'Snort SID 300125 for CobaltStrike beacon HTTP profile', 'Windows Event 4688 + CommandLine containing certutil -urlcache'. No vague 'monitor for anomalies'."],
   "mitigation_recommendations": ["3-5 items. Each MUST name the specific fix: patch version, config change command, GPO setting, or firewall rule. Example: 'Disable PAN-OS telemetry: set deviceconfig system device-telemetry device-health-performance no', 'Block .iso/.img at email gateway via transport rule'. No generic 'apply patches'."],
-  "yara_rule": "A complete, working YARA rule for detecting the malware/threat described. Include: rule name (snake_case reflecting the threat), meta (author='IntelWatch AI', description, date, reference, threat_level), strings section with relevant patterns (file artifacts, registry keys, mutexes, embedded strings, byte patterns from the article), and a condition that combines them logically. If the article is policy/regulation/informational with no detectable artifacts, return null. Example format:\nrule threat_name {\n  meta:\n    author = \"IntelWatch AI\"\n    description = \"Detects ...\"\n    date = \"YYYY-MM-DD\"\n    threat_level = \"high\"\n  strings:\n    $s1 = \"string_pattern\" ascii wide\n    $s2 = { hex pattern }\n  condition:\n    uint16(0) == 0x5A4D and 2 of ($s*)\n}",
-  "kql_rule": "A complete, working KQL (Kusto Query Language) detection query for Microsoft Sentinel / Defender XDR. Target the most relevant log table (DeviceProcessEvents, DeviceNetworkEvents, DeviceFileEvents, SecurityEvent, SigninLogs, EmailEvents, etc.). Include: comments explaining what is detected, the table name, where/filter clauses with specific IOCs/patterns from the article, project clause selecting relevant columns, optional summarize for aggregation. If no actionable detection is possible, return null. Example format:\n// Detect [threat description]\nDeviceProcessEvents\n| where Timestamp > ago(30d)\n| where ProcessCommandLine has_any (\"pattern1\", \"pattern2\")\n| project Timestamp, DeviceName, AccountName, ProcessCommandLine\n| sort by Timestamp desc",
-  "reference_links": ["ONLY URLs that appear VERBATIM in the provided article content. Copy-paste them exactly as they appear in the text. Do NOT invent, guess, or construct URLs — if a URL is not explicitly written in the article, do NOT include it. Return an empty array [] if no URLs are found in the text. The original article URL is added automatically — do not include it."],
   "recommended_priority": "critical|high|medium|low",
   "confidence": "high|medium|low",
   "relevance_score": 50
@@ -901,58 +817,22 @@ async def enrich_news_item(headline: str, raw_content: str) -> dict | None:
     result = await chat_completion(
         system_prompt=_NEWS_ENRICHMENT_SYSTEM,
         user_prompt=user_prompt,
-        max_tokens=5000,
+        max_tokens=3500,
         temperature=0.15,
     )
 
     if not result:
         return None
 
-    # Robust JSON extraction — try multiple strategies
-    data = _extract_json(result)
-    if data:
+    # Parse JSON from response (strip markdown fences if present)
+    text = result.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+
+    try:
+        data = json.loads(text)
         return data
-
-    logger.warning("news_ai_json_parse_error", headline=headline[:80])
-    return None
-
-
-def _extract_json(text: str) -> dict | None:
-    """Try multiple strategies to extract JSON from AI response text."""
-    text = text.strip()
-
-    # Strategy 1: Direct parse
-    try:
-        return json.loads(text)
     except json.JSONDecodeError:
-        pass
-
-    # Strategy 2: Strip markdown fences (```json ... ```)
-    cleaned = re.sub(r"^```(?:json)?\s*", "", text)
-    cleaned = re.sub(r"\s*```\s*$", "", cleaned).strip()
-    try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError:
-        pass
-
-    # Strategy 3: Find first { ... last } (outermost JSON object)
-    first_brace = text.find("{")
-    last_brace = text.rfind("}")
-    if first_brace != -1 and last_brace > first_brace:
-        candidate = text[first_brace:last_brace + 1]
-        try:
-            return json.loads(candidate)
-        except json.JSONDecodeError:
-            pass
-
-    # Strategy 4: Try fixing common issues — trailing commas, single quotes
-    if first_brace != -1 and last_brace > first_brace:
-        candidate = text[first_brace:last_brace + 1]
-        # Remove trailing commas before } or ]
-        candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
-        try:
-            return json.loads(candidate)
-        except json.JSONDecodeError:
-            pass
-
-    return None
+        logger.warning("news_ai_json_parse_error", headline=headline[:80])
+        return None
