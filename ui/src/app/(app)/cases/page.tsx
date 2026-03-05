@@ -305,23 +305,22 @@ export default function CasesPage() {
           <StatCard
             title="Total Cases"
             value={stats.total_cases}
-            icon={Briefcase}
+            icon={<Briefcase className="h-4 w-4" />}
           />
           <StatCard
             title="Open Cases"
             value={stats.open_cases}
-            icon={Clock}
-            trend={stats.open_cases > 0 ? "up" : undefined}
+            icon={<Clock className="h-4 w-4" />}
           />
           <StatCard
             title="Critical Priority"
             value={stats.by_priority?.critical || 0}
-            icon={AlertTriangle}
+            icon={<AlertTriangle className="h-4 w-4" />}
           />
           <StatCard
             title="Closed (7d)"
             value={stats.recent_closed}
-            icon={CheckCircle}
+            icon={<CheckCircle className="h-4 w-4" />}
           />
         </div>
       )}
