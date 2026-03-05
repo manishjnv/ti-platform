@@ -1312,10 +1312,11 @@ def ingest_news() -> dict:
     session = SyncSession()
 
     try:
-        # ── Load recent headlines from DB for cross-source matching ──
-        # Loaded BEFORE fetch so known hashes can be passed to
-        # fetch_all_feeds() — this prevents already-ingested high-scoring
-        # articles from monopolising the top-N slots every cycle.
+        # ── Load ALL source_hashes so old articles can't cause UniqueViolation ──
+        all_hash_rows = session.execute(select(NewsItem.source_hash)).all()
+        hash_set = {r.source_hash for r in all_hash_rows}
+
+        # ── Load recent headlines (48h) for cross-source similarity matching ──
         cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
         recent_rows = session.execute(
             select(
@@ -1328,9 +1329,6 @@ def ingest_news() -> dict:
                 NewsItem.correlated_sources,
             ).where(NewsItem.created_at >= cutoff)
         ).all()
-
-        # Build lookup: source_hash → row, headline list for similarity
-        hash_set = {r.source_hash for r in recent_rows}
 
         articles = _run_async(fetch_all_feeds(known_hashes=hash_set))
         if not articles:
@@ -1443,16 +1441,22 @@ def ingest_news() -> dict:
                 confidence="medium",
                 correlated_sources=[],
             )
-            session.add(news_item)
-            stored += 1
-
-            # Add to recent_items so later articles in this batch can match
-            hash_set.add(article["source_hash"])
-            recent_items.append((
-                news_item.id, article["headline"], article["source"],
-                article["source_hash"], article.get("raw_content", ""),
-                False, [],
-            ))
+            # Use savepoint so one duplicate doesn't crash the whole batch
+            try:
+                nested = session.begin_nested()
+                session.add(news_item)
+                session.flush()
+                stored += 1
+                hash_set.add(article["source_hash"])
+                recent_items.append((
+                    news_item.id, article["headline"], article["source"],
+                    article["source_hash"], article.get("raw_content", ""),
+                    False, [],
+                ))
+            except Exception:
+                nested.rollback()
+                hash_set.add(article["source_hash"])
+                logger.warning("news_insert_skip_dup", source_hash=article["source_hash"][:16])
 
         session.commit()
         logger.info(
