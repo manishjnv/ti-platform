@@ -148,7 +148,9 @@ export default function IntelDetailPage() {
             Add to Report
           </Button>
           {reportMenuOpen && (
-            <div className="absolute right-0 top-full mt-1 w-64 border rounded-lg bg-popover shadow-lg z-50 p-1 max-h-60 overflow-y-auto">
+            <>
+            <div className="fixed inset-0 z-[199]" onClick={() => setReportMenuOpen(false)} />
+            <div className="absolute right-0 top-full mt-1 w-64 border border-border rounded-lg bg-gray-900 shadow-2xl z-[200] p-1 max-h-60 overflow-y-auto">
               {userReports.length === 0 ? (
                 <p className="text-xs text-muted-foreground p-2">No draft reports. Create one first.</p>
               ) : (
@@ -185,9 +187,10 @@ export default function IntelDetailPage() {
                 ))
               )}
             </div>
+            </>
           )}
           {reportActionMsg && (
-            <div className="absolute right-0 top-full mt-1 px-3 py-1.5 rounded-md bg-primary/10 text-primary text-xs whitespace-nowrap z-50">
+            <div className="absolute right-0 top-full mt-1 px-3 py-1.5 rounded-md bg-primary/10 text-primary text-xs whitespace-nowrap z-[200]">
               {reportActionMsg}
             </div>
           )}
