@@ -130,7 +130,7 @@ export default function IntelDetailPage() {
         <Button variant="ghost" onClick={() => router.back()} className="gap-2">
           <ArrowLeft className="h-4 w-4" /> Back
         </Button>
-        <div className="relative">
+        <div className="relative z-[100]">
           <Button
             variant="outline"
             size="sm"
