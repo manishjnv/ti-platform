@@ -418,7 +418,7 @@ export default function ThreatsPage() {
             <select
               value={sortKey}
               onChange={(e) => { setSortKey(e.target.value); setPage(1); }}
-              className="text-xs bg-transparent text-foreground focus:outline-none cursor-pointer"
+              className="text-xs bg-transparent text-foreground focus:outline-none cursor-pointer [&>option]:bg-gray-900 [&>option]:text-foreground"
             >
               {SORT_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
