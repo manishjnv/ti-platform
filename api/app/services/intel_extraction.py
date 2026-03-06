@@ -46,7 +46,7 @@ def extract_from_news_sync(session: Session, lookback_hours: int = 2) -> dict:
     result = session.execute(
         select(NewsItem)
         .where(
-            NewsItem.ai_enriched == True,
+            NewsItem.ai_enriched.is_(True),
             NewsItem.updated_at >= cutoff,
         )
         .order_by(NewsItem.updated_at.desc())
