@@ -1581,6 +1581,7 @@ const PROVIDER_OPTIONS = [
   { value: "groq", label: "Groq" },
   { value: "cerebras", label: "Cerebras" },
   { value: "huggingface", label: "HuggingFace" },
+  { value: "gemini", label: "Google Gemini" },
   { value: "openai", label: "OpenAI" },
   { value: "anthropic", label: "Anthropic" },
   { value: "ollama", label: "Ollama (Local)" },
@@ -1602,6 +1603,11 @@ const PROVIDER_INFO: Record<string, { freeLimit: string; models: string[]; note:
     freeLimit: "Free: 1K req/day (rate varies by model popularity)",
     models: ["mistralai/Mistral-7B-Instruct-v0.3", "meta-llama/Meta-Llama-3-8B-Instruct", "HuggingFaceH4/zephyr-7b-beta"],
     note: "Wide model variety. Slower inference, best as last fallback.",
+  },
+  gemini: {
+    freeLimit: "Free: 15 req/min, 1M tokens/day (Gemini 2.0 Flash)",
+    models: ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-pro"],
+    note: "Google AI. Generous free tier via OpenAI-compatible endpoint.",
   },
   openai: {
     freeLimit: "Paid: ~$0.50-$15 per 1M tokens (varies by model)",
