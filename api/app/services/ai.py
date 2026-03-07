@@ -157,6 +157,26 @@ async def increment_daily_usage(feature: str):
     await r.expire(key, 86400)
 
 
+_PROVIDER_USAGE_PREFIX = "ai_provider_usage"
+
+
+async def _increment_provider_usage(provider_name: str):
+    """Increment today's usage counter for a specific provider."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    r = redis_client
+    key = f"{_PROVIDER_USAGE_PREFIX}:{provider_name}:{today}"
+    await r.incr(key)
+    await r.expire(key, 86400)
+
+
+async def _get_provider_usage(provider_name: str) -> int:
+    """Get today's usage count for a specific provider."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    r = redis_client
+    count = await r.get(f"{_PROVIDER_USAGE_PREFIX}:{provider_name}:{today}")
+    return int(count or 0)
+
+
 async def get_custom_prompt(feature: str) -> str | None:
     """Get the custom prompt for a feature from DB settings, or None to use default."""
     db_cfg = await get_ai_db_settings()
@@ -391,6 +411,7 @@ async def _call_with_fallback(
                             model=provider.model,
                             chars=len(content),
                         )
+                        await _increment_provider_usage(provider.name)
                         return content
 
                 logger.warning(f"{caller}_empty_response", provider=provider.name)
@@ -639,10 +660,12 @@ async def check_ai_health() -> dict:
                         break
                 response = await client.get(f"{base}/models", headers=headers)
                 ok = response.status_code == 200
-                results.append({"name": provider.name, "model": provider.model, "healthy": ok})
+                usage = await _get_provider_usage(provider.name)
+                results.append({"name": provider.name, "model": provider.model, "healthy": ok, "today_requests": usage})
                 if ok:
                     any_healthy = True
         except Exception:
-            results.append({"name": provider.name, "model": provider.model, "healthy": False})
+            usage = await _get_provider_usage(provider.name)
+            results.append({"name": provider.name, "model": provider.model, "healthy": False, "today_requests": usage})
 
     return {"healthy": any_healthy, "providers": results}

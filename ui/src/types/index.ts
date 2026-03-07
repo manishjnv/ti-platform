@@ -1204,6 +1204,7 @@ export interface AIHealthProvider {
   name: string;
   model: string;
   healthy: boolean;
+  today_requests?: number;
 }
 
 export interface AIHealthStatus {

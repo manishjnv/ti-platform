@@ -2512,9 +2512,16 @@ function AIConfigSettings() {
                 <div className="space-y-2">
                   {healthData.map((p) => (
                     <div key={p.name} className="flex items-center justify-between py-1.5 border-b border-border/30 last:border-0">
-                      <div>
-                        <span className="text-xs font-medium capitalize">{p.name}</span>
-                        {p.model && <span className="text-[10px] text-muted-foreground ml-1.5">({p.model})</span>}
+                      <div className="flex items-center gap-2">
+                        <div>
+                          <span className="text-xs font-medium capitalize">{p.name}</span>
+                          {p.model && <span className="text-[10px] text-muted-foreground ml-1.5">({p.model})</span>}
+                        </div>
+                        {typeof p.today_requests === "number" && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono">
+                            {p.today_requests} today
+                          </span>
+                        )}
                       </div>
                       <Badge
                         variant="outline"
