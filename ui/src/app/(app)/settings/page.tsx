@@ -1594,7 +1594,7 @@ function Tooltip({ text }: { text: string }) {
         <Info className="h-3 w-3" />
       </button>
       {show && (
-        <span className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-56 p-2 rounded-md bg-popover border border-border text-[10px] text-popover-foreground shadow-lg leading-relaxed">
+        <span className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-56 p-2 rounded-md bg-zinc-900 border border-zinc-700 text-[10px] text-zinc-100 shadow-xl leading-relaxed backdrop-blur-none">
           {text}
         </span>
       )}
