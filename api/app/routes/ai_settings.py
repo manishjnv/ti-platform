@@ -297,6 +297,15 @@ async def test_ai_provider(
             except (ValueError, IndexError):
                 pass
 
+    import structlog as _sl
+    _lg = _sl.get_logger("ai_test_debug")
+    _lg.info("test_provider_debug",
+             provider_type=provider_type,
+             key_len=len(key) if key else 0,
+             key_start=key[:8] if key and len(key) >= 8 else key,
+             key_end=key[-4:] if key and len(key) >= 4 else key,
+             url=url, model=model)
+
     if not url or not key or not model:
         raise HTTPException(400, "url, key, and model are required")
 
