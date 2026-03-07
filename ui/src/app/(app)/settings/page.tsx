@@ -2175,6 +2175,21 @@ function AIConfigSettings() {
                           onClick={() => update(promptKey, "")}
                           className="text-[10px] text-red-400 hover:text-red-300 flex items-center gap-1"
                         >
+                          <Trash2 className="h-2.5 w-2.5" /> Clear custom prompt
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Advanced ── */}
+      {activeSubSection === "advanced" && (
+        <div className="space-y-4">
           {/* Model Guidance Card */}
           {(() => {
             const guidance = getModelGuidance(cfg.primary_model);
@@ -2209,22 +2224,7 @@ function AIConfigSettings() {
               </CardTitle>
               <p className="text-[10px] text-muted-foreground mt-0.5">
                 These parameters apply to all AI features globally. Changes take effect within 60 seconds.
-              </p
-              );
-            })}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── Advanced ── */}
-      {activeSubSection === "advanced" && (
-        <div className="space-y-4">
-          <Card>
-            <CardHeader className="pb-2 pt-4 px-5">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <FlaskConical className="h-3.5 w-3.5" /> Generation Parameters
-                <Tooltip text="Control how the AI generates responses. Temperature affects creativity (0 = deterministic, 1 = creative). Max tokens limits response length." />
-              </CardTitle>
+              </p>
             </CardHeader>
             <CardContent className="px-5 pb-4 space-y-4">
               <div>
@@ -2268,6 +2268,9 @@ function AIConfigSettings() {
                 Rate Limiting
                 <Tooltip text="Controls how fast the platform sends requests to AI providers. Prevents hitting provider rate limits during batch processing." />
               </CardTitle>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                Affects: All AI batch operations (news ingestion, bulk enrichment). Groq free tier allows ~30 req/min.
+              </p>
             </CardHeader>
             <CardContent className="px-5 pb-4">
               <SettingField label="Requests per Minute" description="Max AI requests per minute (0 = unlimited)">
@@ -2300,6 +2303,9 @@ function AIConfigSettings() {
                 Cache TTLs
                 <Tooltip text="How long AI responses are cached before regeneration. Longer TTLs reduce API calls but may show stale results. Values in seconds." />
               </CardTitle>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                Affects: Intel summaries, enrichments, and lookup results are cached in Redis. 0 = no caching.
+              </p>
             </CardHeader>
             <CardContent className="px-5 pb-4">
               <SettingField label="Summary Cache" description="Time to cache AI summaries">
