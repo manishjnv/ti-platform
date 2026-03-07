@@ -172,11 +172,65 @@ CISA KEV, NVD, URLhaus, AbuseIPDB, AlienVault OTX, VirusTotal, Shodan
 
 ---
 
+## Cross-Enrichment Engine ✅ DONE (v1.8)
+
+**Goal:** Automatically link news intelligence, threat campaigns, actors, IOCs, and ATT&CK techniques across all platform surfaces — turning IntelWatch from a collection of siloed data pages into a connected intelligence graph.
+
+### 1. Dashboard Enrichment Widgets ✅
+- 3 new Card sections: **Active Campaigns** (violet, actor/campaign/CVEs/date range), **Threat Velocity** (amber, entity mention acceleration), **Sector Threat Map** (teal, horizontal bars by campaign count)
+- Data: `GET /enrichment/dashboard` + `GET /enrichment/velocity`
+
+### 2. Intel Feed Campaign/Actor Badges ✅
+- Batch enrichment for all visible intel items on page load
+- Campaign badges (violet) and actor badges (red) on each IntelCard
+- Data: `POST /enrichment/intel-batch` with item_ids
+
+### 3. IOC Campaign Membership Panel ✅
+- Campaign context panel in IOC enrichment sidebar
+- Shows campaign name, actor, severity per match
+- Data: `GET /enrichment/ioc-context?value=<ioc>`
+
+### 4. MITRE Active Usage Heatmap ✅
+- Intensity-colored grid showing techniques actively used in the wild (30 days)
+- Links to technique detail page, shows actor names and campaign/article counts
+- Data: `GET /enrichment/technique-usage?days=30`
+
+### 5. Organization Profile & Exposure Scoring ✅
+- Settings → Organization section: sector toggle pills (15 industries), region pills (8), tech stack tags
+- "Check Threat Exposure" button calculates 0-100 exposure score
+- Score based on: targeting campaigns (30pts), KEV/exploitable vulns (30pts), breadth (20pts), frequency (20pts)
+- Data: `POST /enrichment/org-exposure`
+
+### 6. Detection Rules Page ✅ (Phase 6.5)
+- `/detections` — YARA/Sigma/KQL rule library auto-generated from news articles
+- Coverage stats, type/severity filters, search, expandable rules with copy-to-clipboard
+- Sync button extracts new rules from `news_items.yara_rule` and `kql_rule`
+- Data: `GET /enrichment/detection-rules`, `GET /enrichment/detection-coverage`, `POST /enrichment/detection-rules/sync`
+
+### 7. AI-Powered Threat Briefings Page ✅
+- `/briefings` — generate and view weekly threat intelligence briefings
+- "Generate Weekly Briefing" calls `chat_completion()` with aggregated threat data
+- Expanded view shows executive summary, key campaigns, key vulnerabilities, key actors, recommendations
+- Stored in `threat_briefings` table with full JSONB data
+- Data: `POST /enrichment/generate-briefing`, `GET /enrichment/briefings`
+
+### 8. Threat Velocity Tracking ✅
+- Compares entity mention frequency: last 3 days vs previous 4 days
+- Tracks both CVEs and threat actors
+- Powers dashboard velocity card + briefing data
+
+### Implementation Stats
+- **Backend:** 684-line service + 290-line routes + 2 ORM models + 52-line migration
+- **Frontend:** 2 new pages + 6 enriched pages + 15 types + 15 API functions
+- **Total:** ~2,228 lines added across 16 files
+
+---
+
 ## Phase 2 — Differentiation & Analyst Workflow
 
 **Goal:** Transform IntelWatch from a monitoring tool into an analyst workstation with investigation and collaboration features.
 
-### 2.1 Case / Incident Management
+### 2.1 Case / Incident Management ✅ DONE
 - **Module:** `api/app/services/cases.py` — case lifecycle management
 - **Database:** New `cases` table (id, title, type, severity, status, assignee_id, priority, description, created_at, closed_at, tlp)
 - **Database:** New `case_items` junction table (case_id, item_type, item_id, added_by, added_at, notes)
@@ -513,7 +567,12 @@ CISA KEV, NVD, URLhaus, AbuseIPDB, AlienVault OTX, VirusTotal, Shodan
 - **Sidebar:** Add "Attack Surface" under Analytics section
 - **Scheduler:** Daily subdomain scan, 6h service check, 12h CT log poll
 
-### 6.5 Detection Rule Generator
+### 6.5 Detection Rule Generator ✅ DONE (v1.8 — Cross-Enrichment Engine)
+- **Implementation:** Auto-extracts YARA/KQL rules from news articles, stores in `detection_rules` table
+- **Module:** `api/app/services/cross_enrichment.py` — `get_detection_rules()`, `get_detection_coverage()`, `sync_detection_rules()`
+- **Routes:** `GET /enrichment/detection-rules`, `GET /enrichment/detection-coverage`, `POST /enrichment/detection-rules/sync`
+- **Page:** `/detections` — rule library with type/severity filters, search, expand/copy, sync button
+- **Coverage stats:** total rules, technique/campaign coverage, per-type breakdown (YARA/KQL/Sigma)
 - **Module:** `api/app/services/detection.py` — rule generation engine from IOCs and ATT&CK mappings
 - **Database:** New `detection_rules` table (id, name, rule_type, content, source_iocs[], technique_ids[], severity, created_by, created_at, exported_at)
 - **Page:** `/detections` — detection rule library with export

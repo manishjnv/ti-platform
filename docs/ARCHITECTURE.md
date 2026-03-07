@@ -649,14 +649,95 @@ GitHub Actions
 | 2026-03-01 | Phase 1.6 — AI Web Research & Enhanced Report Sections | ~19,800 |
 | 2026-03-02 | Live Internet Lookup (12+ external API sources, AI summary) | ~20,500 |
 | 2026-03-03 | Structured AI Analysis + Unified StructuredIntelCards | ~20,600 |
+| 2026-03-07 | Cross-Enrichment Engine — 8 features, 14 API endpoints, 2 new pages | ~22,800 |
+
+---
+
+## Cross-Enrichment Engine (v1.8)
+
+> Added 2026-03-07. Automatically links news intelligence, campaigns, threat actors, IOCs, and ATT&CK techniques across all platform surfaces.
+
+### Architecture
+
+```text
+news_items ──┐
+             ├──► cross_enrichment.py ──► 14 API endpoints ──► 6 enriched pages + 2 new pages
+campaigns ───┤       (8 function groups)         ▲
+techniques ──┤                                   │
+products ────┘                              Redis cache (2-5 min TTL)
+```
+
+### Backend Service: `api/app/services/cross_enrichment.py` (684 lines)
+
+| # | Function Group | SQL Complexity | Cached | TTL |
+|---|---------------|---------------|--------|-----|
+| 1 | Dashboard Enrichment | 5 queries (campaigns, actors, sectors, CVEs, trend) | ✓ | 120s |
+| 2 | Intel Batch Cross-Link | 2 queries (item CVEs/products → news) | ✓ | 120s |
+| 3 | IOC Campaign Membership | 1 query (ILIKE match against news content) | — | — |
+| 4 | Technique Usage Heatmap | 1 query (UNNEST techniques → campaigns/actors) | ✓ | 300s |
+| 5 | Threat Velocity | 2 queries (3-day vs 7-day window, CVEs + actors) | ✓ | 300s |
+| 6 | Org Exposure Scoring | 2 queries (sector campaigns + tech stack products) | ✓ | 300s |
+| 7 | Detection Rule Library | 3 functions (query, coverage stats, sync from news) | — | — |
+| 8 | Briefing Data Collection | Aggregates all above + stats for AI generation | — | — |
+
+### API Routes: `api/app/routes/enrichment.py` (290 lines, 14 endpoints)
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/enrichment/dashboard` | GET | viewer | Active campaigns, top actors, sector threats, trending CVEs |
+| `/enrichment/intel-context` | POST | viewer | Campaign/actor context for single intel item |
+| `/enrichment/intel-batch` | POST | viewer | Batch enrich multiple intel items |
+| `/enrichment/ioc-context` | GET | viewer | Campaign membership for IOC value |
+| `/enrichment/technique-usage` | GET | viewer | ATT&CK technique usage heatmap data |
+| `/enrichment/technique-detail` | GET | viewer | Detailed technique enrichment |
+| `/enrichment/velocity` | GET | viewer | Accelerating threat entity mentions |
+| `/enrichment/org-exposure` | POST | viewer | Personalized org threat exposure score |
+| `/enrichment/detection-rules` | GET | viewer | Query detection rule library |
+| `/enrichment/detection-coverage` | GET | viewer | Rule coverage statistics |
+| `/enrichment/detection-rules/sync` | POST | viewer | Extract rules from news into library |
+| `/enrichment/briefing-data` | GET | viewer | Raw data for briefing generation |
+| `/enrichment/generate-briefing` | POST | viewer | Generate AI threat briefing |
+| `/enrichment/briefings` | GET | viewer | List past briefings |
+
+### Database: 2 new tables (`migrations/20260307_enrichment_features.sql`)
+
+**`threat_briefings`** — AI-generated periodic threat intelligence summaries
+- period (daily/weekly), period_start/end, title, executive_summary
+- key_campaigns JSONB, key_vulnerabilities JSONB, key_actors JSONB
+- sector_threats JSONB, stats JSONB, recommendations TEXT[], raw_data JSONB
+
+**`detection_rules`** — Aggregated YARA/KQL/Sigma rule library
+- rule_type, name, content, source_news_id FK
+- campaign_name, technique_ids[], cve_ids[], severity, quality_score (0-100)
+- GIN indexes on technique_ids and cve_ids for fast lookups
+
+### Frontend: 6 enriched pages + 2 new pages
+
+| Page | Enrichment Added |
+|------|-----------------|
+| Dashboard | Active Campaigns card, Threat Velocity card, Sector Threat Map card |
+| Intel Feed | Campaign/actor badges on each IntelCard via batch enrichment |
+| IOC Database | Campaign Membership panel in enrichment sidebar |
+| MITRE Techniques | Active Usage Heatmap (30-day, intensity-colored grid) |
+| Settings | Organization Profile section (sectors, regions, tech stack, exposure score) |
+| **NEW: Detections** | `/detections` — YARA/Sigma/KQL rule library with filters, copy, sync |
+| **NEW: Briefings** | `/briefings` — AI-powered weekly threat briefing generation |
+
+### TypeScript Types: 15 interfaces in `ui/src/types/index.ts`
+
+ActiveCampaign, TopThreatActor, SectorThreat, TrendingCVE, ThreatVelocityItem,
+DashboardEnrichment, IntelCampaignContext, IntelBatchEnrichment, IOCCampaignContext,
+TechniqueUsageItem, TechniqueDetailEnrichment, OrgExposure, DetectionRule,
+DetectionCoverage, ThreatBriefingSummary
 
 ---
 
 ## Planned Features (Backlog)
 
-> Items below are approved concepts for future implementation. They are not yet built.
+> Items below are approved concepts for future implementation. Some have partial coverage via the Cross-Enrichment Engine (v1.8).
 
 ### Domain Impersonation Monitoring
+*Status: Not implemented. No overlap with cross-enrichment.*
 
 Detect lookalike / typosquat domains targeting a configured list of protected brands or assets.
 
@@ -667,6 +748,7 @@ Detect lookalike / typosquat domains targeting a configured list of protected br
 - **UI** — dedicated "Domain Watch" page: add protected domains, view alerts, similarity heatmap
 
 ### Custom Campaign / Conflict Monitoring
+*Status: Partially addressed. Cross-enrichment provides campaign tracking across news, dashboard campaign cards, and intel campaign badges. Missing: user-defined campaigns, custom timeline, collaboration features.*
 
 Track specific threat campaigns, military/cyber conflicts, or coordinated operations over time.
 
@@ -677,6 +759,7 @@ Track specific threat campaigns, military/cyber conflicts, or coordinated operat
 - **Templates** — preset campaign profiles for common scenarios (ransomware wave, APT tracking, conflict cyber ops)
 
 ### Global Event Intelligence
+*Status: Partially addressed. Threat Velocity tracking monitors entity acceleration. AI Briefings generate situational awareness summaries. Missing: user-defined events, multi-source OSINT, geo overlay.*
 
 Real-time monitoring and correlation for large-scale global events (natural disasters, geopolitical crises, major cyber incidents).
 
@@ -692,6 +775,7 @@ Real-time monitoring and correlation for large-scale global events (natural disa
 
 | Date | Change |
 | ---- | ------ |
+| 2026-03-07 | **Cross-Enrichment Engine (v1.8)** — 8-feature cross-enrichment engine linking news intelligence across all platform entities. Backend: `cross_enrichment.py` (684 lines, 8 function groups), `enrichment.py` (290 lines, 14 API endpoints), 2 new DB tables (`threat_briefings`, `detection_rules`), 2 ORM models. Frontend: 15 TypeScript types, 15 API client functions, enrichment widgets on 5 existing pages (Dashboard, Intel, IOCs, Techniques, Settings), 2 new pages (`/detections` — YARA/Sigma/KQL rule library with sync/filter/copy; `/briefings` — AI-powered weekly briefing generation). Features: active campaign tracking, threat velocity monitoring, sector threat mapping, intel campaign/actor badges, IOC campaign membership, MITRE usage heatmap, org profile exposure scoring (0-100), detection rule auto-extraction from news, AI threat briefing generation via `chat_completion()`. Bug fixes: list_briefings missing period fields, severity filter on detection-rules, quality_score display × 100 bug, briefing stats key mismatch, dead code in sector_threat_map SQL. |
 | 2026-03-05 | Phase 2.1 Case Management — P2 Improvements: **Status transition validation** — enforced allowed state machine transitions (new→in_progress/pending/closed, etc.), 422 error on invalid transitions, `ALLOWED_TRANSITIONS` constant in frontend for smart status dropdown. **Expanded filters** — severity, TLP, date range (date_from/date_to), and tag filtering on cases list; PostgreSQL `func.any()` for ARRAY tag filter. **Bulk operations** — bulk status update, bulk assign, bulk delete endpoints (`POST /cases/bulk/status`, `/bulk/assign`, `/bulk/delete`); UI bulk action bar with select-all, per-row checkboxes. **Export** — JSON and CSV export (`GET /cases/export?format=json|csv&ids=...`), download button in UI header. **Assignee selector** — `GET /cases/assignees` endpoint (admin+analyst users), assignee dropdown in create modal and edit mode. **Edit severity/TLP/tags** — full editing of severity, TLP, tags, and assignee in case detail page edit mode. **Linked items clickable** — intel items link to `/intel/{id}`, IOCs link to `/search?q={value}`. |
 | 2026-03-05 | Phase 2.1 Case Management — P1 Improvements: severity/TLP/tags in create modal, duplicate item detection (409), activity logging on item removal, owner/assignee email on list view (batch loaded), activity user emails (batch loaded), error handling on delete and add item. |
 | 2026-03-04 | UI Improvements Phase 7: **Intel Detail Page** — new IOCs tab showing linked indicators with InternetDB enrichment (ports, vulns, CPEs, hostnames, tags), EPSS scores, IPinfo geolocation; enhanced Timeline tab with event type legend, color-coded cards, relative dates, source badges; improved Threat Actor section with motivation emoji icons, confidence coloring, "Hunt" search link, technique counts; improved Notable Campaigns section with visual timeline, severity-based dots, Impact Assessment box. New API endpoint `GET /intel/{id}/iocs` (joins IOC+IntelIOCLink with enrichment data). **IOC Database Page** — enrichment side panel now shows stored IPinfo (country, ASN, network), InternetDB (ports, vulns, CVE links to NVD, technologies/CPEs, hostnames, tags), and EPSS scores with probability bar before VT/Shodan on-demand results. **Geo View Page** — complete overhaul from single-source to 5-tab layout: Countries (flag grid + donut + AI threat geography), Continents (emoji progress bars), Networks (ASN bar chart), Industries (AI-enriched targeting), Intel Geo (original region data with severity pills + detail drill-down); uses `getDashboardInsights()` + `getIOCStats()` for comprehensive data. |
