@@ -480,6 +480,57 @@ async def ai_provider_health(
     return await check_ai_health()
 
 
+@router.post("/promote-fallback")
+async def promote_fallback(
+    body: dict,
+    user: Annotated[User, Depends(require_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Swap a fallback provider to primary (server-side, handles real keys)."""
+    idx = body.get("index")
+    if idx is None or not isinstance(idx, int):
+        raise HTTPException(400, "index is required (integer)")
+
+    row = await _get_or_create_settings(db)
+    fallbacks = row.fallback_providers or []
+    if idx < 0 or idx >= len(fallbacks):
+        raise HTTPException(400, f"Invalid fallback index: {idx}")
+
+    fb = fallbacks[idx]
+
+    # Save current primary as fallback entry
+    old_primary = {
+        "name": row.primary_provider,
+        "url": row.primary_api_url,
+        "key": row.primary_api_key,
+        "model": row.primary_model,
+        "timeout": row.primary_timeout,
+        "enabled": True,
+    }
+
+    # Promote fallback to primary
+    row.primary_provider = fb.get("name", "")
+    row.primary_api_url = fb.get("url", "")
+    row.primary_api_key = fb.get("key", "")
+    row.primary_model = fb.get("model", "")
+    row.primary_timeout = int(fb.get("timeout", 30))
+
+    # Replace the promoted fallback with old primary
+    fallbacks[idx] = old_primary
+    row.fallback_providers = fallbacks
+    flag_modified(row, "fallback_providers")
+
+    row.updated_by = user.id
+    row.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await _invalidate_ai_cache()
+
+    data = _serialize(row)
+    data["daily_usage"] = await _get_daily_usage()
+    logger.info("ai_fallback_promoted", index=idx, new_primary=row.primary_provider, user=user.email)
+    return data
+
+
 # ─── Helpers ─────────────────────────────────────────────
 
 async def _get_daily_usage() -> dict:

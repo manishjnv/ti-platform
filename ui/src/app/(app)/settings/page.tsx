@@ -1855,35 +1855,14 @@ function AIConfigSettings() {
     update("fallback_providers", list);
   };
 
-  const promoteFallback = (idx: number) => {
+  const promoteFallback = async (idx: number) => {
     if (!cfg) return;
-    const fb = cfg.fallback_providers[idx];
-    if (!fb) return;
-    // Save current primary as a fallback entry (insert at the position the promoted one was)
-    const oldPrimary: FallbackProvider = {
-      name: cfg.primary_provider,
-      url: cfg.primary_api_url,
-      key: cfg.primary_api_key,
-      model: cfg.primary_model,
-      timeout: cfg.primary_timeout,
-      enabled: true,
-    };
-    // Build new fallback list: replace promoted entry with old primary
-    const list = [...(cfg.fallback_providers || [])];
-    list[idx] = oldPrimary;
-    // Use known-good default URL for the promoted provider if available
-    const defaults = PROVIDER_DEFAULTS[fb.name];
-    const promotedUrl = defaults ? defaults.url : fb.url;
-    // Set promoted fallback as new primary
-    setCfg({
-      ...cfg,
-      primary_provider: fb.name,
-      primary_api_url: promotedUrl,
-      primary_api_key: fb.key,
-      primary_model: fb.model,
-      primary_timeout: fb.timeout,
-      fallback_providers: list,
-    });
+    try {
+      const result = await api.promoteAIFallback(idx);
+      setCfg(result);
+    } catch (err: any) {
+      setError(err?.message || "Promote failed");
+    }
   };
 
   if (loading) {
