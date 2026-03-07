@@ -259,6 +259,29 @@ async def update_ai_settings(
     return data
 
 
+@router.get("/debug-keys")
+async def debug_keys(db: Annotated[AsyncSession, Depends(get_db)]):
+    """Temp debug endpoint - REMOVE AFTER DEBUGGING."""
+    row = await _get_or_create_settings(db)
+    pk = row.primary_api_key or ""
+    fb = row.fallback_providers or []
+    return {
+        "primary_key_len": len(pk),
+        "primary_key_start": pk[:8] if pk else "",
+        "primary_key_end": pk[-4:] if pk else "",
+        "fallback_count": len(fb),
+        "fallbacks": [
+            {
+                "name": f.get("name", ""),
+                "key_len": len(f.get("key", "")),
+                "key_start": f.get("key", "")[:8] if f.get("key", "") else "",
+                "key_end": f.get("key", "")[-4:] if f.get("key", "") else "",
+            }
+            for f in fb
+        ],
+    }
+
+
 @router.post("/test-provider")
 async def test_ai_provider(
     body: dict,
