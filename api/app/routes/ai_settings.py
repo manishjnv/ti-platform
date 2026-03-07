@@ -278,18 +278,22 @@ async def test_ai_provider(
     # If key is masked, resolve the real key from the database
     if not key or "****" in key:
         row = await _get_or_create_settings(db)
-        if provider_type is not None and provider_type != "primary":
+        logger.info("test_provider_resolving_key", provider_type=provider_type, has_key=bool(key), key_preview=key[:10] if key else "")
+        if provider_type is not None and str(provider_type) != "primary":
             # Fallback provider — look up by index
             try:
                 idx = int(provider_type)
-                fb = (row.fallback_providers or [])[idx]
+                fb_list = row.fallback_providers or []
+                logger.info("test_provider_fallback_lookup", idx=idx, total_fallbacks=len(fb_list))
+                fb = fb_list[idx]
                 key = fb.get("key", "")
+                logger.info("test_provider_fallback_resolved", has_key=bool(key), key_len=len(key) if key else 0)
                 if not url:
                     url = fb.get("url", "")
                 if not model:
                     model = fb.get("model", "")
-            except (ValueError, IndexError):
-                pass
+            except (ValueError, IndexError) as exc:
+                logger.error("test_provider_fallback_error", error=str(exc))
         else:
             # Primary provider
             key = row.primary_api_key or ""
