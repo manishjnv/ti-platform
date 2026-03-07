@@ -528,3 +528,45 @@ class CaseActivity(Base):
     detail: Mapped[str | None] = mapped_column(Text)
     meta: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ─── Threat Briefings ────────────────────────────────────
+
+
+class ThreatBriefing(Base):
+    __tablename__ = "threat_briefings"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    period: Mapped[str] = mapped_column(String(20), nullable=False)
+    period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    executive_summary: Mapped[str] = mapped_column(Text, nullable=False)
+    key_campaigns: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    key_vulnerabilities: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    key_actors: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    sector_threats: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    stats: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    recommendations: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    raw_data: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ─── Detection Rules Library ─────────────────────────────
+
+
+class DetectionRule(Base):
+    __tablename__ = "detection_rules"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    rule_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[str] = mapped_column(String(300), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    source_news_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    campaign_name: Mapped[str | None] = mapped_column(String(300))
+    technique_ids: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    cve_ids: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    severity: Mapped[str] = mapped_column(String(20), nullable=False, default="medium")
+    quality_score: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=50)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+

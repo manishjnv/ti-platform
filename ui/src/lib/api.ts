@@ -833,3 +833,83 @@ export function getCaseExportUrl(format: "json" | "csv", ids?: string[]): string
   if (ids && ids.length > 0) return `${base}&ids=${ids.join(",")}`;
   return base;
 }
+
+// ─── Cross-Enrichment ───────────────────────────────────
+
+export async function getDashboardEnrichment(days?: number): Promise<import("@/types").DashboardEnrichment> {
+  const q = days ? `?days=${days}` : "";
+  return fetcher<import("@/types").DashboardEnrichment>(`/enrichment/dashboard${q}`);
+}
+
+export async function getIntelCampaignContext(cveIds: string[], products: string[]): Promise<import("@/types").IntelCampaignContext> {
+  return fetcher<import("@/types").IntelCampaignContext>("/enrichment/intel-context", {
+    method: "POST",
+    body: JSON.stringify({ cve_ids: cveIds, products }),
+  });
+}
+
+export async function getIntelBatchEnrichment(itemIds: string[]): Promise<import("@/types").IntelBatchEnrichment> {
+  return fetcher<import("@/types").IntelBatchEnrichment>("/enrichment/intel-batch", {
+    method: "POST",
+    body: JSON.stringify({ item_ids: itemIds }),
+  });
+}
+
+export async function getIOCCampaignContext(value: string): Promise<import("@/types").IOCCampaignContext> {
+  return fetcher<import("@/types").IOCCampaignContext>(`/enrichment/ioc-context?value=${encodeURIComponent(value)}`);
+}
+
+export async function getTechniqueUsage(days?: number): Promise<import("@/types").TechniqueUsageItem[]> {
+  const q = days ? `?days=${days}` : "";
+  return fetcher<import("@/types").TechniqueUsageItem[]>(`/enrichment/technique-usage${q}`);
+}
+
+export async function getTechniqueDetailEnrichment(techniqueId: string): Promise<import("@/types").TechniqueDetailEnrichment> {
+  return fetcher<import("@/types").TechniqueDetailEnrichment>(`/enrichment/technique-detail?technique_id=${encodeURIComponent(techniqueId)}`);
+}
+
+export async function getThreatVelocity(): Promise<import("@/types").ThreatVelocityItem[]> {
+  return fetcher<import("@/types").ThreatVelocityItem[]>("/enrichment/velocity");
+}
+
+export async function getOrgExposure(sectors: string[], regions: string[], techStack: string[]): Promise<import("@/types").OrgExposure> {
+  return fetcher<import("@/types").OrgExposure>("/enrichment/org-exposure", {
+    method: "POST",
+    body: JSON.stringify({ sectors, regions, tech_stack: techStack }),
+  });
+}
+
+export async function getDetectionRules(params: {
+  rule_type?: string;
+  severity?: string;
+  campaign?: string;
+  technique_id?: string;
+  limit?: number;
+  offset?: number;
+} = {}): Promise<import("@/types").DetectionRule[]> {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== "") query.set(k, String(v));
+  });
+  return fetcher<import("@/types").DetectionRule[]>(`/enrichment/detection-rules?${query}`);
+}
+
+export async function getDetectionCoverage(): Promise<import("@/types").DetectionCoverage> {
+  return fetcher<import("@/types").DetectionCoverage>("/enrichment/detection-coverage");
+}
+
+export async function syncDetectionRules(): Promise<{ synced: number }> {
+  return fetcher<{ synced: number }>("/enrichment/detection-rules/sync", { method: "POST" });
+}
+
+export async function generateBriefing(days?: number): Promise<Record<string, unknown>> {
+  return fetcher<Record<string, unknown>>("/enrichment/generate-briefing", {
+    method: "POST",
+    body: JSON.stringify({ days: days || 7 }),
+  });
+}
+
+export async function getBriefings(limit?: number): Promise<import("@/types").ThreatBriefingSummary[]> {
+  const q = limit ? `?limit=${limit}` : "";
+  return fetcher<import("@/types").ThreatBriefingSummary[]>(`/enrichment/briefings${q}`);
+}

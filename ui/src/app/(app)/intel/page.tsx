@@ -8,7 +8,8 @@ import { Loading, IntelCardSkeleton } from "@/components/Loading";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { getExportUrl } from "@/lib/api";
+import { getExportUrl, getIntelBatchEnrichment } from "@/lib/api";
+import type { IntelBatchEnrichment } from "@/types";
 import {
   List,
   Download,
@@ -55,13 +56,21 @@ export default function IntelFeedPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [localFilters, setLocalFilters] = useState<Record<string, string>>(intelFilters);
   const [searchInput, setSearchInput] = useState(intelFilters.query || "");
+  const [batchEnrichment, setBatchEnrichment] = useState<IntelBatchEnrichment | null>(null);
 
   useEffect(() => {
     fetchIntel(1);
-    // Auto-refresh every 30 seconds
     const interval = setInterval(() => fetchIntel(), 30000);
     return () => clearInterval(interval);
   }, [fetchIntel]);
+
+  // Fetch cross-enrichment for visible items
+  useEffect(() => {
+    if (intelData?.items && intelData.items.length > 0) {
+      const ids = intelData.items.map((i) => i.id);
+      getIntelBatchEnrichment(ids).then(setBatchEnrichment).catch(() => {});
+    }
+  }, [intelData?.items]);
 
   const handlePageChange = useCallback(
     (page: number) => {
@@ -361,7 +370,13 @@ export default function IntelFeedPage() {
             <p className="text-sm">Adjust filters or wait for feeds to ingest data.</p>
           </div>
         ) : (
-          intelData?.items.map((item) => <IntelCard key={item.id} item={item} />)
+          intelData?.items.map((item) => (
+            <IntelCard
+              key={item.id}
+              item={item}
+              campaignContext={batchEnrichment?.items?.[item.id]}
+            />
+          ))
         )}
       </div>
 

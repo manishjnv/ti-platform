@@ -36,7 +36,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import * as api from "@/lib/api";
-import type { DashboardInsights } from "@/types";
+import type { DashboardInsights, DashboardEnrichment, ThreatVelocityItem } from "@/types";
 import { cn } from "@/lib/utils";
 
 const SEV_COLORS: Record<string, string> = {
@@ -69,6 +69,8 @@ export default function DashboardPage() {
   const [insights, setInsights] = useState<DashboardInsights | null>(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [productPeriod, setProductPeriod] = useState<string>("30d");
+  const [enrichment, setEnrichment] = useState<DashboardEnrichment | null>(null);
+  const [velocity, setVelocity] = useState<ThreatVelocityItem[]>([]);
 
   // Detail modal state
   const [detailOpen, setDetailOpen] = useState(false);
@@ -109,6 +111,8 @@ export default function DashboardPage() {
     fetchUnreadCount();
     fetchReportStats();
     fetchInsights();
+    api.getDashboardEnrichment().then(setEnrichment).catch(() => {});
+    api.getThreatVelocity().then(setVelocity).catch(() => {});
     const interval = setInterval(fetchDashboard, 60000);
     const notifInterval = setInterval(fetchUnreadCount, 30000);
     return () => { clearInterval(interval); clearInterval(notifInterval); };
@@ -364,6 +368,116 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* ═══════════════════════════════════════════════════════
+          CROSS-ENRICHMENT: Active Campaigns, Threat Velocity, Sector Threats
+          ═══════════════════════════════════════════════════════ */}
+
+      {/* ── Active Campaigns from News Intelligence ────── */}
+      {enrichment?.active_campaigns && enrichment.active_campaigns.length > 0 && (
+        <Card className="border-l-2 border-violet-500/40">
+          <CardHeader className="pb-2 pt-4 px-5">
+            <div className="flex items-center gap-2">
+              <Swords className="h-4 w-4 text-violet-400" />
+              <CardTitle className="text-sm font-semibold">Active Campaigns (News Cross-Link)</CardTitle>
+              <Badge variant="outline" className="text-[9px] ml-auto">Live from Cyber News</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="px-5 pb-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+              {enrichment.active_campaigns.slice(0, 6).map((c) => (
+                <div key={c.id} className="flex items-center gap-3 p-2.5 rounded-lg border bg-card">
+                  <span className="flex items-center justify-center h-8 w-8 rounded-md bg-violet-500/10 text-violet-400 text-xs font-bold shrink-0">
+                    {c.source_count}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold truncate">{c.campaign_name || c.actor_name}</p>
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {c.cves_exploited.slice(0, 2).map((cve) => (
+                        <span key={cve} className="text-[9px] font-mono text-primary bg-primary/10 px-1 rounded">{cve}</span>
+                      ))}
+                      {c.actor_name && c.campaign_name && (
+                        <span className="text-[9px] text-red-400 bg-red-500/10 px-1 rounded">{c.actor_name}</span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {new Date(c.first_seen).toLocaleDateString("en-US", { month: "short", day: "numeric" })} — {new Date(c.last_seen).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Threat Velocity & Sector Threats ─────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Threat Velocity */}
+        {velocity.length > 0 && (
+          <Card className="border-l-2 border-amber-500/40">
+            <CardHeader className="pb-2 pt-4 px-5">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-amber-400" />
+                <CardTitle className="text-sm font-semibold">Threat Velocity</CardTitle>
+                <Badge variant="outline" className="text-[9px] ml-auto">Accelerating Mentions</Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="px-5 pb-4">
+              <div className="space-y-2">
+                {velocity.slice(0, 8).map((v) => (
+                  <div key={v.entity} className="flex items-center gap-2 text-xs">
+                    <Badge variant="outline" className="text-[9px] shrink-0 w-14 justify-center">
+                      {v.entity_type === "cve" ? "CVE" : "Actor"}
+                    </Badge>
+                    <span className="font-mono font-medium truncate flex-1">{v.entity}</span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="text-muted-foreground">{v.previous_count}→</span>
+                      <span className="font-bold text-amber-400">{v.recent_count}</span>
+                      <span className={cn(
+                        "text-[10px] font-bold px-1 rounded",
+                        v.velocity_change > 3 ? "text-red-400 bg-red-500/10" : "text-amber-400 bg-amber-500/10"
+                      )}>
+                        +{v.velocity_change}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Sector Threats */}
+        {enrichment?.sector_threats && enrichment.sector_threats.length > 0 && (
+          <Card className="border-l-2 border-teal-500/40">
+            <CardHeader className="pb-2 pt-4 px-5">
+              <div className="flex items-center gap-2">
+                <Globe className="h-4 w-4 text-teal-400" />
+                <CardTitle className="text-sm font-semibold">Sector Threat Map</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="px-5 pb-4">
+              <div className="space-y-2">
+                {enrichment.sector_threats.slice(0, 8).map((s) => {
+                  const maxCount = enrichment.sector_threats[0]?.campaign_count ?? 1;
+                  return (
+                    <div key={s.sector}>
+                      <div className="flex items-center justify-between text-xs mb-0.5">
+                        <span className="text-muted-foreground font-medium capitalize">{s.sector}</span>
+                        <span className="font-semibold">{s.campaign_count} campaigns</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-muted/50 overflow-hidden">
+                        <div className="h-full rounded-full bg-teal-500 transition-all duration-500" style={{ width: `${(s.campaign_count / maxCount) * 100}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       {/* ═══════════════════════════════════════════════════════
           EXECUTIVE SUMMARIES: Threat Actors, Campaigns, Exploits, Advisories

@@ -14,6 +14,7 @@ import type {
   AttackTechniqueListResponse,
   AttackTechnique,
   DetectionGap,
+  TechniqueUsageItem,
 } from "@/types";
 import {
   Shield,
@@ -25,6 +26,7 @@ import {
   Eye,
   Activity,
   AlertTriangle,
+  Flame,
 } from "lucide-react";
 
 /* ─── Coverage Progress Ring (SVG donut) ──────────────── */
@@ -196,6 +198,7 @@ export default function TechniquesPage() {
   const [selectedTactic, setSelectedTactic] = useState<string>("");
   const [hasIntelFilter, setHasIntelFilter] = useState(false);
   const [view, setView] = useState<"matrix" | "list">("matrix");
+  const [techniqueUsage, setTechniqueUsage] = useState<TechniqueUsageItem[]>([]);
 
   const fetchMatrix = useCallback(async () => {
     try {
@@ -223,6 +226,7 @@ export default function TechniquesPage() {
   useEffect(() => {
     setLoading(true);
     Promise.all([fetchMatrix(), fetchList()]).finally(() => setLoading(false));
+    api.getTechniqueUsage(30).then(setTechniqueUsage).catch(() => {});
   }, [fetchMatrix, fetchList]);
 
   if (loading && !matrixData) return <Loading text="Loading MITRE ATT&CK data..." />;
@@ -327,6 +331,43 @@ export default function TechniquesPage() {
       {/* Detection Gaps */}
       {matrixData && matrixData.detection_gaps.length > 0 && (
         <DetectionGapsCard gaps={matrixData.detection_gaps} />
+      )}
+
+      {/* Active Usage Heatmap (from Cyber News cross-enrichment) */}
+      {techniqueUsage.length > 0 && (
+        <Card className="border-l-2 border-amber-500/40">
+          <CardContent className="pt-3 pb-3 px-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Flame className="h-4 w-4 text-amber-400" />
+              <span className="text-sm font-semibold">Active Usage in the Wild (30 Days)</span>
+              <Badge variant="outline" className="text-[9px] ml-auto">News Cross-Link</Badge>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-1.5">
+              {techniqueUsage.slice(0, 24).map((tu) => {
+                const maxCount = techniqueUsage[0]?.article_count ?? 1;
+                const intensity = Math.max(0.15, tu.article_count / maxCount);
+                const campaignCount = tu.campaigns?.length ?? 0;
+                return (
+                  <Link
+                    key={tu.technique}
+                    href={`/techniques/${tu.technique}`}
+                    className="group flex flex-col p-2 rounded-md border transition-colors hover:border-amber-500/40"
+                    style={{ backgroundColor: `rgba(245, 158, 11, ${intensity * 0.15})` }}
+                  >
+                    <span className="font-mono text-[10px] text-amber-400">{tu.technique}</span>
+                    <span className="text-[10px] font-medium truncate group-hover:text-primary transition-colors">
+                      {tu.actors?.slice(0, 2).join(", ") || "—"}
+                    </span>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className="text-[9px] text-muted-foreground">{campaignCount} campaigns</span>
+                      <span className="text-[9px] text-muted-foreground">{tu.article_count} articles</span>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* View Toggle + Search */}

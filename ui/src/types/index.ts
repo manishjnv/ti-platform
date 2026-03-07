@@ -958,3 +958,173 @@ export const ALLOWED_TRANSITIONS: Record<CaseStatus, CaseStatus[]> = {
   resolved: ['closed', 'in_progress'],
   closed: ['in_progress'],
 };
+
+// ─── Cross-Enrichment ───────────────────────────────────
+
+export interface ActiveCampaign {
+  id: string;
+  actor_name: string;
+  campaign_name: string | null;
+  severity: string;
+  source_count: number;
+  targeted_sectors: string[];
+  targeted_regions: string[];
+  malware_used: string[];
+  techniques_used: string[];
+  cves_exploited: string[];
+  first_seen: string;
+  last_seen: string;
+}
+
+export interface TopThreatActor {
+  actor: string;
+  mention_count: number;
+  categories: string[];
+  last_seen: string | null;
+}
+
+export interface SectorThreat {
+  sector: string;
+  campaign_count: number;
+  actors: string[];
+  max_severity: string;
+}
+
+export interface TrendingCVE {
+  cve: string;
+  article_count: number;
+  actively_exploited: boolean;
+  last_mentioned: string | null;
+  related_actors: string[];
+}
+
+export interface ThreatVelocityItem {
+  entity: string;
+  entity_type: 'cve' | 'actor';
+  recent_count: number;
+  previous_count: number;
+  velocity_change: number;
+}
+
+export interface DashboardEnrichment {
+  active_campaigns: ActiveCampaign[];
+  top_actors: TopThreatActor[];
+  sector_threats: SectorThreat[];
+  trending_cves: TrendingCVE[];
+  campaign_trend: TrendPoint[];
+}
+
+export interface IntelCampaignContext {
+  campaigns: string[];
+  actors: string[];
+  news_articles: Array<{
+    id: string;
+    headline: string;
+    source: string;
+    source_url: string;
+    campaign_name: string | null;
+    published_at: string | null;
+  }>;
+}
+
+export interface IntelBatchEnrichment {
+  [itemId: string]: {
+    campaigns: string[];
+    actors: string[];
+    article_count: number;
+  };
+}
+
+export interface IOCCampaignContext {
+  campaigns: Array<{
+    actor: string;
+    campaign: string | null;
+    severity: string;
+    sectors: string[];
+    malware: string[];
+  }>;
+}
+
+export interface TechniqueUsageItem {
+  technique: string;
+  article_count: number;
+  campaigns: string[] | null;
+  actors: string[] | null;
+  sectors: string[] | null;
+}
+
+export interface TechniqueDetailEnrichment {
+  campaigns: string[];
+  actors: string[];
+  sectors: string[];
+  article_count: number;
+  detection_rules: { yara: number; kql: number };
+  recent_articles: Array<{
+    id: string;
+    headline: string;
+    source: string;
+    campaign_name: string | null;
+    published_at: string | null;
+  }>;
+}
+
+export interface OrgExposure {
+  exposure_score: number;
+  targeting_campaigns: ActiveCampaign[];
+  vulnerable_products: Array<{
+    product_name: string;
+    cve_id: string | null;
+    severity: string;
+    cvss_score: number | null;
+    is_kev: boolean;
+    exploit_available: boolean;
+    patch_available: boolean;
+  }>;
+  stats: {
+    active_campaigns: number;
+    critical_campaigns: number;
+    vulnerable_products: number;
+    kev_count: number;
+    exploitable_count: number;
+  };
+}
+
+export interface DetectionRule {
+  id: string;
+  rule_type: 'yara' | 'kql' | 'sigma';
+  name: string;
+  content: string;
+  campaign_name: string | null;
+  technique_ids: string[];
+  cve_ids: string[];
+  severity: string;
+  quality_score: number;
+  created_at: string;
+  source_headline: string | null;
+  source_name: string | null;
+}
+
+export interface DetectionCoverage {
+  total_rules: number;
+  yara_count: number;
+  kql_count: number;
+  sigma_count: number;
+  campaigns_covered: number;
+  techniques_covered: number;
+}
+
+export interface ThreatBriefingSummary {
+  id: string;
+  period: string;
+  period_start?: string;
+  period_end?: string;
+  title: string;
+  executive_summary: string;
+  key_campaigns?: any[];
+  key_vulnerabilities?: any[];
+  key_actors?: any[];
+  stats?: Record<string, number>;
+  recommendations?: string[];
+  created_at?: string | null;
+}
+

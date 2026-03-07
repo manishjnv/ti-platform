@@ -18,6 +18,7 @@ import {
   AlertCircle,
   CheckCircle2,
   XCircle,
+  Building2,
 } from "lucide-react";
 import * as api from "@/lib/api";
 
@@ -64,6 +65,12 @@ const SECTIONS: SettingSection[] = [
     title: "API Keys",
     icon: <Key className="h-4 w-4" />,
     description: "External API integration status",
+  },
+  {
+    id: "org",
+    title: "Organization",
+    icon: <Building2 className="h-4 w-4" />,
+    description: "Org profile for personalized threat scoring",
   },
 ];
 
@@ -191,6 +198,9 @@ export default function SettingsPage() {
                 <DataSettings settings={settings} onChange={updateSetting} />
               )}
               {activeSection === "api" && <APISettings />}
+              {activeSection === "org" && (
+                <OrgProfileSettings settings={settings} onChange={updateSetting} />
+              )}
             </>
           )}
         </div>
@@ -1069,6 +1079,178 @@ function APISettings() {
               </div>
             </SettingField>
           ))}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+/* ─── Organization Profile ────────────────────────────── */
+
+const SECTOR_OPTIONS = [
+  "Finance", "Healthcare", "Government", "Technology", "Energy",
+  "Education", "Retail", "Manufacturing", "Telecom", "Defense",
+  "Transportation", "Media", "Legal", "Aerospace", "Pharmaceuticals",
+];
+
+const REGION_OPTIONS = [
+  "North America", "Europe", "Asia Pacific", "Middle East",
+  "South America", "Africa", "Central Asia", "Southeast Asia",
+];
+
+function OrgProfileSettings({
+  settings,
+  onChange,
+}: {
+  settings: Record<string, unknown>;
+  onChange: (key: string, value: unknown) => void;
+}) {
+  const prefs = (settings.preferences as Record<string, unknown>) || {};
+  const orgSectors = (prefs.org_sectors as string[]) || [];
+  const orgRegions = (prefs.org_regions as string[]) || [];
+  const orgTechStack = (prefs.org_tech_stack as string[]) || [];
+  const [techInput, setTechInput] = useState("");
+  const [exposure, setExposure] = useState<{ score: number; detail: string } | null>(null);
+  const [loadingExposure, setLoadingExposure] = useState(false);
+
+  const updatePrefs = (key: string, value: unknown) => {
+    onChange("preferences", { ...prefs, [key]: value });
+  };
+
+  const toggleItem = (key: string, current: string[], item: string) => {
+    updatePrefs(key, current.includes(item) ? current.filter((s) => s !== item) : [...current, item]);
+  };
+
+  const addTech = () => {
+    const v = techInput.trim();
+    if (v && !orgTechStack.includes(v)) {
+      updatePrefs("org_tech_stack", [...orgTechStack, v]);
+    }
+    setTechInput("");
+  };
+
+  const removeTech = (t: string) => {
+    updatePrefs("org_tech_stack", orgTechStack.filter((x) => x !== t));
+  };
+
+  const checkExposure = async () => {
+    setLoadingExposure(true);
+    try {
+      const data = await api.getOrgExposure(orgSectors, orgRegions, orgTechStack);
+      setExposure({
+        score: data.exposure_score,
+        detail: `${data.stats.active_campaigns} campaigns targeting your sectors · ${data.stats.vulnerable_products} products exposed`,
+      });
+    } catch {
+      setExposure(null);
+    }
+    setLoadingExposure(false);
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Building2 className="h-4 w-4 text-primary" />
+            Organization Profile
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Define your org&apos;s sectors, regions, and technology stack for personalized threat exposure scoring.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Sectors */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Industry Sectors</label>
+            <div className="flex flex-wrap gap-1.5">
+              {SECTOR_OPTIONS.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => toggleItem("org_sectors", orgSectors, s)}
+                  className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${
+                    orgSectors.includes(s)
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "border-border/40 text-muted-foreground hover:bg-muted/30"
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Regions */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Operating Regions</label>
+            <div className="flex flex-wrap gap-1.5">
+              {REGION_OPTIONS.map((r) => (
+                <button
+                  key={r}
+                  onClick={() => toggleItem("org_regions", orgRegions, r)}
+                  className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${
+                    orgRegions.includes(r)
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "border-border/40 text-muted-foreground hover:bg-muted/30"
+                  }`}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Tech Stack */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Technology Stack</label>
+            <div className="flex items-center gap-2 mb-2">
+              <input
+                type="text"
+                value={techInput}
+                onChange={(e) => setTechInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTech(); } }}
+                placeholder="Add product or vendor (e.g., Apache, Windows Server, Cisco)"
+                className="flex-1 h-8 px-3 rounded-md bg-muted/30 border border-border/40 text-xs placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
+              />
+              <button onClick={addTech} className="text-xs px-3 py-1.5 rounded-md bg-primary/10 text-primary hover:bg-primary/20">
+                Add
+              </button>
+            </div>
+            {orgTechStack.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {orgTechStack.map((t) => (
+                  <span key={t} className="inline-flex items-center gap-1 text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded">
+                    {t}
+                    <button onClick={() => removeTech(t)} className="hover:text-red-400 ml-0.5">×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Exposure Score */}
+          <div className="pt-2 border-t border-border/30">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={checkExposure}
+                disabled={loadingExposure || (orgSectors.length === 0 && orgTechStack.length === 0)}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-md bg-amber-500/10 text-amber-400 text-xs font-medium hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+              >
+                {loadingExposure ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Shield className="h-3.5 w-3.5" />}
+                Check Threat Exposure
+              </button>
+              {exposure && (
+                <div className="flex items-center gap-2">
+                  <span className={`text-lg font-bold ${
+                    exposure.score >= 70 ? "text-red-400" : exposure.score >= 40 ? "text-amber-400" : "text-green-400"
+                  }`}>
+                    {exposure.score}/100
+                  </span>
+                  <span className="text-xs text-muted-foreground">{exposure.detail}</span>
+                </div>
+              )}
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

@@ -29,6 +29,8 @@ import {
   Menu,
   Newspaper,
   Briefcase,
+  ShieldCheck,
+  ScrollText,
 } from "lucide-react";
 
 const NAV_SECTIONS = [
@@ -50,6 +52,8 @@ const NAV_SECTIONS = [
       { href: "/techniques", label: "ATT&CK Map", icon: Crosshair },
       { href: "/search", label: "IOC Search", icon: Search },
       { href: "/iocs", label: "IOC Database", icon: Bug },
+      { href: "/detections", label: "Detection Rules", icon: ShieldCheck },
+      { href: "/briefings", label: "Threat Briefings", icon: ScrollText },
     ],
   },
   {

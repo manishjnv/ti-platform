@@ -32,13 +32,16 @@ import {
   Crosshair,
   Telescope,
   Share2,
+  Swords,
+  Skull,
 } from "lucide-react";
 
 interface IntelCardProps {
   item: IntelItem;
+  campaignContext?: { campaigns: string[]; actors: string[] };
 }
 
-export function IntelCard({ item }: IntelCardProps) {
+export function IntelCard({ item, campaignContext }: IntelCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -199,6 +202,22 @@ export function IntelCard({ item }: IntelCardProps) {
             {item.tags.length > 3 && (
               <span className="text-[10px] text-muted-foreground">+{item.tags.length - 3}</span>
             )}
+          </div>
+        )}
+
+        {/* Campaign / Actor cross-enrichment badges */}
+        {campaignContext && (campaignContext.campaigns.length > 0 || campaignContext.actors.length > 0) && (
+          <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+            {campaignContext.campaigns.slice(0, 3).map((c) => (
+              <span key={c} className="inline-flex items-center gap-0.5 text-[10px] bg-violet-500/10 text-violet-400 px-1.5 py-0.5 rounded font-medium">
+                <Swords className="h-2.5 w-2.5" /> {c}
+              </span>
+            ))}
+            {campaignContext.actors.slice(0, 2).map((a) => (
+              <span key={a} className="inline-flex items-center gap-0.5 text-[10px] bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded font-medium">
+                <Skull className="h-2.5 w-2.5" /> {a}
+              </span>
+            ))}
           </div>
         )}
 

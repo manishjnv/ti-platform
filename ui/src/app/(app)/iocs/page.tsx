@@ -34,16 +34,19 @@ import {
   Crosshair,
   Telescope,
   Share2,
+  Swords,
 } from "lucide-react";
 import {
   getIOCs,
   getIOCStats,
   enrichIOC,
+  getIOCCampaignContext,
   type IOCItem,
   type IOCListResponse,
   type IOCStatsResponse,
   type IOCEnrichmentResult,
 } from "@/lib/api";
+import type { IOCCampaignContext } from "@/types";
 
 /* ─── Constants ─────────────────────────────────────────── */
 
@@ -290,7 +293,16 @@ export default function IOCDatabasePage() {
   const [enrichTarget, setEnrichTarget] = useState<IOCItem | null>(null);
   const [enrichData, setEnrichData] = useState<IOCEnrichmentResult | null>(null);
   const [enrichLoading, setEnrichLoading] = useState(false);
+  const [campaignCtx, setCampaignCtx] = useState<IOCCampaignContext | null>(null);
   const pageSize = 50;
+
+  /* Fetch campaign context when enrichment panel opens */
+  useEffect(() => {
+    if (enrichTarget) {
+      setCampaignCtx(null);
+      getIOCCampaignContext(enrichTarget.value).then(setCampaignCtx).catch(() => {});
+    }
+  }, [enrichTarget]);
 
   /* Debounced search */
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -1077,6 +1089,38 @@ export default function IOCDatabasePage() {
                   </>
                 );
               })()}
+
+              {/* ── Campaign Membership (Cross-Enrichment) ─── */}
+              {campaignCtx && campaignCtx.campaigns.length > 0 && (
+                <Card className="border-violet-500/10 bg-gradient-to-r from-violet-500/[0.03] to-transparent">
+                  <CardContent className="pt-3 pb-2 px-3">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Swords className="h-3.5 w-3.5 text-violet-400" />
+                      <span className="text-[11px] font-semibold">Campaign Membership</span>
+                      <Badge variant="outline" className="text-[8px] ml-auto">News Cross-Link</Badge>
+                    </div>
+                    <div className="space-y-1.5">
+                      {campaignCtx.campaigns.map((c, idx) => (
+                        <div key={idx} className="flex items-center justify-between text-xs p-1.5 rounded bg-muted/30">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-medium text-violet-300 truncate">{c.campaign || "Unknown Campaign"}</span>
+                            {c.actor && <span className="text-[10px] text-red-400 shrink-0">{c.actor}</span>}
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className={`text-[9px] px-1 rounded capitalize ${
+                              c.severity === "critical" ? "text-red-400 bg-red-500/10" :
+                              c.severity === "high" ? "text-orange-400 bg-orange-500/10" :
+                              "text-yellow-400 bg-yellow-500/10"
+                            }`}>
+                              {c.severity}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               {enrichLoading && (
                 <div className="flex items-center justify-center py-12">
