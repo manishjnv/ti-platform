@@ -379,16 +379,18 @@ async def get_technique_detail_enrichment(db: AsyncSession, technique_id: str) -
 # ──────────────────────────────────────────────────────────
 
 async def get_threat_velocity(db: AsyncSession, days: int = 14) -> list[dict]:
-    """Track entities whose news mention velocity is accelerating."""
+    """Track entities whose news mention velocity is accelerating.
+    CVEs are enriched with product name, published_at, KEV, patch, exploit status."""
     ck = cache_key(f"threat_velocity:{days}")
     cached = await get_cached(ck)
     if cached:
         return cached
 
-    # Compare mentions in the last 3 days vs previous 3 days
+    # Compare mentions in the last 3 days vs previous 3 days — CVEs enriched with vuln metadata
     q = text("""
         WITH recent AS (
-            SELECT cve, COUNT(*) AS cnt
+            SELECT cve, COUNT(*) AS cnt,
+                   MAX(n.published_at) AS last_published
             FROM news_items n, UNNEST(n.cves) AS cve
             WHERE n.published_at >= NOW() - INTERVAL '3 days'
               AND n.ai_enriched = TRUE AND cve ~ '^CVE-'
@@ -405,19 +407,36 @@ async def get_threat_velocity(db: AsyncSession, days: int = 14) -> list[dict]:
                'cve' AS entity_type,
                COALESCE(r.cnt, 0) AS recent_count,
                COALESCE(p.cnt, 0) AS previous_count,
-               COALESCE(r.cnt, 0) - COALESCE(p.cnt, 0) AS velocity_change
+               COALESCE(r.cnt, 0) - COALESCE(p.cnt, 0) AS velocity_change,
+               r.last_published AS published_at,
+               vp.product_name,
+               COALESCE(vp.is_kev, FALSE) AS is_kev,
+               COALESCE(vp.patch_available, FALSE) AS patch_available,
+               COALESCE(vp.exploit_available, FALSE) AS exploit_available,
+               vp.severity AS vuln_severity
         FROM recent r FULL OUTER JOIN previous p ON r.cve = p.cve
+        LEFT JOIN LATERAL (
+            SELECT product_name, is_kev, patch_available, exploit_available, severity
+            FROM intel_vulnerable_products
+            WHERE cve_id = COALESCE(r.cve, p.cve)
+            ORDER BY cvss_score DESC NULLS LAST
+            LIMIT 1
+        ) vp ON TRUE
         WHERE COALESCE(r.cnt, 0) > COALESCE(p.cnt, 0)
         ORDER BY velocity_change DESC
         LIMIT 10
     """)
     cve_rows = (await db.execute(q)).mappings().all()
 
-    # Actor velocity
+    # Actor velocity — enriched with recent action + target info
     q2 = text("""
         WITH recent AS (
-            SELECT actor, COUNT(*) AS cnt
+            SELECT actor, COUNT(*) AS cnt,
+                   MAX(n.published_at) AS last_published,
+                   (ARRAY_AGG(n.headline ORDER BY n.published_at DESC))[1] AS recent_headline,
+                   ARRAY_AGG(DISTINCT sector) FILTER (WHERE sector IS NOT NULL) AS targeted_sectors
             FROM news_items n, UNNEST(n.threat_actors) AS actor
+                 LEFT JOIN LATERAL UNNEST(n.targeted_sectors) AS sector ON TRUE
             WHERE n.published_at >= NOW() - INTERVAL '3 days'
               AND n.ai_enriched = TRUE
             GROUP BY actor
@@ -433,7 +452,10 @@ async def get_threat_velocity(db: AsyncSession, days: int = 14) -> list[dict]:
                'actor' AS entity_type,
                COALESCE(r.cnt, 0) AS recent_count,
                COALESCE(p.cnt, 0) AS previous_count,
-               COALESCE(r.cnt, 0) - COALESCE(p.cnt, 0) AS velocity_change
+               COALESCE(r.cnt, 0) - COALESCE(p.cnt, 0) AS velocity_change,
+               r.last_published AS published_at,
+               r.recent_headline,
+               r.targeted_sectors
         FROM recent r FULL OUTER JOIN previous p ON r.actor = p.actor
         WHERE COALESCE(r.cnt, 0) > COALESCE(p.cnt, 0)
         ORDER BY velocity_change DESC
@@ -441,7 +463,19 @@ async def get_threat_velocity(db: AsyncSession, days: int = 14) -> list[dict]:
     """)
     actor_rows = (await db.execute(q2)).mappings().all()
 
-    result = [dict(r) for r in cve_rows] + [dict(r) for r in actor_rows]
+    cve_result = []
+    for r in cve_rows:
+        d = dict(r)
+        d["published_at"] = d["published_at"].isoformat() if d.get("published_at") else None
+        cve_result.append(d)
+
+    actor_result = []
+    for r in actor_rows:
+        d = dict(r)
+        d["published_at"] = d["published_at"].isoformat() if d.get("published_at") else None
+        actor_result.append(d)
+
+    result = cve_result + actor_result
     result.sort(key=lambda x: x["velocity_change"], reverse=True)
     await set_cached(ck, result[:15], ttl=300)
     return result[:15]

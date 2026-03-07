@@ -1004,6 +1004,16 @@ export interface ThreatVelocityItem {
   recent_count: number;
   previous_count: number;
   velocity_change: number;
+  published_at?: string | null;
+  // CVE-specific fields
+  product_name?: string | null;
+  is_kev?: boolean;
+  patch_available?: boolean;
+  exploit_available?: boolean;
+  vuln_severity?: string | null;
+  // Actor-specific fields
+  recent_headline?: string | null;
+  targeted_sectors?: string[] | null;
 }
 
 export interface DashboardEnrichment {
@@ -1091,7 +1101,7 @@ export interface OrgExposure {
 
 export interface DetectionRule {
   id: string;
-  rule_type: 'yara' | 'kql' | 'sigma';
+  rule_type: 'yara' | 'kql' | 'sigma' | 'snort' | 'suricata';
   name: string;
   content: string;
   campaign_name: string | null;

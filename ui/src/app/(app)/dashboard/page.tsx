@@ -384,27 +384,58 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent className="px-5 pb-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {enrichment.active_campaigns.slice(0, 6).map((c) => (
-                <div key={c.id} className="flex items-center gap-3 p-2.5 rounded-lg border bg-card">
-                  <span className="flex items-center justify-center h-8 w-8 rounded-md bg-violet-500/10 text-violet-400 text-xs font-bold shrink-0">
+                <button
+                  key={c.id}
+                  onClick={() => openDetail("campaign", c.campaign_name || c.actor_name)}
+                  className="flex items-start gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors group text-left w-full"
+                >
+                  <span className="flex items-center justify-center h-9 w-9 rounded-md bg-violet-500/10 text-violet-400 text-xs font-bold shrink-0">
                     {c.source_count}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold truncate">{c.campaign_name || c.actor_name}</p>
-                    <div className="flex flex-wrap gap-1 mt-0.5">
-                      {c.cves_exploited.slice(0, 2).map((cve) => (
-                        <span key={cve} className="text-[9px] font-mono text-primary bg-primary/10 px-1 rounded">{cve}</span>
-                      ))}
-                      {c.actor_name && c.campaign_name && (
-                        <span className="text-[9px] text-red-400 bg-red-500/10 px-1 rounded">{c.actor_name}</span>
-                      )}
-                    </div>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      {new Date(c.first_seen).toLocaleDateString("en-US", { month: "short", day: "numeric" })} — {new Date(c.last_seen).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    <p className="text-xs font-semibold truncate group-hover:text-primary transition-colors">
+                      {c.campaign_name || c.actor_name}
                     </p>
+                    {/* Threat Actor */}
+                    {c.actor_name && (
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <Skull className="h-2.5 w-2.5 text-red-400" />
+                        <span className="text-[10px] text-red-400 font-medium">{c.actor_name}</span>
+                      </div>
+                    )}
+                    {/* CVEs + Techniques */}
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {c.cves_exploited.slice(0, 3).map((cve) => (
+                        <Link key={cve} href={`/search?q=${cve}`} onClick={(e) => e.stopPropagation()} className="text-[9px] font-mono text-primary bg-primary/10 px-1 rounded hover:bg-primary/20">{cve}</Link>
+                      ))}
+                      {c.techniques_used.slice(0, 2).map((t) => (
+                        <Link key={t} href={`/techniques/${t}`} onClick={(e) => e.stopPropagation()} className="text-[9px] font-mono text-amber-400 bg-amber-500/10 px-1 rounded hover:bg-amber-500/20">{t}</Link>
+                      ))}
+                    </div>
+                    {/* Targeted sectors, regions, malware */}
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {c.targeted_sectors.slice(0, 2).map((s) => (
+                        <span key={s} className="text-[9px] text-teal-400 bg-teal-500/10 px-1 rounded capitalize">{s}</span>
+                      ))}
+                      {c.targeted_regions.slice(0, 2).map((r) => (
+                        <span key={r} className="text-[9px] text-blue-400 bg-blue-500/10 px-1 rounded">{r}</span>
+                      ))}
+                      {c.malware_used.slice(0, 1).map((m) => (
+                        <span key={m} className="text-[9px] text-purple-400 bg-purple-500/10 px-1 rounded">{m}</span>
+                      ))}
+                    </div>
+                    {/* Date range + severity */}
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] text-muted-foreground">
+                        {new Date(c.first_seen).toLocaleDateString("en-US", { month: "short", day: "numeric" })} — {new Date(c.last_seen).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      </span>
+                      <Badge variant={c.severity as any} className="text-[8px] px-1 py-0">{c.severity}</Badge>
+                    </div>
                   </div>
-                </div>
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/30 group-hover:text-primary shrink-0 mt-1" />
+                </button>
               ))}
             </div>
           </CardContent>
@@ -424,13 +455,39 @@ export default function DashboardPage() {
               </div>
             </CardHeader>
             <CardContent className="px-5 pb-4">
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {velocity.slice(0, 8).map((v) => (
-                  <div key={v.entity} className="flex items-center gap-2 text-xs">
+                  <Link
+                    key={v.entity}
+                    href={v.entity_type === "cve" ? `/search?q=${v.entity}` : `/search?q=${v.entity}`}
+                    className="flex items-center gap-2 text-xs p-1.5 rounded-md hover:bg-muted/30 transition-colors group"
+                  >
                     <Badge variant="outline" className="text-[9px] shrink-0 w-14 justify-center">
                       {v.entity_type === "cve" ? "CVE" : "Actor"}
                     </Badge>
-                    <span className="font-mono font-medium truncate flex-1">{v.entity}</span>
+                    <div className="flex-1 min-w-0">
+                      <span className="font-mono font-medium truncate block group-hover:text-primary transition-colors">{v.entity}</span>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        {v.entity_type === "cve" && v.product_name && (
+                          <span className="text-[9px] text-blue-400 bg-blue-500/10 px-1 rounded truncate max-w-[100px]">{v.product_name}</span>
+                        )}
+                        {v.entity_type === "cve" && v.is_kev && (
+                          <span className="text-[9px] text-red-400 bg-red-500/10 px-1 rounded font-semibold">KEV</span>
+                        )}
+                        {v.entity_type === "cve" && v.exploit_available && (
+                          <span className="text-[9px] text-orange-400 bg-orange-500/10 px-1 rounded">Exploit</span>
+                        )}
+                        {v.entity_type === "cve" && v.patch_available && (
+                          <span className="text-[9px] text-green-400 bg-green-500/10 px-1 rounded">Patch</span>
+                        )}
+                        {v.entity_type === "actor" && v.targeted_sectors && v.targeted_sectors.length > 0 && (
+                          <span className="text-[9px] text-teal-400 bg-teal-500/10 px-1 rounded truncate">{v.targeted_sectors.slice(0, 2).join(", ")}</span>
+                        )}
+                        {v.published_at && (
+                          <span className="text-[9px] text-muted-foreground">{new Date(v.published_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                        )}
+                      </div>
+                    </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <span className="text-muted-foreground">{v.previous_count}→</span>
                       <span className="font-bold text-amber-400">{v.recent_count}</span>
@@ -441,7 +498,7 @@ export default function DashboardPage() {
                         +{v.velocity_change}
                       </span>
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             </CardContent>
@@ -462,15 +519,29 @@ export default function DashboardPage() {
                 {enrichment.sector_threats.slice(0, 8).map((s) => {
                   const maxCount = enrichment.sector_threats[0]?.campaign_count ?? 1;
                   return (
-                    <div key={s.sector}>
+                    <button
+                      key={s.sector}
+                      onClick={() => openDetail("sector", s.sector)}
+                      className="w-full text-left group hover:bg-muted/20 rounded-md p-1 transition-colors"
+                    >
                       <div className="flex items-center justify-between text-xs mb-0.5">
-                        <span className="text-muted-foreground font-medium capitalize">{s.sector}</span>
-                        <span className="font-semibold">{s.campaign_count} campaigns</span>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-muted-foreground font-medium capitalize group-hover:text-primary transition-colors">{s.sector}</span>
+                          {s.max_severity && (
+                            <Badge variant={s.max_severity as any} className="text-[8px] px-1 py-0">{s.max_severity}</Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {s.actors.length > 0 && (
+                            <span className="text-[9px] text-red-400 truncate max-w-[120px]">{s.actors.slice(0, 2).join(", ")}</span>
+                          )}
+                          <span className="font-semibold">{s.campaign_count} campaigns</span>
+                        </div>
                       </div>
                       <div className="h-1.5 rounded-full bg-muted/50 overflow-hidden">
                         <div className="h-full rounded-full bg-teal-500 transition-all duration-500" style={{ width: `${(s.campaign_count / maxCount) * 100}%` }} />
                       </div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>

@@ -18,7 +18,68 @@ import {
   FileCode,
   Crosshair,
   Zap,
+  AlertTriangle,
+  CheckCircle2,
 } from "lucide-react";
+
+/* ─── Rule syntax validation ────────────────────────────── */
+interface ValidationResult { valid: boolean; errors: string[] }
+
+function validateYara(content: string): ValidationResult {
+  const errors: string[] = [];
+  if (!/\brule\s+\w+/.test(content)) errors.push("Missing 'rule <name>' declaration");
+  const openBraces = (content.match(/\{/g) || []).length;
+  const closeBraces = (content.match(/\}/g) || []).length;
+  if (openBraces !== closeBraces) errors.push(`Mismatched braces: ${openBraces} open, ${closeBraces} close`);
+  if (!/\bcondition\s*:/.test(content)) errors.push("Missing 'condition:' section");
+  if (!/\b(strings|meta)\s*:/.test(content) && !/\bcondition\s*:\s*true/.test(content)) errors.push("Missing 'strings:' or 'meta:' section");
+  return { valid: errors.length === 0, errors };
+}
+
+function validateSigma(content: string): ValidationResult {
+  const errors: string[] = [];
+  if (!/^title\s*:/m.test(content)) errors.push("Missing 'title:' field");
+  if (!/^logsource\s*:/m.test(content)) errors.push("Missing 'logsource:' field");
+  if (!/^detection\s*:/m.test(content)) errors.push("Missing 'detection:' field");
+  if (/^detection\s*:/m.test(content) && !/\bcondition\s*:/m.test(content)) errors.push("Missing 'condition:' in detection block");
+  const indent = content.split("\n").filter(l => l.trim() && !l.startsWith("#"));
+  for (const line of indent) {
+    if (/^\t /.test(line) || /^ \t/.test(line)) { errors.push("Mixed tabs and spaces in indentation"); break; }
+  }
+  return { valid: errors.length === 0, errors };
+}
+
+function validateKQL(content: string): ValidationResult {
+  const errors: string[] = [];
+  const parens = { open: 0, close: 0 };
+  for (const ch of content) { if (ch === "(") parens.open++; if (ch === ")") parens.close++; }
+  if (parens.open !== parens.close) errors.push(`Mismatched parentheses: ${parens.open} open, ${parens.close} close`);
+  if (/\|\s*$/.test(content.trim())) errors.push("Query ends with a trailing pipe operator");
+  if (/\bwhere\b/i.test(content) && !/[=!<>~]|contains|has|startswith|endswith/i.test(content)) errors.push("'where' clause may be missing a comparison operator");
+  return { valid: errors.length === 0, errors };
+}
+
+function validateSnort(content: string): ValidationResult {
+  const errors: string[] = [];
+  if (!/^\s*(alert|log|pass|drop|reject|sdrop)\s/m.test(content)) errors.push("Missing action keyword (alert/log/pass/drop)");
+  if (!/\bsid\s*:\s*\d+/.test(content)) errors.push("Missing 'sid' (signature ID)");
+  if (!/\bmsg\s*:/.test(content)) errors.push("Missing 'msg' field");
+  const openParen = (content.match(/\(/g) || []).length;
+  const closeParen = (content.match(/\)/g) || []).length;
+  if (openParen !== closeParen) errors.push(`Mismatched parentheses: ${openParen} open, ${closeParen} close`);
+  return { valid: errors.length === 0, errors };
+}
+
+function validateRule(ruleType: string, content: string): ValidationResult {
+  if (!content.trim()) return { valid: false, errors: ["Rule content is empty"] };
+  switch (ruleType.toLowerCase()) {
+    case "yara": return validateYara(content);
+    case "sigma": return validateSigma(content);
+    case "kql": return validateKQL(content);
+    case "snort": case "suricata": return validateSnort(content);
+    default: return { valid: true, errors: [] };
+  }
+}
 
 const RULE_TYPE_COLORS: Record<string, string> = {
   yara: "#ef4444",
@@ -241,6 +302,7 @@ export default function DetectionsPage() {
                     {rule.quality_score != null && (
                       <span>Quality: {rule.quality_score}%</span>
                     )}
+                    {(() => { const v = validateRule(rule.rule_type, rule.content); return v.valid ? <span title="Syntax valid"><CheckCircle2 className="h-3 w-3 text-green-400" /></span> : <span title={v.errors.join("; ")}><AlertTriangle className="h-3 w-3 text-amber-400" /></span>; })()}
                   </div>
                 </div>
                 <button
@@ -252,7 +314,25 @@ export default function DetectionsPage() {
                 </button>
               </div>
               {expandedId === rule.id && (
-                <div className="px-4 pb-3 pt-1 border-t border-border/20">
+                <div className="px-4 pb-3 pt-1 border-t border-border/20 space-y-2">
+                  {/* Syntax Validation */}
+                  {(() => {
+                    const v = validateRule(rule.rule_type, rule.content);
+                    return (
+                      <div className={`flex items-start gap-2 p-2 rounded-md text-[11px] ${v.valid ? "bg-green-500/5 text-green-400" : "bg-red-500/5 text-red-400"}`}>
+                        {v.valid ? (
+                          <><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" /><span>Syntax valid — rule structure checks passed</span></>
+                        ) : (
+                          <div className="flex-1">
+                            <div className="flex items-center gap-1 font-medium mb-1"><AlertTriangle className="h-3.5 w-3.5" /> Syntax issues detected:</div>
+                            <ul className="space-y-0.5 ml-4">
+                              {v.errors.map((err, i) => <li key={i} className="list-disc">{err}</li>)}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <pre className="text-xs bg-muted/30 rounded-md p-3 overflow-x-auto max-h-64 overflow-y-auto font-mono leading-relaxed">
                     {rule.content}
                   </pre>

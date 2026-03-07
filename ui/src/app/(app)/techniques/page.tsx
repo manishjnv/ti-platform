@@ -334,25 +334,28 @@ export default function TechniquesPage() {
       )}
 
       {/* Active Usage Heatmap (from Cyber News cross-enrichment) */}
-      {techniqueUsage.length > 0 && (
-        <Card className="border-l-2 border-amber-500/40">
-          <CardContent className="pt-3 pb-3 px-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Flame className="h-4 w-4 text-amber-400" />
-              <span className="text-sm font-semibold">Active Usage in the Wild (30 Days)</span>
-              <Badge variant="outline" className="text-[9px] ml-auto">News Cross-Link</Badge>
-            </div>
+      <Card className="border-l-2 border-amber-500/40">
+        <CardContent className="pt-3 pb-3 px-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Flame className="h-4 w-4 text-amber-400" />
+            <span className="text-sm font-semibold">Active Usage in the Wild (30 Days)</span>
+            <Badge variant="outline" className="text-[9px] ml-auto">News Cross-Link</Badge>
+          </div>
+          {techniqueUsage.length > 0 ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-1.5">
               {techniqueUsage.slice(0, 24).map((tu) => {
                 const maxCount = techniqueUsage[0]?.article_count ?? 1;
                 const intensity = Math.max(0.15, tu.article_count / maxCount);
                 const campaignCount = tu.campaigns?.length ?? 0;
+                const actorList = tu.actors?.slice(0, 3).join(", ") || "—";
+                const sectorList = tu.sectors?.slice(0, 3).join(", ") || "—";
                 return (
                   <Link
                     key={tu.technique}
                     href={`/techniques/${tu.technique}`}
-                    className="group flex flex-col p-2 rounded-md border transition-colors hover:border-amber-500/40"
+                    className="group relative flex flex-col p-2 rounded-md border transition-colors hover:border-amber-500/40 hover:shadow-md"
                     style={{ backgroundColor: `rgba(245, 158, 11, ${intensity * 0.15})` }}
+                    title={`${tu.technique}\nActors: ${actorList}\nSectors: ${sectorList}\nCampaigns: ${campaignCount}\nArticles: ${tu.article_count}`}
                   >
                     <span className="font-mono text-[10px] text-amber-400">{tu.technique}</span>
                     <span className="text-[10px] font-medium truncate group-hover:text-primary transition-colors">
@@ -362,13 +365,32 @@ export default function TechniquesPage() {
                       <span className="text-[9px] text-muted-foreground">{campaignCount} campaigns</span>
                       <span className="text-[9px] text-muted-foreground">{tu.article_count} articles</span>
                     </div>
+                    {tu.sectors && tu.sectors.length > 0 && (
+                      <span className="text-[8px] text-teal-400 truncate mt-0.5">{tu.sectors.slice(0, 2).join(", ")}</span>
+                    )}
+                    {/* Hover detail overlay */}
+                    <div className="absolute z-10 hidden group-hover:block bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-52 p-2.5 rounded-lg border bg-popover text-popover-foreground shadow-xl">
+                      <p className="font-mono text-[10px] text-amber-400 font-bold">{tu.technique}</p>
+                      <div className="mt-1 space-y-0.5 text-[10px]">
+                        <p><span className="text-muted-foreground">Actors:</span> <span className="text-red-400">{actorList}</span></p>
+                        <p><span className="text-muted-foreground">Campaigns:</span> <span className="text-violet-400">{tu.campaigns?.slice(0, 3).join(", ") || "—"}</span></p>
+                        <p><span className="text-muted-foreground">Sectors:</span> <span className="text-teal-400">{sectorList}</span></p>
+                        <p><span className="text-muted-foreground">Articles:</span> <span className="font-bold">{tu.article_count}</span></p>
+                      </div>
+                    </div>
                   </Link>
                 );
               })}
             </div>
-          </CardContent>
-        </Card>
-      )}
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <Flame className="h-8 w-8 mx-auto mb-2 opacity-20" />
+              <p className="text-sm">No active technique usage detected in recent cyber news.</p>
+              <p className="text-xs mt-1">Technique usage data is extracted from news articles when they reference ATT&CK tactics and techniques.</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* View Toggle + Search */}
       <div className="flex items-center gap-3 flex-wrap">

@@ -19,6 +19,11 @@ import {
   CheckCircle2,
   XCircle,
   Building2,
+  Upload,
+  Download,
+  FileSpreadsheet,
+  Globe,
+  Server,
 } from "lucide-react";
 import * as api from "@/lib/api";
 
@@ -1098,6 +1103,14 @@ const REGION_OPTIONS = [
   "South America", "Africa", "Central Asia", "Southeast Asia",
 ];
 
+const COMPLIANCE_OPTIONS = [
+  "PCI-DSS", "HIPAA", "SOX", "GDPR", "NIST CSF", "ISO 27001", "SOC 2", "FedRAMP",
+];
+
+const CRITICALITY_OPTIONS = ["Critical Infrastructure", "Financial Systems", "PII/PHI Data", "Public-Facing Services", "Internal Only"];
+
+interface AssetEntry { name: string; version?: string; type: "software" | "ip" | "domain" }
+
 function OrgProfileSettings({
   settings,
   onChange,
@@ -1109,8 +1122,13 @@ function OrgProfileSettings({
   const orgSectors = (prefs.org_sectors as string[]) || [];
   const orgRegions = (prefs.org_regions as string[]) || [];
   const orgTechStack = (prefs.org_tech_stack as string[]) || [];
+  const orgCompliance = (prefs.org_compliance as string[]) || [];
+  const orgCriticality = (prefs.org_criticality as string[]) || [];
+  const orgAssets = (prefs.org_assets as AssetEntry[]) || [];
   const [techInput, setTechInput] = useState("");
-  const [exposure, setExposure] = useState<{ score: number; detail: string } | null>(null);
+  const [assetInput, setAssetInput] = useState("");
+  const [assetType, setAssetType] = useState<"software" | "ip" | "domain">("software");
+  const [exposure, setExposure] = useState<Record<string, any> | null>(null);
   const [loadingExposure, setLoadingExposure] = useState(false);
 
   const updatePrefs = (key: string, value: unknown) => {
@@ -1133,18 +1151,79 @@ function OrgProfileSettings({
     updatePrefs("org_tech_stack", orgTechStack.filter((x) => x !== t));
   };
 
+  const addAsset = () => {
+    const v = assetInput.trim();
+    if (!v) return;
+    const parts = v.split(/\s+/);
+    const entry: AssetEntry = { name: parts[0], version: parts[1] || undefined, type: assetType };
+    if (!orgAssets.some((a) => a.name === entry.name && a.type === entry.type)) {
+      updatePrefs("org_assets", [...orgAssets, entry]);
+    }
+    setAssetInput("");
+  };
+
+  const removeAsset = (idx: number) => {
+    updatePrefs("org_assets", orgAssets.filter((_, i) => i !== idx));
+  };
+
+  const handleAssetUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      const lines = text.split(/\r?\n/).filter((l) => l.trim());
+      const newAssets: AssetEntry[] = [];
+      for (const line of lines) {
+        const [name, version, type] = line.split(",").map((s) => s.trim());
+        if (name) {
+          const t = (type === "ip" || type === "domain") ? type : "software";
+          if (!orgAssets.some((a) => a.name === name && a.type === t) && !newAssets.some((a) => a.name === name && a.type === t)) {
+            newAssets.push({ name, version: version || undefined, type: t as AssetEntry["type"] });
+          }
+        }
+      }
+      if (newAssets.length > 0) updatePrefs("org_assets", [...orgAssets, ...newAssets]);
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const downloadAssetList = () => {
+    const header = "name,version,type";
+    const rows = orgAssets.map((a) => `${a.name},${a.version || ""},${a.type}`);
+    const csv = [header, ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "asset_list.csv"; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  };
+
   const checkExposure = async () => {
     setLoadingExposure(true);
     try {
       const data = await api.getOrgExposure(orgSectors, orgRegions, orgTechStack);
-      setExposure({
-        score: data.exposure_score,
-        detail: `${data.stats.active_campaigns} campaigns targeting your sectors · ${data.stats.vulnerable_products} products exposed`,
-      });
+      setExposure(data);
     } catch {
       setExposure(null);
     }
     setLoadingExposure(false);
+  };
+
+  const downloadExposureExcel = () => {
+    if (!exposure) return;
+    const lines: string[] = ["Category,Item,Severity,Details"];
+    (exposure.targeting_campaigns || []).forEach((c: any) => {
+      lines.push(`Campaign,"${c.campaign_name || ""}",${c.severity || ""},Actor: ${c.actor_name || "N/A"}`);
+    });
+    (exposure.vulnerable_products || []).forEach((p: any) => {
+      lines.push(`Vulnerability,"${p.product_name || ""} - ${p.cve_id || ""}",${p.severity || ""},CVSS: ${p.cvss_score ?? "N/A"} KEV: ${p.is_kev ? "Yes" : "No"}`);
+    });
+    const csv = lines.join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "threat_exposure_report.csv"; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
   };
 
   return (
@@ -1156,7 +1235,7 @@ function OrgProfileSettings({
             Organization Profile
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            Define your org&apos;s sectors, regions, and technology stack for personalized threat exposure scoring.
+            Define your org&apos;s sectors, regions, compliance, and asset inventory for personalized threat exposure scoring.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -1200,6 +1279,46 @@ function OrgProfileSettings({
             </div>
           </div>
 
+          {/* Compliance Frameworks */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Compliance Frameworks</label>
+            <div className="flex flex-wrap gap-1.5">
+              {COMPLIANCE_OPTIONS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => toggleItem("org_compliance", orgCompliance, c)}
+                  className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${
+                    orgCompliance.includes(c)
+                      ? "bg-amber-500 text-white border-amber-500"
+                      : "border-border/40 text-muted-foreground hover:bg-muted/30"
+                  }`}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Criticality */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Asset Criticality</label>
+            <div className="flex flex-wrap gap-1.5">
+              {CRITICALITY_OPTIONS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => toggleItem("org_criticality", orgCriticality, c)}
+                  className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${
+                    orgCriticality.includes(c)
+                      ? "bg-red-500/80 text-white border-red-500"
+                      : "border-border/40 text-muted-foreground hover:bg-muted/30"
+                  }`}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Tech Stack */}
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Technology Stack</label>
@@ -1228,9 +1347,57 @@ function OrgProfileSettings({
             )}
           </div>
 
+          {/* Asset Inventory */}
+          <div className="pt-2 border-t border-border/30">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-medium text-muted-foreground">Asset Inventory</label>
+              <div className="flex items-center gap-1.5">
+                <label className="flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 cursor-pointer transition-colors">
+                  <Upload className="h-3 w-3" /> Upload CSV
+                  <input type="file" accept=".csv,.txt" onChange={handleAssetUpload} className="hidden" />
+                </label>
+                {orgAssets.length > 0 && (
+                  <button onClick={downloadAssetList} className="flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors">
+                    <Download className="h-3 w-3" /> Download CSV
+                  </button>
+                )}
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground mb-2">CSV format: name,version,type (software/ip/domain). One per line.</p>
+            <div className="flex items-center gap-2 mb-2">
+              <select value={assetType} onChange={(e) => setAssetType(e.target.value as AssetEntry["type"])} className="h-8 px-2 rounded-md bg-muted/30 border border-border/40 text-xs">
+                <option value="software">Software</option>
+                <option value="ip">External IP</option>
+                <option value="domain">Domain</option>
+              </select>
+              <input
+                type="text"
+                value={assetInput}
+                onChange={(e) => setAssetInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addAsset(); } }}
+                placeholder={assetType === "software" ? "name version (e.g., Apache 2.4.51)" : assetType === "ip" ? "IP address" : "domain.com"}
+                className="flex-1 h-8 px-3 rounded-md bg-muted/30 border border-border/40 text-xs placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
+              />
+              <button onClick={addAsset} className="text-xs px-3 py-1.5 rounded-md bg-primary/10 text-primary hover:bg-primary/20">Add</button>
+            </div>
+            {orgAssets.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+                {orgAssets.map((a, i) => (
+                  <span key={i} className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded ${
+                    a.type === "ip" ? "bg-orange-500/10 text-orange-400" : a.type === "domain" ? "bg-purple-500/10 text-purple-400" : "bg-blue-500/10 text-blue-400"
+                  }`}>
+                    {a.type === "ip" ? <Globe className="h-2.5 w-2.5" /> : a.type === "domain" ? <Globe className="h-2.5 w-2.5" /> : <Server className="h-2.5 w-2.5" />}
+                    {a.name}{a.version ? ` v${a.version}` : ""}
+                    <button onClick={() => removeAsset(i)} className="hover:text-red-400 ml-0.5">×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Exposure Score */}
           <div className="pt-2 border-t border-border/30">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <button
                 onClick={checkExposure}
                 disabled={loadingExposure || (orgSectors.length === 0 && orgTechStack.length === 0)}
@@ -1240,16 +1407,87 @@ function OrgProfileSettings({
                 Check Threat Exposure
               </button>
               {exposure && (
-                <div className="flex items-center gap-2">
-                  <span className={`text-lg font-bold ${
-                    exposure.score >= 70 ? "text-red-400" : exposure.score >= 40 ? "text-amber-400" : "text-green-400"
-                  }`}>
-                    {exposure.score}/100
-                  </span>
-                  <span className="text-xs text-muted-foreground">{exposure.detail}</span>
-                </div>
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-lg font-bold ${
+                      exposure.exposure_score >= 70 ? "text-red-400" : exposure.exposure_score >= 40 ? "text-amber-400" : "text-green-400"
+                    }`}>
+                      {exposure.exposure_score}/100
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {exposure.stats?.active_campaigns} campaigns · {exposure.stats?.vulnerable_products} products · {exposure.stats?.kev_count} KEV
+                    </span>
+                  </div>
+                  <button
+                    onClick={downloadExposureExcel}
+                    className="flex items-center gap-1 text-[10px] px-2.5 py-1 rounded bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors"
+                  >
+                    <FileSpreadsheet className="h-3 w-3" /> Export Report
+                  </button>
+                </>
               )}
             </div>
+
+            {/* Detailed Exposure Breakdown */}
+            {exposure && (
+              <div className="mt-3 space-y-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="p-2 rounded-md bg-red-500/5 border border-red-500/10 text-center">
+                    <div className="text-lg font-bold text-red-400">{exposure.stats?.critical_campaigns ?? 0}</div>
+                    <div className="text-[9px] text-muted-foreground">Critical Campaigns</div>
+                  </div>
+                  <div className="p-2 rounded-md bg-orange-500/5 border border-orange-500/10 text-center">
+                    <div className="text-lg font-bold text-orange-400">{exposure.stats?.exploitable_count ?? 0}</div>
+                    <div className="text-[9px] text-muted-foreground">Exploitable Vulns</div>
+                  </div>
+                  <div className="p-2 rounded-md bg-amber-500/5 border border-amber-500/10 text-center">
+                    <div className="text-lg font-bold text-amber-400">{exposure.stats?.kev_count ?? 0}</div>
+                    <div className="text-[9px] text-muted-foreground">KEV Entries</div>
+                  </div>
+                  <div className="p-2 rounded-md bg-blue-500/5 border border-blue-500/10 text-center">
+                    <div className="text-lg font-bold text-blue-400">{exposure.stats?.vulnerable_products ?? 0}</div>
+                    <div className="text-[9px] text-muted-foreground">Exposed Products</div>
+                  </div>
+                </div>
+
+                {/* Targeting Campaigns */}
+                {exposure.targeting_campaigns?.length > 0 && (
+                  <div>
+                    <h5 className="text-[10px] font-semibold text-muted-foreground mb-1">Targeting Campaigns</h5>
+                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                      {exposure.targeting_campaigns.slice(0, 8).map((c: any, i: number) => (
+                        <div key={i} className="flex items-center gap-2 text-[10px] p-1.5 rounded bg-muted/20">
+                          <span className={`px-1.5 py-0.5 rounded font-semibold ${
+                            c.severity === "critical" ? "bg-red-500/10 text-red-400" : c.severity === "high" ? "bg-orange-500/10 text-orange-400" : "bg-yellow-500/10 text-yellow-400"
+                          }`}>{c.severity}</span>
+                          <span className="font-medium">{c.campaign_name}</span>
+                          {c.actor_name && <span className="text-red-400">by {c.actor_name}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Vulnerable Products */}
+                {exposure.vulnerable_products?.length > 0 && (
+                  <div>
+                    <h5 className="text-[10px] font-semibold text-muted-foreground mb-1">Vulnerable Products</h5>
+                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                      {exposure.vulnerable_products.slice(0, 8).map((p: any, i: number) => (
+                        <div key={i} className="flex items-center gap-2 text-[10px] p-1.5 rounded bg-muted/20">
+                          <span className="font-medium text-blue-400">{p.product_name}</span>
+                          <span className="text-primary font-mono">{p.cve_id}</span>
+                          {p.is_kev && <span className="bg-red-500/10 text-red-400 px-1 rounded text-[8px] font-bold">KEV</span>}
+                          {p.exploit_available && <span className="bg-orange-500/10 text-orange-400 px-1 rounded text-[8px]">Exploit</span>}
+                          {p.patch_available && <span className="bg-green-500/10 text-green-400 px-1 rounded text-[8px]">Patch</span>}
+                          {p.cvss_score && <span className="text-muted-foreground">CVSS {p.cvss_score}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
