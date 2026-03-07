@@ -219,6 +219,18 @@ CISA KEV, NVD, URLhaus, AbuseIPDB, AlienVault OTX, VirusTotal, Shodan
 - Tracks both CVEs and threat actors
 - Powers dashboard velocity card + briefing data
 
+### Bug Fixes (v1.8.1 — Deep Test Audit)
+During deep code-level audit of all 8 features, 6 bugs were identified and fixed (commit `5c75b99`):
+
+| # | Component | Bug | Fix |
+|---|-----------|-----|-----|
+| 1 | `routes/enrichment.py` | `list_briefings` endpoint missing `period_start`, `period_end`, `key_campaigns`, `key_vulnerabilities`, `key_actors` fields | Added 5 missing fields to response dict |
+| 2 | `routes/enrichment.py` | Detection-rules endpoint missing `severity` query parameter (frontend sends it, backend ignored it) | Added `severity: str | None = Query(None)` parameter |
+| 3 | `services/cross_enrichment.py` | `get_detection_rules()` function signature missing `severity` parameter | Added `severity: str | None = None` param with SQL WHERE condition |
+| 4 | `services/cross_enrichment.py` | `get_sector_threat_map()` had dead SQL code with wrong UNNEST alias | Removed orphaned query `q`, renamed working `q2` → `q` |
+| 5 | `detections/page.tsx` | Quality score displayed as `quality_score * 100` — DB stores 0-100, so 50 showed as "5000%" | Removed `× 100` multiplication |
+| 6 | `briefings/page.tsx` | Stats keys mismatch — frontend used `total_articles`/`total_cves`/`total_campaigns`, backend stores `articles_processed`/`new_cves`/`new_campaigns` | Updated to correct keys with fallback |
+
 ### Implementation Stats
 - **Backend:** 684-line service + 290-line routes + 2 ORM models + 52-line migration
 - **Frontend:** 2 new pages + 6 enriched pages + 15 types + 15 API functions
