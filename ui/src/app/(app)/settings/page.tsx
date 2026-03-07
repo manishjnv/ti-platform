@@ -38,6 +38,7 @@ import {
   FlaskConical,
   Gauge,
   RotateCcw,
+  ArrowUp,
 } from "lucide-react";
 import * as api from "@/lib/api";
 import { useAppStore } from "@/store";
@@ -1854,6 +1855,34 @@ function AIConfigSettings() {
     update("fallback_providers", list);
   };
 
+  const promoteFallback = (idx: number) => {
+    if (!cfg) return;
+    const fb = cfg.fallback_providers[idx];
+    if (!fb) return;
+    // Save current primary as a fallback entry (insert at the position the promoted one was)
+    const oldPrimary: FallbackProvider = {
+      name: cfg.primary_provider,
+      url: cfg.primary_api_url,
+      key: cfg.primary_api_key,
+      model: cfg.primary_model,
+      timeout: cfg.primary_timeout,
+      enabled: true,
+    };
+    // Build new fallback list: replace promoted entry with old primary
+    const list = [...(cfg.fallback_providers || [])];
+    list[idx] = oldPrimary;
+    // Set promoted fallback as new primary
+    setCfg({
+      ...cfg,
+      primary_provider: fb.name,
+      primary_api_url: fb.url,
+      primary_api_key: fb.key,
+      primary_model: fb.model,
+      primary_timeout: fb.timeout,
+      fallback_providers: list,
+    });
+  };
+
   if (loading) {
     return (
       <Card>
@@ -2108,7 +2137,15 @@ function AIConfigSettings() {
               {(cfg.fallback_providers || []).map((fb, idx) => (
                 <div key={idx} className="p-3 rounded-md border border-border/50 bg-muted/10 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-muted-foreground font-medium">Fallback #{idx + 1}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-muted-foreground font-medium">Fallback #{idx + 1}</span>
+                      <button
+                        onClick={() => promoteFallback(idx)}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-medium bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 transition-colors"
+                      >
+                        <ArrowUp className="h-2.5 w-2.5" /> Make Primary
+                      </button>
+                    </div>
                     <div className="flex items-center gap-2">
                       <ToggleSwitch checked={fb.enabled} onChange={(v) => updateFallback(idx, "enabled", v)} />
                       <button onClick={() => removeFallback(idx)} className="text-red-400 hover:text-red-300">
