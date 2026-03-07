@@ -1677,7 +1677,7 @@ function AIConfigSettings() {
 
   const addFallback = () => {
     if (!cfg) return;
-    const newFb: FallbackProvider = { name: "groq", api_url: "", api_key: "", model: "", timeout: 30, enabled: true };
+    const newFb: FallbackProvider = { name: "groq", url: "", key: "", model: "", timeout: 30, enabled: true };
     update("fallback_providers", [...(cfg.fallback_providers || []), newFb]);
   };
 
