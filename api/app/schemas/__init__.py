@@ -777,6 +777,7 @@ class VulnerableProductResponse(BaseModel):
     first_seen: datetime
     last_seen: datetime
     confidence: str = "medium"
+    is_false_positive: bool = False
 
 
 class VulnerableProductsListResponse(BaseModel):
@@ -804,6 +805,7 @@ class ThreatCampaignResponse(BaseModel):
     source_articles: list[SourceArticle] = Field(default_factory=list)
     related_products: list[RelatedProductBrief] = Field(default_factory=list)
     confidence: str = "medium"
+    is_false_positive: bool = False
 
 
 class ThreatCampaignsListResponse(BaseModel):

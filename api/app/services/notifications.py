@@ -27,6 +27,8 @@ from app.models.models import (
     Notification,
     NotificationRule,
     User,
+    VulnerableProduct,
+    ThreatCampaign,
 )
 
 logger = get_logger(__name__)
@@ -65,6 +67,30 @@ SYSTEM_RULES = [
         "conditions": {"min_risk_score": 90},
         "channels": ["in_app"],
         "cooldown_minutes": 10,
+    },
+    {
+        "name": "New KEV Product Detected",
+        "description": "Alert when extraction finds a product in CISA KEV catalog",
+        "rule_type": "extraction",
+        "conditions": {"product_kev": True},
+        "channels": ["in_app"],
+        "cooldown_minutes": 15,
+    },
+    {
+        "name": "Critical Campaign Detected",
+        "description": "Alert when a critical-severity threat campaign is extracted",
+        "rule_type": "extraction",
+        "conditions": {"campaign_severity": ["critical"]},
+        "channels": ["in_app"],
+        "cooldown_minutes": 15,
+    },
+    {
+        "name": "High EPSS Score Alert",
+        "description": "Alert when a product has EPSS probability >= 50%",
+        "rule_type": "extraction",
+        "conditions": {"epss_threshold": 50},
+        "channels": ["in_app"],
+        "cooldown_minutes": 30,
     },
 ]
 
@@ -356,6 +382,8 @@ def evaluate_notification_rules(session: Session, lookback_minutes: int = 10) ->
                 created = _eval_feed_error_rule(session, rule, feed_states, now)
             elif rule.rule_type == "correlation":
                 created = _eval_correlation_rule(session, rule, rule_intel, now)
+            elif rule.rule_type == "extraction":
+                created = _eval_extraction_rule(session, rule, now)
 
             if created > 0:
                 rule.last_triggered_at = now
@@ -676,6 +704,100 @@ def _eval_correlation_rule(
                     "max_risk_score": max_risk,
                     "item_count": len(items),
                 },
+                rule=rule,
+            )
+            created += 1
+
+    return created
+
+
+def _eval_extraction_rule(
+    session: Session,
+    rule: NotificationRule,
+    now: datetime,
+) -> int:
+    """Evaluate extraction-type rules against recently updated products/campaigns."""
+    conditions = rule.conditions or {}
+    lookback = now - timedelta(minutes=30)
+    if rule.last_triggered_at and rule.last_triggered_at > lookback:
+        lookback = rule.last_triggered_at
+
+    created = 0
+
+    # --- KEV product alert ---
+    if conditions.get("product_kev"):
+        kev_products = session.execute(
+            select(VulnerableProduct).where(
+                VulnerableProduct.is_kev == True,  # noqa: E712
+                VulnerableProduct.last_seen >= lookback,
+            )
+        ).scalars().all()
+        for p in kev_products:
+            _create_notification(
+                session,
+                user_id=rule.user_id,
+                rule_id=rule.id,
+                title=f"KEV Product: {p.product_name} ({p.cve_id or 'N/A'})",
+                message=f"{p.vendor or 'Unknown'} {p.product_name} added to CISA KEV. "
+                        f"Severity: {p.severity}, CVSS: {p.cvss_score or 'N/A'}.",
+                severity="critical",
+                category="extraction",
+                entity_type="product",
+                entity_id=str(p.id),
+                metadata={"cve_id": p.cve_id, "vendor": p.vendor, "cvss": p.cvss_score},
+                rule=rule,
+            )
+            created += 1
+
+    # --- Critical campaign alert ---
+    sev_list = conditions.get("campaign_severity")
+    if sev_list:
+        campaigns = session.execute(
+            select(ThreatCampaign).where(
+                ThreatCampaign.severity.in_(sev_list),
+                ThreatCampaign.last_seen >= lookback,
+            )
+        ).scalars().all()
+        for c in campaigns:
+            _create_notification(
+                session,
+                user_id=rule.user_id,
+                rule_id=rule.id,
+                title=f"Critical Campaign: {c.campaign_name} by {c.actor_name or 'Unknown'}",
+                message=f"Threat campaign '{c.campaign_name}' detected with severity {c.severity}. "
+                        f"Techniques: {', '.join(c.techniques_used or []) or 'N/A'}.",
+                severity="critical",
+                category="extraction",
+                entity_type="campaign",
+                entity_id=str(c.id),
+                metadata={"actor": c.actor_name, "techniques": c.techniques_used},
+                rule=rule,
+            )
+            created += 1
+
+    # --- High EPSS score alert ---
+    epss_threshold = conditions.get("epss_threshold")
+    if epss_threshold is not None:
+        threshold_val = float(epss_threshold) / 100.0  # stored as 0-100, db is 0-1
+        high_epss = session.execute(
+            select(VulnerableProduct).where(
+                VulnerableProduct.epss_score >= threshold_val,
+                VulnerableProduct.last_seen >= lookback,
+            )
+        ).scalars().all()
+        for p in high_epss:
+            _create_notification(
+                session,
+                user_id=rule.user_id,
+                rule_id=rule.id,
+                title=f"High EPSS: {p.product_name} ({p.cve_id or 'N/A'}) — {(p.epss_score or 0) * 100:.0f}%",
+                message=f"{p.cve_id or p.product_name} has EPSS score of "
+                        f"{(p.epss_score or 0) * 100:.1f}%, indicating high exploitation probability.",
+                severity="high",
+                category="extraction",
+                entity_type="product",
+                entity_id=str(p.id),
+                metadata={"cve_id": p.cve_id, "epss_score": p.epss_score, "vendor": p.vendor},
                 rule=rule,
             )
             created += 1

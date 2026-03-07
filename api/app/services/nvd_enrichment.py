@@ -36,7 +36,8 @@ KEV_JSON_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_v
 NVD_DELAY_SECONDS = 6.5  # ~9 req/min (safe for no-key usage)
 
 # How many CVEs to enrich per run (avoid long-running jobs)
-MAX_CVE_PER_RUN = 30
+# With API key: higher throughput due to faster rate limits
+MAX_CVE_PER_RUN = 100 if (get_settings().nvd_api_key) else 30
 
 # Only re-check CVEs that haven't been enriched in the last N days
 RECHECK_INTERVAL_DAYS = 7
@@ -106,12 +107,21 @@ def enrich_products_from_nvd_sync(session: Session) -> dict:
 
         if cvss_score is not None:
             update_values["cvss_score"] = cvss_score
+            # Always derive severity from real CVSS (overrides AI guess)
+            if cvss_score >= 9.0:
+                update_values["severity"] = "critical"
+            elif cvss_score >= 7.0:
+                update_values["severity"] = "high"
+            elif cvss_score >= 4.0:
+                update_values["severity"] = "medium"
+            else:
+                update_values["severity"] = "low"
+        elif nvd_severity:
+            update_values["severity"] = nvd_severity
         if epss is not None:
             update_values["epss_score"] = round(epss * 100, 2)  # store as 0-100
         if is_kev:
             update_values["is_kev"] = True
-        if nvd_severity:
-            update_values["severity"] = nvd_severity
         if affected_versions:
             update_values["affected_versions"] = affected_versions[:2000]
         if patch_available:
@@ -137,6 +147,9 @@ def enrich_products_from_nvd_sync(session: Session) -> dict:
         session.rollback()
         return {"error": str(e)}
 
+    # 6. Recalculate confidence for all enriched products
+    _recalculate_confidence(session)
+
     logger.info("nvd_enrich_done", enriched=enriched, cves_looked_up=len(unique_cves))
     return {
         "enriched": enriched,
@@ -145,6 +158,45 @@ def enrich_products_from_nvd_sync(session: Session) -> dict:
         "epss_hits": len(epss_map),
         "kev_count": len(kev_set),
     }
+
+
+# ──────────────────────────────────────────────────────────
+# Confidence Score Recalculation
+# ──────────────────────────────────────────────────────────
+
+def _recalculate_confidence(session: Session) -> None:
+    """Recalculate composite confidence for enriched products.
+
+    Score is based on: source_count, NVD confirmation (cvss_score present),
+    CISA KEV listing, EPSS score, and number of linked campaigns.
+    Maps to: high (>=6 points), medium (>=3), low (<3).
+    """
+    try:
+        session.execute(text("""
+            UPDATE intel_vulnerable_products SET confidence = CASE
+                WHEN (
+                    (CASE WHEN source_count >= 3 THEN 2 WHEN source_count >= 2 THEN 1 ELSE 0 END) +
+                    (CASE WHEN cvss_score IS NOT NULL THEN 2 ELSE 0 END) +
+                    (CASE WHEN is_kev THEN 2 ELSE 0 END) +
+                    (CASE WHEN epss_score >= 50 THEN 2 WHEN epss_score >= 10 THEN 1 ELSE 0 END) +
+                    (CASE WHEN exploit_available THEN 1 ELSE 0 END)
+                ) >= 6 THEN 'high'
+                WHEN (
+                    (CASE WHEN source_count >= 3 THEN 2 WHEN source_count >= 2 THEN 1 ELSE 0 END) +
+                    (CASE WHEN cvss_score IS NOT NULL THEN 2 ELSE 0 END) +
+                    (CASE WHEN is_kev THEN 2 ELSE 0 END) +
+                    (CASE WHEN epss_score >= 50 THEN 2 WHEN epss_score >= 10 THEN 1 ELSE 0 END) +
+                    (CASE WHEN exploit_available THEN 1 ELSE 0 END)
+                ) >= 3 THEN 'medium'
+                ELSE 'low'
+            END
+            WHERE cvss_score IS NOT NULL
+              AND updated_at >= NOW() - INTERVAL '1 day'
+        """))
+        session.commit()
+    except Exception as e:
+        logger.warning("confidence_recalc_error", error=str(e))
+        session.rollback()
 
 
 # ──────────────────────────────────────────────────────────

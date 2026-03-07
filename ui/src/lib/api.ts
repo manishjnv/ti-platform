@@ -686,6 +686,46 @@ export async function getExtractionStats(): Promise<import("@/types").Extraction
   return fetcher<import("@/types").ExtractionStatsResponse>("/news/extraction-stats");
 }
 
+export function getExtractionExportUrl(type: "vulnerable-products" | "threat-campaigns", format: "csv" | "json", window?: string): string {
+  const base = process.env.NEXT_PUBLIC_API_URL || "/api";
+  const params = new URLSearchParams({ format });
+  if (window) params.set("window", window);
+  return `${base}/news/${type}/export?${params}`;
+}
+
+export async function bulkCveLookup(cves: string[]): Promise<{
+  requested: number;
+  found: number;
+  missing: string[];
+  results: Record<string, import("@/types").VulnerableProduct>;
+}> {
+  return fetcher(`/news/cve-lookup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cves }),
+  });
+}
+
+export async function getVendorStats(): Promise<Array<{
+  vendor: string;
+  count: number;
+  critical: number;
+  high: number;
+  kev_count: number;
+}>> {
+  return fetcher("/news/vendor-stats");
+}
+
+export async function toggleFalsePositive(
+  type: "vulnerable-products" | "threat-campaigns",
+  id: string,
+  value: boolean
+): Promise<{ id: string; is_false_positive: boolean }> {
+  return fetcher(`/news/${type}/${id}/false-positive?value=${value}`, {
+    method: "PATCH",
+  });
+}
+
 // ─── Cases / Incident Management ────────────────────────
 export async function getCases(params: {
   page?: number;

@@ -132,7 +132,7 @@ def _extract_products_sync(session: Session, item: NewsItem) -> int:
                 continue
             cve = m.group(1).upper()
 
-            product_name = products[0] if products else "Unknown Product"
+            product_name = _normalize_product_name(products[0]) if products else "Unknown Product"
             if _is_junk_product(product_name) and not cve:
                 continue
             vendor = _guess_vendor(product_name)
@@ -143,6 +143,7 @@ def _extract_products_sync(session: Session, item: NewsItem) -> int:
     elif products:
         # No CVEs — skip products that don't meet quality bar
         for prod in products:
+            prod = _normalize_product_name(prod)
             if _is_junk_product(prod):
                 continue
             vendor = _guess_vendor(prod)
@@ -612,6 +613,33 @@ async def get_extraction_stats(db: AsyncSession) -> dict:
     }
 
 
+async def get_vendor_stats(db: AsyncSession, *, limit: int = 15) -> list[dict]:
+    """Top vendors by product count with severity breakdown."""
+    result = await db.execute(
+        select(
+            VulnerableProduct.vendor,
+            func.count(VulnerableProduct.id).label("count"),
+            func.count(VulnerableProduct.id).filter(VulnerableProduct.severity == "critical").label("critical"),
+            func.count(VulnerableProduct.id).filter(VulnerableProduct.severity == "high").label("high"),
+            func.count(VulnerableProduct.id).filter(VulnerableProduct.is_kev.is_(True)).label("kev_count"),
+        )
+        .where(VulnerableProduct.vendor.isnot(None))
+        .group_by(VulnerableProduct.vendor)
+        .order_by(func.count(VulnerableProduct.id).desc())
+        .limit(limit)
+    )
+    return [
+        {
+            "vendor": row.vendor,
+            "count": row.count,
+            "critical": row.critical,
+            "high": row.high,
+            "kev_count": row.kev_count,
+        }
+        for row in result.all()
+    ]
+
+
 # ──────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────
@@ -633,6 +661,34 @@ def _is_junk_product(name: str) -> bool:
     if len(n.split()) == 1 and len(n) < 12 and n.isalpha():
         return True
     return False
+
+
+def _normalize_product_name(name: str) -> str:
+    """Canonicalize product name to reduce duplicates.
+
+    Rules:
+    - Strip leading/trailing whitespace
+    - Collapse extra whitespace
+    - Remove trailing version strings like 'v1.2', '10.3.2', '(2024)' etc.
+    - Title-case for consistency
+    """
+    n = name.strip()
+    # Remove trailing version-like suffixes: v1.2, 10.3.x, (2024), etc.
+    n = re.sub(r"\s+v?\d+[\d.x*]+\s*$", "", n, flags=re.IGNORECASE)
+    n = re.sub(r"\s*\(\d{4}\)\s*$", "", n)
+    # Collapse whitespace
+    n = re.sub(r"\s+", " ", n).strip()
+    # Title case but keep all-upper acronyms (e.g. "ESXi", "PAN-OS")
+    words = n.split()
+    result = []
+    for w in words:
+        if w.isupper() and len(w) > 1:
+            result.append(w)  # keep acronym
+        elif "-" in w:
+            result.append(w)  # keep hyphenated as-is
+        else:
+            result.append(w.capitalize() if w.islower() else w)
+    return " ".join(result) if result else n
 
 
 def _normalise_campaign_name(name: str | None) -> str | None:

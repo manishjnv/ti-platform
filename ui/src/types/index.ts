@@ -810,6 +810,7 @@ export interface VulnerableProduct {
   first_seen: string;
   last_seen: string;
   confidence: string;
+  is_false_positive?: boolean;
 }
 
 export interface VulnerableProductsListResponse {
@@ -835,6 +836,7 @@ export interface ThreatCampaign {
   source_articles: SourceArticle[];
   related_products: RelatedProductBrief[];
   confidence: string;
+  is_false_positive?: boolean;
 }
 
 export interface ThreatCampaignsListResponse {

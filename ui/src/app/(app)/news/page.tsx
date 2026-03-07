@@ -1149,6 +1149,83 @@ function EntityBadge({ label, searchPrefix, className }: { label: string; search
   );
 }
 
+// ── Helpers: isNew / isStale ──────────────────────────────
+function isNewEntry(firstSeen: string): boolean {
+  return Date.now() - new Date(firstSeen).getTime() < 24 * 60 * 60 * 1000;
+}
+function isStaleEntry(lastSeen: string, days = 7): boolean {
+  return Date.now() - new Date(lastSeen).getTime() > days * 24 * 60 * 60 * 1000;
+}
+
+// ── Vendor Stats Widget ────────────────────────────────────
+function VendorStatsWidget() {
+  const [data, setData] = useState<Array<{ vendor: string; count: number; critical: number; high: number; kev_count: number }> | null>(null);
+  useEffect(() => { api.getVendorStats().then(setData).catch(() => {}); }, []);
+  if (!data || data.length === 0) return null;
+  const max = data[0]?.count || 1;
+  return (
+    <Card className="card-3d mb-3">
+      <CardHeader className="pb-2 pt-3 px-4">
+        <CardTitle className="text-xs font-semibold flex items-center gap-1.5"><Factory className="h-3.5 w-3.5 text-orange-400" />Top Vendors by Vulnerabilities</CardTitle>
+      </CardHeader>
+      <CardContent className="px-4 pb-3">
+        <div className="space-y-1.5">
+          {data.slice(0, 10).map((v) => (
+            <div key={v.vendor} className="flex items-center gap-2 text-[11px]">
+              <span className="w-[100px] truncate text-muted-foreground font-medium" title={v.vendor}>{v.vendor}</span>
+              <div className="flex-1 h-3 bg-muted/20 rounded-full overflow-hidden relative">
+                <div className="h-full rounded-full bg-gradient-to-r from-orange-500/60 to-red-500/60" style={{ width: `${(v.count / max) * 100}%` }} />
+              </div>
+              <span className="w-6 text-right font-mono text-muted-foreground">{v.count}</span>
+              {v.kev_count > 0 && <span title={`${v.kev_count} KEV`} className="text-[8px] px-1 rounded bg-red-500/20 text-red-300">{v.kev_count} KEV</span>}
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Campaign Timeline Widget ───────────────────────────────
+function CampaignTimelineWidget({ campaigns }: { campaigns: Array<{ id: string; actor_name: string; first_seen: string; last_seen: string; severity: string }> }) {
+  if (!campaigns || campaigns.length === 0) return null;
+  // Find date range
+  const allDates = campaigns.flatMap((c) => [new Date(c.first_seen).getTime(), new Date(c.last_seen).getTime()]);
+  const minDate = Math.min(...allDates);
+  const maxDate = Math.max(...allDates);
+  const range = maxDate - minDate || 1;
+
+  return (
+    <Card className="card-3d mb-3">
+      <CardHeader className="pb-2 pt-3 px-4">
+        <CardTitle className="text-xs font-semibold flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5 text-red-400" />Campaign Timeline</CardTitle>
+      </CardHeader>
+      <CardContent className="px-4 pb-3">
+        <div className="space-y-1">
+          {campaigns.slice(0, 12).map((c) => {
+            const start = ((new Date(c.first_seen).getTime() - minDate) / range) * 100;
+            const width = Math.max(((new Date(c.last_seen).getTime() - new Date(c.first_seen).getTime()) / range) * 100, 2);
+            const sev = c.severity;
+            const color = sev === "critical" ? "bg-red-500/70" : sev === "high" ? "bg-orange-500/70" : sev === "medium" ? "bg-yellow-500/70" : "bg-green-500/70";
+            return (
+              <div key={c.id} className="flex items-center gap-2 text-[10px]">
+                <span className="w-[90px] truncate text-muted-foreground font-medium" title={c.actor_name}>{c.actor_name}</span>
+                <div className="flex-1 h-2.5 bg-muted/15 rounded-full relative overflow-hidden">
+                  <div className={cn("absolute h-full rounded-full", color)} style={{ left: `${start}%`, width: `${width}%` }} title={`${formatPublishDate(c.first_seen)} — ${formatPublishDate(c.last_seen)}`} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex justify-between text-[9px] text-muted-foreground/50 mt-1.5">
+          <span>{formatPublishDate(new Date(minDate).toISOString())}</span>
+          <span>{formatPublishDate(new Date(maxDate).toISOString())}</span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Vulnerable Products Table ─────────────────────────────
 function VulnerableProductsTable() {
   const [data, setData] = useState<VulnerableProductsListResponse | null>(null);
@@ -1158,6 +1235,11 @@ function VulnerableProductsTable() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [sevFilter, setSevFilter] = useState("");
   const [windowMode, setWindowMode] = useState<"24h" | "all">("24h");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [cveLookupOpen, setCveLookupOpen] = useState(false);
+  const [cveInput, setCveInput] = useState("");
+  const [cveLookupResult, setCveLookupResult] = useState<{ requested: number; found: number; missing: string[]; results: Record<string, any> } | null>(null);
+  const [cveLookupLoading, setCveLookupLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -1177,6 +1259,18 @@ function VulnerableProductsTable() {
   }, [search, sevFilter, sortBy, sortOrder, windowMode]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  const handleCveLookup = async () => {
+    const cves = cveInput.split(/[\n,]+/).map(s => s.trim()).filter(s => /^CVE-/i.test(s));
+    if (!cves.length) return;
+    setCveLookupLoading(true);
+    try {
+      const result = await api.bulkCveLookup(cves);
+      setCveLookupResult(result);
+    } catch { /* ignore */ } finally {
+      setCveLookupLoading(false);
+    }
+  };
 
   const toggleSort = (col: string) => {
     if (sortBy === col) {
@@ -1249,7 +1343,68 @@ function VulnerableProductsTable() {
         <span className="text-[10px] text-muted-foreground/60 ml-auto">
           {data ? `${data.total} products` : ""}
         </span>
+        {/* Export buttons */}
+        <div className="flex items-center gap-1">
+          <button onClick={() => { setCveLookupOpen(!cveLookupOpen); setCveLookupResult(null); }} className={cn("flex items-center gap-1 px-2 py-1 text-[10px] border border-border/50 rounded-md hover:bg-accent/20 transition-colors", cveLookupOpen ? "text-blue-400 border-blue-500/40" : "text-muted-foreground hover:text-foreground")} title="Bulk CVE Lookup"><Search className="h-3 w-3" />CVE Lookup</button>
+          <a href={api.getExtractionExportUrl("vulnerable-products", "csv", windowMode)} className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground border border-border/50 rounded-md hover:bg-accent/20 transition-colors" title="Export CSV"><FileDown className="h-3 w-3" />CSV</a>
+          <a href={api.getExtractionExportUrl("vulnerable-products", "json", windowMode)} className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground border border-border/50 rounded-md hover:bg-accent/20 transition-colors" title="Export JSON"><FileCode className="h-3 w-3" />JSON</a>
+        </div>
       </div>
+
+      {/* Bulk CVE Lookup Panel */}
+      {cveLookupOpen && (
+        <div className="mb-3 p-3 bg-card/60 border border-border/40 rounded-lg space-y-2">
+          <div className="flex gap-2 items-start">
+            <textarea
+              value={cveInput}
+              onChange={e => setCveInput(e.target.value)}
+              placeholder="Paste CVEs (one per line or comma-separated)&#10;CVE-2024-1234, CVE-2023-5678&#10;CVE-2024-9999"
+              rows={3}
+              className="flex-1 text-[11px] bg-background/60 border border-border/40 rounded-md px-2 py-1.5 resize-none focus:outline-none focus:border-blue-500/50 placeholder:text-muted-foreground/40"
+            />
+            <button
+              onClick={handleCveLookup}
+              disabled={cveLookupLoading || !cveInput.trim()}
+              className="px-3 py-1.5 text-[10px] font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md disabled:opacity-40 transition-colors"
+            >
+              {cveLookupLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : "Lookup"}
+            </button>
+          </div>
+          {cveLookupResult && (
+            <div className="space-y-2">
+              <div className="flex gap-3 text-[10px]">
+                <span className="text-muted-foreground">Requested: <span className="text-foreground font-medium">{cveLookupResult.requested}</span></span>
+                <span className="text-green-400">Found: {cveLookupResult.found}</span>
+                {cveLookupResult.missing.length > 0 && <span className="text-amber-400">Missing: {cveLookupResult.missing.length}</span>}
+              </div>
+              {cveLookupResult.missing.length > 0 && (
+                <div className="text-[10px] text-muted-foreground/60">Not tracked: {cveLookupResult.missing.join(", ")}</div>
+              )}
+              {Object.keys(cveLookupResult.results).length > 0 && (
+                <div className="border border-border/30 rounded overflow-hidden">
+                  <table className="w-full text-[10px]">
+                    <thead><tr className="bg-muted/30 text-left text-muted-foreground/60">
+                      <th className="px-2 py-1">CVE</th><th className="px-2 py-1">Product</th><th className="px-2 py-1">Severity</th><th className="px-2 py-1">CVSS</th><th className="px-2 py-1">EPSS</th><th className="px-2 py-1">KEV</th>
+                    </tr></thead>
+                    <tbody>
+                      {Object.entries(cveLookupResult.results).map(([cve, p]: [string, any]) => (
+                        <tr key={cve} className="border-t border-border/20 hover:bg-muted/10">
+                          <td className="px-2 py-1 font-mono text-blue-400">{cve}</td>
+                          <td className="px-2 py-1">{p.product_name}</td>
+                          <td className="px-2 py-1"><Badge variant="outline" className={cn("text-[9px] px-1", p.severity === "critical" ? "border-red-500/40 text-red-400" : p.severity === "high" ? "border-orange-500/40 text-orange-400" : "border-border")}>{p.severity}</Badge></td>
+                          <td className="px-2 py-1">{p.cvss_score ?? "—"}</td>
+                          <td className="px-2 py-1">{p.epss_score ? `${(p.epss_score * 100).toFixed(1)}%` : "—"}</td>
+                          <td className="px-2 py-1">{p.is_kev ? <ShieldAlert className="h-3 w-3 text-red-400" /> : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Table */}
       {loading ? (
@@ -1295,10 +1450,28 @@ function VulnerableProductsTable() {
               <tbody className="divide-y divide-border/20">
                 {data.items.map((item) => {
                   const sev = severityBadge(item.severity);
+                  const isNew = isNewEntry(item.first_seen);
+                  const stale = isStaleEntry(item.last_seen);
+                  const expanded = expandedId === item.id;
                   return (
-                    <tr key={item.id} className="hover:bg-accent/10 transition-colors">
-                      <td className="px-3 py-2 font-medium max-w-[200px] truncate" title={item.product_name}>
-                        {item.product_name}
+                    <React.Fragment key={item.id}>
+                    <tr
+                      onClick={() => setExpandedId(expanded ? null : item.id)}
+                      className={cn(
+                        "hover:bg-accent/10 transition-colors cursor-pointer",
+                        stale && "opacity-50",
+                        item.is_false_positive && "opacity-40 line-through",
+                        expanded && "bg-accent/10",
+                      )}
+                    >
+                      <td className="px-3 py-2 font-medium max-w-[200px]" title={item.product_name}>
+                        <div className="flex items-center gap-1.5">
+                          <ChevronDown className={cn("h-3 w-3 text-muted-foreground/50 shrink-0 transition-transform", expanded && "rotate-180")} />
+                          <span className="truncate">{item.product_name}</span>
+                          {isNew && <span className="shrink-0 text-[7px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded px-1">NEW</span>}
+                          {stale && <span className="shrink-0 text-[7px] font-bold bg-zinc-500/20 text-zinc-400 border border-zinc-500/30 rounded px-1">STALE</span>}
+                          {item.is_false_positive && <span className="shrink-0 text-[7px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded px-1">FP</span>}
+                        </div>
                       </td>
                       <td className="px-3 py-2 text-muted-foreground hidden md:table-cell">{item.vendor || "—"}</td>
                       <td className="px-3 py-2">
@@ -1308,6 +1481,7 @@ function VulnerableProductsTable() {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-primary hover:underline font-mono text-[10px]"
+                            onClick={(e) => e.stopPropagation()}
                           >
                             {item.cve_id}
                           </a>
@@ -1374,6 +1548,7 @@ function VulnerableProductsTable() {
                               rel="noopener noreferrer"
                               className="flex items-center gap-1 text-[10px] text-primary hover:underline truncate"
                               title={a.headline}
+                              onClick={(e) => e.stopPropagation()}
                             >
                               <ExternalLink className="h-2.5 w-2.5 shrink-0" />
                               <span className="truncate">{a.source}</span>
@@ -1394,6 +1569,96 @@ function VulnerableProductsTable() {
                         </div>
                       </td>
                     </tr>
+                    {/* Expanded detail panel */}
+                    {expanded && (
+                      <tr className="bg-card/60">
+                        <td colSpan={10} className="px-4 py-3">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                            {/* Col 1: Core Details */}
+                            <div className="space-y-2">
+                              <h4 className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider">Details</h4>
+                              <div className="space-y-1">
+                                <div className="flex justify-between"><span className="text-muted-foreground">Confidence</span><Badge variant="outline" className={cn("text-[9px] h-4 px-1.5 border", item.confidence === "high" ? "border-green-500/30 text-green-300" : item.confidence === "medium" ? "border-yellow-500/30 text-yellow-300" : "border-zinc-500/30 text-zinc-300")}>{item.confidence}</Badge></div>
+                                {item.affected_versions && <div className="flex justify-between"><span className="text-muted-foreground">Affected Versions</span><span className="text-foreground text-right max-w-[180px] truncate" title={item.affected_versions}>{item.affected_versions}</span></div>}
+                                <div className="flex justify-between"><span className="text-muted-foreground">First Seen</span><span>{formatPublishDate(item.first_seen)}</span></div>
+                                <div className="flex justify-between"><span className="text-muted-foreground">Last Seen</span><span>{formatPublishDate(item.last_seen)}</span></div>
+                                {item.epss_score != null && (
+                                  <div>
+                                    <span className="text-muted-foreground">EPSS Probability</span>
+                                    <div className="mt-1 h-2 rounded-full bg-muted/30 overflow-hidden">
+                                      <div className={cn("h-full rounded-full", item.epss_score >= 50 ? "bg-red-500" : item.epss_score >= 20 ? "bg-orange-500" : item.epss_score >= 5 ? "bg-yellow-500" : "bg-green-500")} style={{ width: `${Math.min(item.epss_score, 100)}%` }} />
+                                    </div>
+                                    <span className="text-[9px] text-muted-foreground/60">{item.epss_score.toFixed(2)}% chance of exploitation in next 30 days</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            {/* Col 2: Sectors & Regions */}
+                            <div className="space-y-2">
+                              {item.targeted_sectors.length > 0 && (
+                                <div>
+                                  <h4 className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider mb-1">Targeted Sectors</h4>
+                                  <div className="flex gap-1 flex-wrap">{item.targeted_sectors.map((s) => <span key={s} className="text-[9px] px-1.5 py-0.5 rounded bg-muted/30 text-muted-foreground">{s}</span>)}</div>
+                                </div>
+                              )}
+                              {item.targeted_regions.length > 0 && (
+                                <div>
+                                  <h4 className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider mb-1">Targeted Regions</h4>
+                                  <div className="flex gap-1 flex-wrap">{item.targeted_regions.map((r) => <span key={r} className="text-[9px] px-1.5 py-0.5 rounded bg-muted/30 text-muted-foreground">{r}</span>)}</div>
+                                </div>
+                              )}
+                              {(item.related_campaigns || []).length > 0 && (
+                                <div>
+                                  <h4 className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider mb-1">Linked Threat Actors</h4>
+                                  <div className="flex gap-1 flex-wrap">{item.related_campaigns.map((c) => (
+                                    <span key={c.id} className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded border border-red-500/30 text-red-300"><Users className="h-2.5 w-2.5" />{c.actor_name}{c.campaign_name ? ` — ${c.campaign_name}` : ""}</span>
+                                  ))}</div>
+                                </div>
+                              )}
+                            </div>
+                            {/* Col 3: Source Articles */}
+                            <div className="space-y-2">
+                              <h4 className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider">Source Articles ({(item.source_articles || []).length})</h4>
+                              <div className="space-y-1 max-h-[160px] overflow-y-auto">
+                                {(item.source_articles || []).map((a) => (
+                                  <a key={a.id} href={a.source_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-start gap-1.5 p-1.5 rounded hover:bg-accent/20 transition-colors">
+                                    <ExternalLink className="h-3 w-3 text-primary shrink-0 mt-0.5" />
+                                    <div className="min-w-0">
+                                      <div className="text-[10px] text-foreground truncate">{a.headline}</div>
+                                      <div className="text-[9px] text-muted-foreground/50">{a.source}{a.published_at ? ` · ${formatPublishDate(a.published_at)}` : ""}</div>
+                                    </div>
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                          {/* False Positive Toggle */}
+                          <div className="mt-3 pt-2 border-t border-border/20 flex items-center justify-between">
+                            <span className="text-[10px] text-muted-foreground/60">
+                              {item.is_false_positive ? "Marked as false positive" : "Is this a false positive?"}
+                            </span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const newVal = !item.is_false_positive;
+                                api.toggleFalsePositive("vulnerable-products", item.id, newVal).then(() => {
+                                  setData(prev => prev ? { ...prev, items: prev.items.map(i => i.id === item.id ? { ...i, is_false_positive: newVal } : i) } : prev);
+                                });
+                              }}
+                              className={cn(
+                                "text-[10px] px-2 py-1 rounded-md border transition-colors",
+                                item.is_false_positive
+                                  ? "bg-amber-500/20 text-amber-300 border-amber-500/30 hover:bg-amber-500/10"
+                                  : "text-muted-foreground border-border/40 hover:bg-accent/20"
+                              )}
+                            >
+                              {item.is_false_positive ? "✕ Undo" : "Flag False Positive"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
@@ -1414,6 +1679,7 @@ function ThreatCampaignsTable() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [sevFilter, setSevFilter] = useState("");
   const [windowMode, setWindowMode] = useState<"7d" | "all">("7d");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -1458,6 +1724,10 @@ function ThreatCampaignsTable() {
 
   return (
     <div className="space-y-3">
+      {/* Campaign Timeline */}
+      {data && data.items.length > 0 && (
+        <CampaignTimelineWidget campaigns={data.items.map((i) => ({ id: i.id, actor_name: i.actor_name, first_seen: i.first_seen, last_seen: i.last_seen, severity: i.severity }))} />
+      )}
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
         <div className="relative flex-1 max-w-sm">
@@ -1505,6 +1775,11 @@ function ThreatCampaignsTable() {
         <span className="text-[10px] text-muted-foreground/60 ml-auto">
           {data ? `${data.total} campaigns` : ""}
         </span>
+        {/* Export buttons */}
+        <div className="flex items-center gap-1">
+          <a href={api.getExtractionExportUrl("threat-campaigns", "csv", windowMode)} className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground border border-border/50 rounded-md hover:bg-accent/20 transition-colors" title="Export CSV"><FileDown className="h-3 w-3" />CSV</a>
+          <a href={api.getExtractionExportUrl("threat-campaigns", "json", windowMode)} className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground border border-border/50 rounded-md hover:bg-accent/20 transition-colors" title="Export JSON"><FileCode className="h-3 w-3" />JSON</a>
+        </div>
       </div>
 
       {/* Table */}
@@ -1551,12 +1826,33 @@ function ThreatCampaignsTable() {
               <tbody className="divide-y divide-border/20">
                 {data.items.map((item) => {
                   const sev = severityBadge(item.severity);
+                  const isNew = isNewEntry(item.first_seen);
+                  const stale = isStaleEntry(item.last_seen, 14);
+                  const expanded = expandedId === item.id;
+                  // Extract MITRE T-codes from techniques_used
+                  const parseTechnique = (t: string) => {
+                    const m = t.match(/(T\d{4}(?:\.\d{3})?)/);
+                    return m ? { code: m[1], label: t } : { code: null, label: t };
+                  };
                   return (
-                    <tr key={item.id} className="hover:bg-accent/10 transition-colors">
+                    <React.Fragment key={item.id}>
+                    <tr
+                      onClick={() => setExpandedId(expanded ? null : item.id)}
+                      className={cn(
+                        "hover:bg-accent/10 transition-colors cursor-pointer",
+                        stale && "opacity-50",
+                        item.is_false_positive && "opacity-40 line-through",
+                        expanded && "bg-accent/10",
+                      )}
+                    >
                       <td className="px-3 py-2 font-medium max-w-[160px]" title={item.actor_name}>
                         <div className="flex items-center gap-1.5">
+                          <ChevronDown className={cn("h-3 w-3 text-muted-foreground/50 shrink-0 transition-transform", expanded && "rotate-180")} />
                           <Users className="h-3 w-3 text-red-400 shrink-0" />
-                          <EntityBadge label={item.actor_name} searchPrefix="actor:" className="text-xs font-medium text-foreground hover:text-primary" />
+                          <EntityBadge label={item.actor_name} searchPrefix="actor" className="text-xs font-medium text-foreground hover:text-primary" />
+                          {isNew && <span className="shrink-0 text-[7px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded px-1">NEW</span>}
+                          {stale && <span className="shrink-0 text-[7px] font-bold bg-zinc-500/20 text-zinc-400 border border-zinc-500/30 rounded px-1">STALE</span>}
+                          {item.is_false_positive && <span className="shrink-0 text-[7px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded px-1">FP</span>}
                         </div>
                       </td>
                       <td className="px-3 py-2 text-muted-foreground hidden md:table-cell max-w-[140px] truncate" title={item.campaign_name || ""}>
@@ -1570,7 +1866,7 @@ function ThreatCampaignsTable() {
                       <td className="px-3 py-2 hidden lg:table-cell">
                         <div className="flex gap-1 flex-wrap max-w-[120px]">
                           {item.malware_used.slice(0, 2).map((m) => (
-                            <EntityBadge key={m} label={m} searchPrefix="malware:" className="text-[8px] px-1 py-0 rounded border border-purple-500/30 text-purple-300 hover:bg-purple-500/10" />
+                            <EntityBadge key={m} label={m} searchPrefix="malware" className="text-[8px] px-1 py-0 rounded border border-purple-500/30 text-purple-300 hover:bg-purple-500/10" />
                           ))}
                           {item.malware_used.length > 2 && (
                             <span className="text-[8px] text-muted-foreground/50">+{item.malware_used.length - 2}</span>
@@ -1579,9 +1875,16 @@ function ThreatCampaignsTable() {
                       </td>
                       <td className="px-3 py-2 hidden lg:table-cell">
                         <div className="flex gap-1 flex-wrap max-w-[120px]">
-                          {item.techniques_used.slice(0, 2).map((t) => (
-                            <EntityBadge key={t} label={t} searchPrefix="technique:" className="text-[8px] px-1 py-0 rounded border border-sky-500/30 text-sky-300 hover:bg-sky-500/10" />
-                          ))}
+                          {item.techniques_used.slice(0, 2).map((t) => {
+                            const parsed = parseTechnique(t);
+                            return parsed.code ? (
+                              <a key={t} href={`https://attack.mitre.org/techniques/${parsed.code.replace(".", "/")}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-[8px] px-1 py-0 rounded border border-sky-500/30 text-sky-300 hover:bg-sky-500/10" title={parsed.label}>
+                                {parsed.code}
+                              </a>
+                            ) : (
+                              <EntityBadge key={t} label={t} searchPrefix="technique" className="text-[8px] px-1 py-0 rounded border border-sky-500/30 text-sky-300 hover:bg-sky-500/10" />
+                            );
+                          })}
                           {item.techniques_used.length > 2 && (
                             <span className="text-[8px] text-muted-foreground/50">+{item.techniques_used.length - 2}</span>
                           )}
@@ -1596,6 +1899,7 @@ function ThreatCampaignsTable() {
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-[8px] font-mono text-orange-300 hover:underline"
+                              onClick={(e) => e.stopPropagation()}
                             >
                               {c}
                             </a>
@@ -1635,6 +1939,7 @@ function ThreatCampaignsTable() {
                               rel="noopener noreferrer"
                               className="flex items-center gap-1 text-[10px] text-primary hover:underline truncate"
                               title={a.headline}
+                              onClick={(e) => e.stopPropagation()}
                             >
                               <ExternalLink className="h-2.5 w-2.5 shrink-0" />
                               <span className="truncate">{a.source}</span>
@@ -1655,6 +1960,127 @@ function ThreatCampaignsTable() {
                         </div>
                       </td>
                     </tr>
+                    {/* Expanded detail panel */}
+                    {expanded && (
+                      <tr className="bg-card/60">
+                        <td colSpan={10} className="px-4 py-3">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                            {/* Col 1: Campaign Timeline + Details */}
+                            <div className="space-y-2">
+                              <h4 className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider">Campaign Details</h4>
+                              <div className="space-y-1">
+                                <div className="flex justify-between"><span className="text-muted-foreground">Confidence</span><Badge variant="outline" className={cn("text-[9px] h-4 px-1.5 border", item.confidence === "high" ? "border-green-500/30 text-green-300" : item.confidence === "medium" ? "border-yellow-500/30 text-yellow-300" : "border-zinc-500/30 text-zinc-300")}>{item.confidence}</Badge></div>
+                                <div className="flex justify-between"><span className="text-muted-foreground">Active Period</span><span>{formatPublishDate(item.first_seen)} — {formatPublishDate(item.last_seen)}</span></div>
+                                <div className="flex justify-between"><span className="text-muted-foreground">Sources</span><span>{item.source_count}</span></div>
+                              </div>
+                              {/* Mini timeline bar */}
+                              <div className="mt-2">
+                                <div className="flex items-center gap-2 text-[9px] text-muted-foreground/60">
+                                  <span>{formatPublishDate(item.first_seen)}</span>
+                                  <div className="flex-1 h-1.5 rounded-full bg-muted/30 relative overflow-hidden">
+                                    <div className="absolute inset-y-0 left-0 rounded-full bg-red-500/60" style={{ width: "100%" }} />
+                                  </div>
+                                  <span>{formatPublishDate(item.last_seen)}</span>
+                                </div>
+                              </div>
+                            </div>
+                            {/* Col 2: MITRE + Malware + Regions */}
+                            <div className="space-y-2">
+                              {item.techniques_used.length > 0 && (
+                                <div>
+                                  <h4 className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider mb-1">MITRE ATT&CK Techniques</h4>
+                                  <div className="flex gap-1 flex-wrap">
+                                    {item.techniques_used.map((t) => {
+                                      const parsed = parseTechnique(t);
+                                      return parsed.code ? (
+                                        <a key={t} href={`https://attack.mitre.org/techniques/${parsed.code.replace(".", "/")}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-[9px] px-1.5 py-0.5 rounded border border-sky-500/30 text-sky-300 hover:bg-sky-500/10">
+                                          {parsed.code} — {parsed.label.replace(parsed.code, "").replace(/[:\-–—]\s*/, "").trim() || parsed.code}
+                                        </a>
+                                      ) : (
+                                        <span key={t} className="text-[9px] px-1.5 py-0.5 rounded bg-muted/30 text-muted-foreground">{t}</span>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                              {item.malware_used.length > 0 && (
+                                <div>
+                                  <h4 className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider mb-1">Malware</h4>
+                                  <div className="flex gap-1 flex-wrap">{item.malware_used.map((m) => <span key={m} className="text-[9px] px-1.5 py-0.5 rounded border border-purple-500/30 text-purple-300">{m}</span>)}</div>
+                                </div>
+                              )}
+                              {item.targeted_sectors.length > 0 && (
+                                <div>
+                                  <h4 className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider mb-1">Targeted Sectors</h4>
+                                  <div className="flex gap-1 flex-wrap">{item.targeted_sectors.map((s) => <span key={s} className="text-[9px] px-1.5 py-0.5 rounded bg-muted/30 text-muted-foreground">{s}</span>)}</div>
+                                </div>
+                              )}
+                              {item.targeted_regions.length > 0 && (
+                                <div>
+                                  <h4 className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider mb-1">Targeted Regions</h4>
+                                  <div className="flex gap-1 flex-wrap">{item.targeted_regions.map((r) => <span key={r} className="text-[9px] px-1.5 py-0.5 rounded bg-muted/30 text-muted-foreground">{r}</span>)}</div>
+                                </div>
+                              )}
+                            </div>
+                            {/* Col 3: CVEs + Products + Sources */}
+                            <div className="space-y-2">
+                              {item.cves_exploited.length > 0 && (
+                                <div>
+                                  <h4 className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider mb-1">CVEs Exploited</h4>
+                                  <div className="flex gap-1 flex-wrap">{item.cves_exploited.map((c) => (
+                                    <a key={c} href={`https://nvd.nist.gov/vuln/detail/${c}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-[9px] font-mono text-orange-300 hover:underline px-1.5 py-0.5 rounded border border-orange-500/30">{c}</a>
+                                  ))}</div>
+                                </div>
+                              )}
+                              {(item.related_products || []).length > 0 && (
+                                <div>
+                                  <h4 className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider mb-1">Linked Products</h4>
+                                  <div className="flex gap-1 flex-wrap">{item.related_products.map((p) => (
+                                    <span key={p.id} className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded border border-orange-500/30 text-orange-300"><Bug className="h-2.5 w-2.5" />{p.product_name}{p.cve_id ? ` (${p.cve_id})` : ""}</span>
+                                  ))}</div>
+                                </div>
+                              )}
+                              <h4 className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider">Source Articles ({(item.source_articles || []).length})</h4>
+                              <div className="space-y-1 max-h-[120px] overflow-y-auto">
+                                {(item.source_articles || []).map((a) => (
+                                  <a key={a.id} href={a.source_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-start gap-1.5 p-1.5 rounded hover:bg-accent/20 transition-colors">
+                                    <ExternalLink className="h-3 w-3 text-primary shrink-0 mt-0.5" />
+                                    <div className="min-w-0">
+                                      <div className="text-[10px] text-foreground truncate">{a.headline}</div>
+                                      <div className="text-[9px] text-muted-foreground/50">{a.source}{a.published_at ? ` · ${formatPublishDate(a.published_at)}` : ""}</div>
+                                    </div>
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                          {/* False Positive Toggle */}
+                          <div className="mt-3 pt-2 border-t border-border/20 flex items-center justify-between">
+                            <span className="text-[10px] text-muted-foreground/60">
+                              {item.is_false_positive ? "Marked as false positive" : "Is this a false positive?"}
+                            </span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const newVal = !item.is_false_positive;
+                                api.toggleFalsePositive("threat-campaigns", item.id, newVal).then(() => {
+                                  setData(prev => prev ? { ...prev, items: prev.items.map(i => i.id === item.id ? { ...i, is_false_positive: newVal } : i) } : prev);
+                                });
+                              }}
+                              className={cn(
+                                "text-[10px] px-2 py-1 rounded-md border transition-colors",
+                                item.is_false_positive
+                                  ? "bg-amber-500/20 text-amber-300 border-amber-500/30 hover:bg-amber-500/10"
+                                  : "text-muted-foreground border-border/40 hover:bg-accent/20"
+                              )}
+                            >
+                              {item.is_false_positive ? "✕ Undo" : "Flag False Positive"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
@@ -2013,6 +2439,7 @@ export default function CyberNewsPage() {
       {/* ── Main area ───────────────────────────────── */}
       {activeSubtopic === "vulnerable-products" ? (
         <div className="flex-1 overflow-y-auto scrollbar-thin p-4">
+          <VendorStatsWidget />
           <VulnerableProductsTable />
         </div>
       ) : activeSubtopic === "threat-campaigns" ? (

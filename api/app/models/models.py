@@ -431,6 +431,7 @@ class VulnerableProduct(Base):
     first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     confidence: Mapped[str] = mapped_column(String(10), nullable=False, default="medium")
+    is_false_positive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -453,6 +454,7 @@ class ThreatCampaign(Base):
     source_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     source_news_ids: Mapped[list[str]] = mapped_column(ARRAY(UUID(as_uuid=True)), nullable=False, default=list)
     confidence: Mapped[str] = mapped_column(String(10), nullable=False, default="medium")
+    is_false_positive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

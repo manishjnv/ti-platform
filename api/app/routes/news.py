@@ -25,8 +25,8 @@ from app.core.database import get_db
 from app.core.redis import cache_key, get_cached, set_cached
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.middleware.auth import require_viewer
-from app.models.models import NewsItem, User
+from app.middleware.auth import require_viewer, require_analyst
+from app.models.models import NewsItem, User, VulnerableProduct, ThreatCampaign
 from app.schemas import (
     NewsItemResponse,
     NewsListResponse,
@@ -406,6 +406,205 @@ async def extraction_stats(
     response = ExtractionStatsResponse(**data)
     await set_cached(ck, response.model_dump(), ttl=30)
     return response
+
+
+@router.get("/vulnerable-products/export")
+async def export_vulnerable_products(
+    user: Annotated[User, Depends(require_viewer)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    format: str = Query("csv", pattern="^(csv|json)$"),
+    window: str = Query("all", pattern="^(24h|all)$"),
+):
+    """Export vulnerable products as CSV or JSON."""
+    from app.services.intel_extraction import get_vulnerable_products
+
+    window_hours = 24 if window == "24h" else None
+    items, _ = await get_vulnerable_products(db, limit=5000, window_hours=window_hours)
+
+    if format == "json":
+        import json
+        rows = [
+            {
+                "product_name": i.product_name, "vendor": i.vendor, "cve_id": i.cve_id,
+                "cvss_score": i.cvss_score, "epss_score": i.epss_score, "severity": i.severity,
+                "is_kev": i.is_kev, "exploit_available": i.exploit_available,
+                "patch_available": i.patch_available, "affected_versions": i.affected_versions,
+                "confidence": i.confidence, "source_count": i.source_count,
+                "targeted_sectors": i.targeted_sectors, "targeted_regions": i.targeted_regions,
+                "first_seen": i.first_seen.isoformat() if i.first_seen else None,
+                "last_seen": i.last_seen.isoformat() if i.last_seen else None,
+            }
+            for i in items
+        ]
+        return Response(
+            content=json.dumps(rows, indent=2),
+            media_type="application/json",
+            headers={"Content-Disposition": "attachment; filename=vulnerable_products.json"},
+        )
+
+    # CSV
+    lines = ["Product,Vendor,CVE,CVSS,EPSS,Severity,KEV,Exploit,Patch,Confidence,Sources,First Seen,Last Seen"]
+    for i in items:
+        lines.append(",".join([
+            f'"{(i.product_name or "").replace(chr(34), chr(39))}"',
+            f'"{(i.vendor or "").replace(chr(34), chr(39))}"',
+            i.cve_id or "",
+            f"{i.cvss_score:.1f}" if i.cvss_score is not None else "",
+            f"{i.epss_score:.2f}" if i.epss_score is not None else "",
+            i.severity,
+            str(i.is_kev), str(i.exploit_available), str(i.patch_available),
+            i.confidence, str(i.source_count),
+            i.first_seen.isoformat() if i.first_seen else "",
+            i.last_seen.isoformat() if i.last_seen else "",
+        ]))
+    return Response(
+        content="\n".join(lines),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=vulnerable_products.csv"},
+    )
+
+
+@router.get("/threat-campaigns/export")
+async def export_threat_campaigns(
+    user: Annotated[User, Depends(require_viewer)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    format: str = Query("csv", pattern="^(csv|json)$"),
+    window: str = Query("all", pattern="^(7d|all)$"),
+):
+    """Export threat campaigns as CSV or JSON."""
+    from app.services.intel_extraction import get_threat_campaigns
+
+    window_days = 7 if window == "7d" else None
+    items, _ = await get_threat_campaigns(db, limit=5000, window_days=window_days)
+
+    if format == "json":
+        import json
+        rows = [
+            {
+                "actor_name": i.actor_name, "campaign_name": i.campaign_name,
+                "severity": i.severity, "confidence": i.confidence,
+                "malware_used": i.malware_used, "techniques_used": i.techniques_used,
+                "cves_exploited": i.cves_exploited, "targeted_sectors": i.targeted_sectors,
+                "targeted_regions": i.targeted_regions, "source_count": i.source_count,
+                "first_seen": i.first_seen.isoformat() if i.first_seen else None,
+                "last_seen": i.last_seen.isoformat() if i.last_seen else None,
+            }
+            for i in items
+        ]
+        return Response(
+            content=json.dumps(rows, indent=2),
+            media_type="application/json",
+            headers={"Content-Disposition": "attachment; filename=threat_campaigns.json"},
+        )
+
+    # CSV
+    lines = ["Actor,Campaign,Severity,Confidence,Malware,Techniques,CVEs,Sectors,Regions,Sources,First Seen,Last Seen"]
+    for i in items:
+        lines.append(",".join([
+            f'"{(i.actor_name or "").replace(chr(34), chr(39))}"',
+            f'"{(i.campaign_name or "").replace(chr(34), chr(39))}"',
+            i.severity, i.confidence,
+            f'"{";".join(i.malware_used)}"',
+            f'"{";".join(i.techniques_used)}"',
+            f'"{";".join(i.cves_exploited)}"',
+            f'"{";".join(i.targeted_sectors)}"',
+            f'"{";".join(i.targeted_regions)}"',
+            str(i.source_count),
+            i.first_seen.isoformat() if i.first_seen else "",
+            i.last_seen.isoformat() if i.last_seen else "",
+        ]))
+    return Response(
+        content="\n".join(lines),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=threat_campaigns.csv"},
+    )
+
+
+@router.post("/cve-lookup")
+async def bulk_cve_lookup(
+    user: Annotated[User, Depends(require_viewer)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    payload: dict,
+):
+    """Bulk lookup CVEs — accepts {"cves": ["CVE-2024-1234", ...]}."""
+    from app.models.models import VulnerableProduct
+
+    raw_cves = payload.get("cves", [])
+    if not raw_cves or not isinstance(raw_cves, list):
+        raise HTTPException(400, "Provide a 'cves' array")
+    if len(raw_cves) > 200:
+        raise HTTPException(400, "Maximum 200 CVEs per lookup")
+
+    # Validate CVE format
+    cve_pattern = re.compile(r"^CVE-\d{4}-\d{4,}$", re.IGNORECASE)
+    cves = [c.strip().upper() for c in raw_cves if cve_pattern.match(c.strip())]
+    if not cves:
+        raise HTTPException(400, "No valid CVE IDs provided")
+
+    result = await db.execute(
+        select(VulnerableProduct).where(VulnerableProduct.cve_id.in_(cves))
+    )
+    items = result.scalars().all()
+
+    found = {i.cve_id: VulnerableProductResponse.model_validate(i) for i in items}
+    return {
+        "requested": len(cves),
+        "found": len(found),
+        "missing": [c for c in cves if c not in found],
+        "results": {cve: found[cve].model_dump() for cve in cves if cve in found},
+    }
+
+
+@router.get("/vendor-stats")
+async def vendor_stats(
+    user: Annotated[User, Depends(require_viewer)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Get top vendors by vulnerable product count."""
+    from app.services.intel_extraction import get_vendor_stats
+
+    ck = cache_key("vendor_stats")
+    cached = await get_cached(ck)
+    if cached:
+        return cached
+
+    data = await get_vendor_stats(db)
+    await set_cached(ck, data, ttl=120)
+    return data
+
+
+@router.patch("/vulnerable-products/{product_id}/false-positive")
+async def toggle_product_false_positive(
+    product_id: uuid.UUID,
+    user: Annotated[User, Depends(require_analyst)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    value: bool = Query(True),
+):
+    """Mark/unmark a vulnerable product as false positive."""
+    result = await db.execute(select(VulnerableProduct).where(VulnerableProduct.id == product_id))
+    product = result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    product.is_false_positive = value
+    await db.commit()
+    return {"id": str(product_id), "is_false_positive": value}
+
+
+@router.patch("/threat-campaigns/{campaign_id}/false-positive")
+async def toggle_campaign_false_positive(
+    campaign_id: uuid.UUID,
+    user: Annotated[User, Depends(require_analyst)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    value: bool = Query(True),
+):
+    """Mark/unmark a threat campaign as false positive."""
+    result = await db.execute(select(ThreatCampaign).where(ThreatCampaign.id == campaign_id))
+    campaign = result.scalar_one_or_none()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    campaign.is_false_positive = value
+    await db.commit()
+    return {"id": str(campaign_id), "is_false_positive": value}
 
 
 @router.get("/{news_id}", response_model=NewsItemResponse)
