@@ -333,6 +333,56 @@ async def get_ai_defaults(
     return AI_OPTIMAL_DEFAULTS
 
 
+@router.get("/default-prompts")
+async def get_default_prompts(
+    user: Annotated[User, Depends(require_admin)],
+):
+    """Return the built-in system prompts for each AI feature (read-only reference)."""
+    from app.services.ai import _DEFAULT_SYSTEM_PROMPT
+    from app.routes.intel import _ENRICHMENT_SYSTEM_PROMPT
+    from app.services.news import _NEWS_ENRICHMENT_SYSTEM
+
+    # Report generation prompt (inline in reports.py)
+    report_gen_prompt = (
+        "You are a cybersecurity threat intelligence analyst writing an executive summary "
+        "for a formal threat intelligence report. Based on the report title, sections, and "
+        "linked intelligence items provided, write a concise executive summary (3-5 sentences). "
+        "Cover: what the threat is, who/what is affected, the severity and urgency, and "
+        "recommended actions. Use professional, direct language suitable for C-level briefings."
+    )
+
+    briefing_gen_prompt = (
+        "You are a senior threat intelligence analyst. Generate comprehensive, actionable "
+        "threat briefings in JSON format. Keep the JSON valid."
+    )
+
+    live_lookup_prompt = (
+        "You are an expert threat intelligence analyst. Analyze the given IOC lookup results and produce "
+        "a structured JSON analysis. Respond ONLY with valid JSON, no markdown, no code blocks.\n\n"
+        "Required JSON structure:\n"
+        '{\n'
+        '  "summary": "2-4 sentence executive summary of what this IOC is and its risk level",\n'
+        '  "threat_actors": ["list of threat actors/groups associated, empty if none known"],\n'
+        '  "timeline": [{"date": "YYYY-MM-DD or description", "event": "what happened"}],\n'
+        '  "affected_products": ["vendor:product pairs or product names impacted"],\n'
+        '  "fix_remediation": "Specific recommended fix or remediation steps. Null if not applicable",\n'
+        '  "known_breaches": "Description of any known breaches or campaigns. Null if none",\n'
+        '  "key_findings": ["3-6 bullet point key findings, each a concise sentence"]\n'
+        '}\n\n'
+        "Rules: Be factual. Do not fabricate data. If information is not available, use empty arrays or null. "
+        "Keep it concise and actionable. Focus on what a SOC analyst needs to know."
+    )
+
+    return {
+        "intel_summary": _DEFAULT_SYSTEM_PROMPT,
+        "intel_enrichment": _ENRICHMENT_SYSTEM_PROMPT,
+        "news_enrichment": _NEWS_ENRICHMENT_SYSTEM,
+        "live_lookup": live_lookup_prompt,
+        "report_gen": report_gen_prompt,
+        "briefing_gen": briefing_gen_prompt,
+    }
+
+
 @router.post("/reset-defaults")
 async def reset_ai_defaults(
     user: Annotated[User, Depends(require_admin)],

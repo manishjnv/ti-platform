@@ -964,3 +964,7 @@ export async function resetAIDefaults(): Promise<import("@/types").AISettings> {
 export async function getAIHealth(): Promise<import("@/types").AIHealthStatus> {
   return fetcher<import("@/types").AIHealthStatus>("/ai-settings/health");
 }
+
+export async function getAIDefaultPrompts(): Promise<Record<string, string>> {
+  return fetcher<Record<string, string>>("/ai-settings/default-prompts");
+}

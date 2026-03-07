@@ -40,6 +40,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import * as api from "@/lib/api";
+import { useAppStore } from "@/store";
 import type { AISettings, FallbackProvider } from "@/types";
 
 interface SettingSection {
@@ -102,12 +103,16 @@ const SECTIONS: SettingSection[] = [
 
 export default function SettingsPage() {
   const searchParams = useSearchParams();
+  const user = useAppStore((s) => s.user);
+  const isAdmin = user?.role === "admin";
   const [activeSection, setActiveSection] = useState(searchParams.get("tab") || "general");
   const [settings, setSettings] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const visibleSections = isAdmin ? SECTIONS : SECTIONS.filter((s) => s.id !== "ai");
 
   const loadSettings = useCallback(async () => {
     setLoading(true);
@@ -181,7 +186,7 @@ export default function SettingsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* Sidebar nav */}
         <div className="space-y-1">
-          {SECTIONS.map((s) => (
+          {visibleSections.map((s) => (
             <button
               key={s.id}
               onClick={() => setActiveSection(s.id)}
@@ -227,7 +232,7 @@ export default function SettingsPage() {
               {activeSection === "org" && (
                 <OrgProfileSettings settings={settings} onChange={updateSetting} />
               )}
-              {activeSection === "ai" && <AIConfigSettings />}
+              {activeSection === "ai" && isAdmin && <AIConfigSettings />}
             </>
           )}
         </div>
@@ -1580,6 +1585,44 @@ const PROVIDER_OPTIONS = [
   { value: "custom", label: "Custom OpenAI-compatible" },
 ];
 
+const PROVIDER_INFO: Record<string, { freeLimit: string; models: string[]; note: string }> = {
+  groq: {
+    freeLimit: "Free: 30 req/min, 14.4K req/day, 6K tokens/min",
+    models: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama-3.2-3b-preview", "gemma2-9b-it", "mixtral-8x7b-32768"],
+    note: "Fastest free inference. Best for high-volume summarization.",
+  },
+  cerebras: {
+    freeLimit: "Free: 30 req/min, 1K req/day, 60K tokens/min",
+    models: ["llama3.1-8b", "llama3.1-70b"],
+    note: "Very fast inference. Good fallback for Groq rate limits.",
+  },
+  huggingface: {
+    freeLimit: "Free: 1K req/day (rate varies by model popularity)",
+    models: ["mistralai/Mistral-7B-Instruct-v0.3", "meta-llama/Meta-Llama-3-8B-Instruct", "HuggingFaceH4/zephyr-7b-beta"],
+    note: "Wide model variety. Slower inference, best as last fallback.",
+  },
+  openai: {
+    freeLimit: "Paid: ~$0.50-$15 per 1M tokens (varies by model)",
+    models: ["gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo"],
+    note: "Highest quality. Paid API, no free tier.",
+  },
+  anthropic: {
+    freeLimit: "Paid: ~$3-$15 per 1M tokens (varies by model)",
+    models: ["claude-sonnet-4-20250514", "claude-3-5-haiku-20241022"],
+    note: "Strong analysis quality. Paid API, no free tier.",
+  },
+  ollama: {
+    freeLimit: "Local: Unlimited (runs on your hardware)",
+    models: ["llama3.1:8b", "llama3.1:70b", "mistral:7b", "phi3:medium"],
+    note: "Self-hosted, no API costs. Requires GPU for good performance.",
+  },
+  custom: {
+    freeLimit: "Varies by provider",
+    models: [],
+    note: "Any OpenAI-compatible API endpoint.",
+  },
+};
+
 function Tooltip({ text }: { text: string }) {
   const [show, setShow] = useState(false);
   return (
@@ -1647,6 +1690,10 @@ function AIConfigSettings() {
   const [expandedPrompt, setExpandedPrompt] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [fbTestResults, setFbTestResults] = useState<Record<number, { success: boolean; status: number; response?: string; error?: string } | null>>({});
+  const [fbTesting, setFbTesting] = useState<Record<number, boolean>>({});
+  const [defaultPrompts, setDefaultPrompts] = useState<Record<string, string>>({});
+  const [showDefaultPrompt, setShowDefaultPrompt] = useState<string | null>(null);
 
   useEffect(() => {
     loadAll();
@@ -1655,12 +1702,14 @@ function AIConfigSettings() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [settingsData, usage] = await Promise.all([
+      const [settingsData, usage, prompts] = await Promise.all([
         api.getAISettings(),
         api.getAIUsage().catch(() => ({})),
+        api.getAIDefaultPrompts().catch(() => ({})),
       ]);
       setCfg(settingsData);
       setUsageData(usage as Record<string, number>);
+      setDefaultPrompts(prompts as Record<string, string>);
     } catch (err: any) {
       setError(err?.message === "Forbidden" ? "Admin access required" : "Failed to load AI settings");
     }
@@ -1740,7 +1789,26 @@ function AIConfigSettings() {
 
   const addFallback = () => {
     if (!cfg) return;
-    const newFb: FallbackProvider = { name: "groq", url: "", key: "", model: "", timeout: 30, enabled: true };
+    
+
+  const handleTestFallback = async (idx: number) => {
+    if (!cfg) return;
+    const fb = cfg.fallback_providers[idx];
+    if (!fb) return;
+    setFbTesting((prev) => ({ ...prev, [idx]: true }));
+    setFbTestResults((prev) => ({ ...prev, [idx]: null }));
+    try {
+      const result = await api.testAIProvider({
+        url: fb.url,
+        key: fb.key,
+        model: fb.model.includes(",") ? fb.model.split(",")[0].trim() : fb.model,
+      });
+      setFbTestResults((prev) => ({ ...prev, [idx]: result }));
+    } catch (err: any) {
+      setFbTestResults((prev) => ({ ...prev, [idx]: { success: false, status: 0, error: err?.message || "Connection failed" } }));
+    }
+    setFbTesting((prev) => ({ ...prev, [idx]: false }));
+  };const newFb: FallbackProvider = { name: "groq", url: "", key: "", model: "", timeout: 30, enabled: true };
     update("fallback_providers", [...(cfg.fallback_providers || []), newFb]);
   };
 
@@ -1914,7 +1982,18 @@ function AIConfigSettings() {
                     type="number"
                     value={cfg.primary_timeout}
                     onChange={(e) => update("primary_timeout", Number(e.target.value))}
-                    min={5}
+                    
+              {PROVIDER_INFO[cfg.primary_provider] && (
+                <div className="mt-2 p-2 rounded-md bg-primary/5 border border-primary/10">
+                  <p className="text-[10px] text-primary font-medium">{PROVIDER_INFO[cfg.primary_provider].freeLimit}</p>
+                  <p className="text-[9px] text-muted-foreground mt-0.5">{PROVIDER_INFO[cfg.primary_provider].note}</p>
+                  {PROVIDER_INFO[cfg.primary_provider].models.length > 0 && (
+                    <p className="text-[9px] text-muted-foreground mt-0.5">
+                      Available models: <span className="font-mono text-foreground/70">{PROVIDER_INFO[cfg.primary_provider].models.join(", ")}</span>
+                    </p>
+                  )}
+                </div>
+              )}min={5}
                     max={120}
                     className="w-full px-2 py-1.5 rounded-md bg-muted/30 border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary"
                   />
