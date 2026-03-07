@@ -125,9 +125,9 @@ export default function BriefingsPage() {
                         </span>
                         {b.stats && (
                           <>
-                            <span>{b.stats.total_articles} articles</span>
-                            <span>{b.stats.total_cves} CVEs</span>
-                            <span>{b.stats.total_campaigns} campaigns</span>
+                            <span>{b.stats.articles_processed ?? b.stats.total_articles} articles</span>
+                            <span>{b.stats.new_cves ?? b.stats.total_cves} CVEs</span>
+                            <span>{b.stats.new_campaigns ?? b.stats.total_campaigns} campaigns</span>
                           </>
                         )}
                       </div>

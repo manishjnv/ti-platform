@@ -239,7 +239,7 @@ export default function DetectionsPage() {
                       <span className="text-primary font-mono">{rule.cve_ids.slice(0, 2).join(", ")}</span>
                     )}
                     {rule.quality_score != null && (
-                      <span>Quality: {(rule.quality_score * 100).toFixed(0)}%</span>
+                      <span>Quality: {rule.quality_score}%</span>
                     )}
                   </div>
                 </div>

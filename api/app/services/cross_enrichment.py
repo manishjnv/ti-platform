@@ -67,20 +67,6 @@ async def get_sector_threat_map(db: AsyncSession, days: int = 30) -> list[dict]:
     """Sectors under active threat with campaign counts."""
     q = text("""
         SELECT sector, COUNT(DISTINCT tc.id) AS campaign_count,
-               COUNT(DISTINCT UNNEST_ACTOR) AS actor_count,
-               ARRAY_AGG(DISTINCT tc.actor_name) AS actors
-        FROM intel_threat_campaigns tc,
-             UNNEST(tc.targeted_sectors) AS sector,
-             UNNEST(COALESCE(NULLIF(tc.targeted_sectors, '{}'), ARRAY['Unknown'])) AS UNNEST_ACTOR
-        WHERE tc.is_false_positive = FALSE
-          AND tc.last_seen >= NOW() - MAKE_INTERVAL(days => :days)
-        GROUP BY sector
-        ORDER BY campaign_count DESC
-        LIMIT 20
-    """)
-    # Simplified approach - just count campaigns per sector
-    q2 = text("""
-        SELECT sector, COUNT(DISTINCT tc.id) AS campaign_count,
                ARRAY_AGG(DISTINCT tc.actor_name ORDER BY tc.actor_name) AS actors,
                MAX(tc.severity) AS max_severity
         FROM intel_threat_campaigns tc,
@@ -91,7 +77,7 @@ async def get_sector_threat_map(db: AsyncSession, days: int = 30) -> list[dict]:
         ORDER BY campaign_count DESC
         LIMIT 20
     """)
-    rows = (await db.execute(q2, {"days": days})).mappings().all()
+    rows = (await db.execute(q, {"days": days})).mappings().all()
     return [dict(r) for r in rows]
 
 
@@ -546,6 +532,7 @@ async def get_org_exposure(db: AsyncSession, org_sectors: list[str],
 # ──────────────────────────────────────────────────────────
 
 async def get_detection_rules(db: AsyncSession, rule_type: str | None = None,
+                              severity: str | None = None,
                               campaign: str | None = None, limit: int = 100) -> list[dict]:
     """Query detection rules from the library."""
     conditions = []
@@ -554,6 +541,9 @@ async def get_detection_rules(db: AsyncSession, rule_type: str | None = None,
     if rule_type:
         conditions.append("dr.rule_type = :rt")
         params["rt"] = rule_type
+    if severity:
+        conditions.append("dr.severity = :sev")
+        params["sev"] = severity
     if campaign:
         conditions.append("dr.campaign_name ILIKE :camp")
         params["camp"] = f"%{campaign}%"

@@ -138,11 +138,12 @@ async def detection_rules(
     user: Annotated[User, Depends(require_viewer)],
     db: Annotated[AsyncSession, Depends(get_db)],
     rule_type: str | None = Query(None, pattern="^(yara|kql|sigma)$"),
+    severity: str | None = Query(None, pattern="^(critical|high|medium|low)$"),
     campaign: str | None = Query(None),
     limit: int = Query(100, ge=1, le=500),
 ):
     """Query the detection rule library."""
-    return await ce.get_detection_rules(db, rule_type=rule_type, campaign=campaign, limit=limit)
+    return await ce.get_detection_rules(db, rule_type=rule_type, severity=severity, campaign=campaign, limit=limit)
 
 
 @router.get("/detection-coverage")
@@ -272,8 +273,13 @@ async def list_briefings(
         {
             "id": str(b.id),
             "period": b.period,
+            "period_start": b.period_start.isoformat() if b.period_start else None,
+            "period_end": b.period_end.isoformat() if b.period_end else None,
             "title": b.title,
             "executive_summary": b.executive_summary[:500],
+            "key_campaigns": b.key_campaigns,
+            "key_vulnerabilities": b.key_vulnerabilities,
+            "key_actors": b.key_actors,
             "stats": b.stats,
             "recommendations": b.recommendations,
             "created_at": b.created_at.isoformat() if b.created_at else None,
