@@ -259,29 +259,6 @@ async def update_ai_settings(
     return data
 
 
-@router.get("/debug-keys")
-async def debug_keys(db: Annotated[AsyncSession, Depends(get_db)]):
-    """Temp debug endpoint - REMOVE AFTER DEBUGGING."""
-    row = await _get_or_create_settings(db)
-    pk = row.primary_api_key or ""
-    fb = row.fallback_providers or []
-    return {
-        "primary_key_len": len(pk),
-        "primary_key_start": pk[:8] if pk else "",
-        "primary_key_end": pk[-4:] if pk else "",
-        "fallback_count": len(fb),
-        "fallbacks": [
-            {
-                "name": f.get("name", ""),
-                "key_len": len(f.get("key", "")),
-                "key_start": f.get("key", "")[:8] if f.get("key", "") else "",
-                "key_end": f.get("key", "")[-4:] if f.get("key", "") else "",
-            }
-            for f in fb
-        ],
-    }
-
-
 @router.post("/test-provider")
 async def test_ai_provider(
     body: dict,
@@ -319,15 +296,6 @@ async def test_ai_provider(
                     model = fb.get("model", "")
             except (ValueError, IndexError):
                 pass
-
-    import structlog as _sl
-    _lg = _sl.get_logger("ai_test_debug")
-    _lg.info("test_provider_debug",
-             provider_type=provider_type,
-             key_len=len(key) if key else 0,
-             key_start=key[:8] if key and len(key) >= 8 else key,
-             key_end=key[-4:] if key and len(key) >= 4 else key,
-             url=url, model=model)
 
     if not url or not key or not model:
         raise HTTPException(400, "url, key, and model are required")
