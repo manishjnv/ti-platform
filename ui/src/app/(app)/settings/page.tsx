@@ -2029,9 +2029,41 @@ function AIConfigSettings() {
                   <p className="text-[10px] text-primary font-medium">{PROVIDER_INFO[cfg.primary_provider].freeLimit}</p>
                   <p className="text-[9px] text-muted-foreground mt-0.5">{PROVIDER_INFO[cfg.primary_provider].note}</p>
                   {PROVIDER_INFO[cfg.primary_provider].models.length > 0 && (
-                    <p className="text-[9px] text-muted-foreground mt-0.5">
-                      Available models: <span className="font-mono text-foreground/70">{PROVIDER_INFO[cfg.primary_provider].models.join(", ")}</span>
-                    </p>
+                    <div className="mt-1.5">
+                      <p className="text-[9px] text-muted-foreground mb-1">Click to select model:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {PROVIDER_INFO[cfg.primary_provider].models.map((m) => {
+                          const selected = cfg.primary_model.split(",").map((s) => s.trim()).includes(m);
+                          return (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => {
+                                const current = cfg.primary_model.split(",").map((s) => s.trim()).filter(Boolean);
+                                if (selected) {
+                                  const next = current.filter((c) => c !== m);
+                                  update("primary_model", next.join(", "));
+                                } else {
+                                  update("primary_model", [...current, m].join(", "));
+                                }
+                              }}
+                              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono border transition-colors ${
+                                selected
+                                  ? "bg-primary/15 border-primary/40 text-primary"
+                                  : "bg-muted/30 border-border/50 text-muted-foreground hover:border-primary/30 hover:text-foreground"
+                              }`}
+                            >
+                              <span className={`inline-block w-2.5 h-2.5 rounded-sm border ${
+                                selected ? "bg-primary border-primary" : "border-muted-foreground/40"
+                              } flex items-center justify-center`}>
+                                {selected && <Check className="h-2 w-2 text-primary-foreground" />}
+                              </span>
+                              {m}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
@@ -2130,6 +2162,41 @@ function AIConfigSettings() {
                     <div className="p-1.5 rounded bg-primary/5 border border-primary/10">
                       <p className="text-[9px] text-primary font-medium">{PROVIDER_INFO[fb.name].freeLimit}</p>
                       <p className="text-[9px] text-muted-foreground">{PROVIDER_INFO[fb.name].note}</p>
+                      {PROVIDER_INFO[fb.name].models.length > 0 && (
+                        <div className="mt-1">
+                          <div className="flex flex-wrap gap-1">
+                            {PROVIDER_INFO[fb.name].models.map((m) => {
+                              const fbSelected = fb.model.split(",").map((s) => s.trim()).includes(m);
+                              return (
+                                <button
+                                  key={m}
+                                  type="button"
+                                  onClick={() => {
+                                    const current = fb.model.split(",").map((s) => s.trim()).filter(Boolean);
+                                    if (fbSelected) {
+                                      updateFallback(idx, "model", current.filter((c) => c !== m).join(", "));
+                                    } else {
+                                      updateFallback(idx, "model", [...current, m].join(", "));
+                                    }
+                                  }}
+                                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono border transition-colors ${
+                                    fbSelected
+                                      ? "bg-primary/15 border-primary/40 text-primary"
+                                      : "bg-muted/30 border-border/50 text-muted-foreground hover:border-primary/30 hover:text-foreground"
+                                  }`}
+                                >
+                                  <span className={`inline-block w-2.5 h-2.5 rounded-sm border ${
+                                    fbSelected ? "bg-primary border-primary" : "border-muted-foreground/40"
+                                  } flex items-center justify-center`}>
+                                    {fbSelected && <Check className="h-2 w-2 text-primary-foreground" />}
+                                  </span>
+                                  {m}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
