@@ -1984,18 +1984,7 @@ function AIConfigSettings() {
                     type="number"
                     value={cfg.primary_timeout}
                     onChange={(e) => update("primary_timeout", Number(e.target.value))}
-                    
-              {PROVIDER_INFO[cfg.primary_provider] && (
-                <div className="mt-2 p-2 rounded-md bg-primary/5 border border-primary/10">
-                  <p className="text-[10px] text-primary font-medium">{PROVIDER_INFO[cfg.primary_provider].freeLimit}</p>
-                  <p className="text-[9px] text-muted-foreground mt-0.5">{PROVIDER_INFO[cfg.primary_provider].note}</p>
-                  {PROVIDER_INFO[cfg.primary_provider].models.length > 0 && (
-                    <p className="text-[9px] text-muted-foreground mt-0.5">
-                      Available models: <span className="font-mono text-foreground/70">{PROVIDER_INFO[cfg.primary_provider].models.join(", ")}</span>
-                    </p>
-                  )}
-                </div>
-              )}min={5}
+                    min={5}
                     max={120}
                     className="w-full px-2 py-1.5 rounded-md bg-muted/30 border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary"
                   />
@@ -2017,6 +2006,17 @@ function AIConfigSettings() {
                   </span>
                 )}
               </div>
+              {PROVIDER_INFO[cfg.primary_provider] && (
+                <div className="mt-1 p-2 rounded-md bg-primary/5 border border-primary/10">
+                  <p className="text-[10px] text-primary font-medium">{PROVIDER_INFO[cfg.primary_provider].freeLimit}</p>
+                  <p className="text-[9px] text-muted-foreground mt-0.5">{PROVIDER_INFO[cfg.primary_provider].note}</p>
+                  {PROVIDER_INFO[cfg.primary_provider].models.length > 0 && (
+                    <p className="text-[9px] text-muted-foreground mt-0.5">
+                      Available models: <span className="font-mono text-foreground/70">{PROVIDER_INFO[cfg.primary_provider].models.join(", ")}</span>
+                    </p>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -2032,7 +2032,37 @@ function AIConfigSettings() {
                   <Plus className="h-3 w-3" /> Add Provider
                 </button>
               </div>
-            </CardHeader>flex items-center gap-1">
+            </CardHeader>
+            <CardContent className="px-5 pb-4 space-y-3">
+              {(!cfg.fallback_providers || cfg.fallback_providers.length === 0) && (
+                <p className="text-[10px] text-muted-foreground text-center py-4">No fallback providers configured. The primary provider will be the only option.</p>
+              )}
+              {(cfg.fallback_providers || []).map((fb, idx) => (
+                <div key={idx} className="p-3 rounded-md border border-border/50 bg-muted/10 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-muted-foreground font-medium">Fallback #{idx + 1}</span>
+                    <div className="flex items-center gap-2">
+                      <ToggleSwitch checked={fb.enabled} onChange={(v) => updateFallback(idx, "enabled", v)} />
+                      <button onClick={() => removeFallback(idx)} className="text-red-400 hover:text-red-300">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-muted-foreground mb-0.5 block">Provider</label>
+                      <select
+                        value={fb.name}
+                        onChange={(e) => updateFallback(idx, "name", e.target.value)}
+                        className="w-full px-2 py-1 rounded bg-muted/30 border border-border text-[11px] focus:outline-none focus:ring-1 focus:ring-primary"
+                      >
+                        {PROVIDER_OPTIONS.map((p) => (
+                          <option key={p.value} value={p.value}>{p.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted-foreground mb-0.5 flex items-center gap-1">
                         Model(s) <Tooltip text="Enter one model name, or comma-separated for multiple models. First model is used for testing." />
                       </label>
                       <input
@@ -2083,37 +2113,7 @@ function AIConfigSettings() {
                       <p className="text-[9px] text-primary font-medium">{PROVIDER_INFO[fb.name].freeLimit}</p>
                       <p className="text-[9px] text-muted-foreground">{PROVIDER_INFO[fb.name].note}</p>
                     </div>
-                  )}))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-muted-foreground mb-0.5 block">Model</label>
-                      <input
-                        type="text"
-                        value={fb.model}
-                        onChange={(e) => updateFallback(idx, "model", e.target.value)}
-                        className="w-full px-2 py-1 rounded bg-muted/30 border border-border text-[11px] focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-muted-foreground mb-0.5 block">API URL</label>
-                      <input
-                        type="text"
-                        value={fb.url}
-                        onChange={(e) => updateFallback(idx, "url", e.target.value)}
-                        className="w-full px-2 py-1 rounded bg-muted/30 border border-border text-[11px] font-mono focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-muted-foreground mb-0.5 block">API Key</label>
-                      <input
-                        type="password"
-                        value={fb.key}
-                        onChange={(e) => updateFallback(idx, "key", e.target.value)}
-                        className="w-full px-2 py-1 rounded bg-muted/30 border border-border text-[11px] font-mono focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
-                    </div>
-                  </div>
+                  )}
                 </div>
               ))}
             </CardContent>
@@ -2173,6 +2173,7 @@ function AIConfigSettings() {
       )}
 
       {/* ── Limits & Usage ── */}
+      {/* ── Daily Limits ── */}
       {activeSubSection === "limits" && (
         <Card>
           <CardHeader className="pb-2 pt-4 px-5">
@@ -2216,7 +2217,25 @@ function AIConfigSettings() {
                     min={0}
                     max={100000}
                     className="w-20 px-2 py-1 rounded-md bg-muted/30 border border-border text-xs text-right focus:outline-none focus:ring-1 focus:ring-primary"
-                    placeholder="0"Use &quot;View Default&quot; to see the built-in prompt for reference.
+                    placeholder="0"
+                  />
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Custom Prompts ── */}
+      {activeSubSection === "prompts" && (
+        <Card>
+          <CardHeader className="pb-2 pt-4 px-5">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <MessageSquare className="h-3.5 w-3.5" /> Custom Prompts
+              <Tooltip text="Override the built-in system prompts for each AI feature. Leave empty to use defaults." />
+            </CardTitle>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              Use &quot;View Default&quot; to see the built-in prompt for reference.
             </p>
           </CardHeader>
           <CardContent className="px-5 pb-4 space-y-2">
@@ -2274,34 +2293,7 @@ function AIConfigSettings() {
                         <div className="mt-1 p-2.5 rounded-md bg-muted/30 border border-border/50 max-h-64 overflow-y-auto">
                           <p className="text-[9px] text-muted-foreground font-semibold mb-1.5 uppercase tracking-wider">Built-in Default Prompt (read-only)</p>
                           <pre className="text-[10px] text-muted-foreground font-mono whitespace-pre-wrap leading-relaxed">{defaultPrompt}</pre>
-                        </div-full flex items-center justify-between px-3 py-2 hover:bg-muted/20 transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium">{f.label}</span>
-                      {hasCustom && (
-                        <Badge variant="outline" className="text-[9px] gap-0.5" style={{ borderColor: "#8b5cf6", color: "#8b5cf6" }}>
-                          Custom
-                        </Badge>
-                      )}
-                    </div>
-                    {isExpanded ? <ChevronUp className="h-3 w-3 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 text-muted-foreground" />}
-                  </button>
-                  {isExpanded && (
-                    <div className="px-3 pb-3 space-y-2">
-                      <textarea
-                        value={(cfg[promptKey] as string) || ""}
-                        onChange={(e) => update(promptKey, e.target.value)}
-                        placeholder="Leave empty to use default prompt. Enter your custom system prompt here..."
-                        rows={6}
-                        className="w-full px-2.5 py-2 rounded-md bg-muted/20 border border-border text-[11px] font-mono leading-relaxed focus:outline-none focus:ring-1 focus:ring-primary resize-y"
-                      />
-                      {hasCustom && (
-                        <button
-                          onClick={() => update(promptKey, "")}
-                          className="text-[10px] text-red-400 hover:text-red-300 flex items-center gap-1"
-                        >
-                          <Trash2 className="h-2.5 w-2.5" /> Clear custom prompt
-                        </button>
+                        </div>
                       )}
                     </div>
                   )}
