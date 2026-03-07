@@ -374,7 +374,7 @@ export default function IntelFeedPage() {
             <IntelCard
               key={item.id}
               item={item}
-              campaignContext={batchEnrichment?.items?.[item.id]}
+              campaignContext={batchEnrichment?.[item.id]}
             />
           ))
         )}
