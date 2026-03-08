@@ -930,7 +930,7 @@ async def enrich_news_item(
     data = await chat_completion_json(
         system_prompt=_NEWS_ENRICHMENT_SYSTEM,
         user_prompt=user_prompt,
-        max_tokens=3500,
+        max_tokens=6000,
         temperature=0.15,
         required_keys=["category", "summary", "executive_brief"],
         caller="news_enrichment",

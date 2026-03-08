@@ -398,7 +398,7 @@ async def get_intel_enrichment(
     enrichment = await chat_completion_json(
         system_prompt=_ENRICHMENT_SYSTEM_PROMPT,
         user_prompt=user_prompt,
-        max_tokens=3000,
+        max_tokens=5000,
         temperature=0.2,
         required_keys=["executive_summary", "threat_actors", "attack_techniques"],
         caller="intel_enrichment",
