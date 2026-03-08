@@ -13,6 +13,8 @@ Provides:
 
 from __future__ import annotations
 
+from app.prompts import BRIEFING_GEN_PROMPT
+
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -226,25 +228,7 @@ FORMAT your response as JSON with these fields:
 }}"""
 
     briefing = await chat_completion_json(
-        system_prompt=(
-            "You are a senior threat intelligence analyst generating a weekly threat briefing.\n\n"
-            "<output_format>\n"
-            "Respond with a single valid JSON object. No markdown fences, no text outside JSON.\n"
-            "</output_format>\n\n"
-            "<analysis_methodology>\n"
-            "Before generating output, reason through:\n"
-            "1. Which campaigns/threats showed the highest velocity or broadest impact this period?\n"
-            "2. Are any CVEs being actively exploited or newly added to CISA KEV?\n"
-            "3. What sectors/regions are most targeted based on the data?\n"
-            "4. What are the top 3 actionable items a SOC team should prioritize?\n"
-            "</analysis_methodology>\n\n"
-            "<quality_rules>\n"
-            "- Every finding/recommendation must reference specific CVEs, products, actors, or campaigns from the data.\n"
-            "- NEVER use filler: 'stay vigilant', 'apply patches', 'monitor for suspicious activity'.\n"
-            "- Recommendations must name specific actions: patch versions, detection rules, config changes.\n"
-            "- Executive summary must quantify: number of campaigns, CVEs, affected sectors.\n"
-            "</quality_rules>"
-        ),
+        system_prompt=BRIEFING_GEN_PROMPT,
         user_prompt=prompt,
         max_tokens=4000,
         required_keys=["executive_summary"],

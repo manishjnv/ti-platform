@@ -395,83 +395,11 @@ async def get_default_prompts(
     user: Annotated[User, Depends(require_admin)],
 ):
     """Return the built-in system prompts for each AI feature (read-only reference)."""
-    from app.services.ai import _DEFAULT_SYSTEM_PROMPT
-    from app.routes.intel import _ENRICHMENT_SYSTEM_PROMPT
-    from app.services.news import _NEWS_ENRICHMENT_SYSTEM
+    from app.prompts import get_all_prompts, PROMPT_REGISTRY
 
-    # Report generation prompt (inline in reports.py)
-    report_gen_prompt = (
-        "You are a senior threat intelligence analyst writing an executive summary "
-        "for a formal threat intelligence report.\n\n"
-        "<task>\n"
-        "Write exactly 3-5 sentences covering:\n"
-        "1. THREAT — name the specific threat, vulnerability, or campaign with CVE IDs/malware names\n"
-        "2. IMPACT — who/what is affected (name products, versions, sectors) and quantified consequence\n"
-        "3. URGENCY — exploitation status (active ITW, PoC, theoretical) and any CISA KEV deadlines\n"
-        "4. ACTION — one concrete, specific remediation (patch version, config change, detection rule)\n"
-        "</task>\n\n"
-        "<rules>\n"
-        "- Use professional, direct language suitable for C-level briefings\n"
-        "- NEVER use filler: 'stay vigilant', 'apply patches', 'monitor for suspicious activity'\n"
-        "- Every sentence must contain at least one specific technical detail from the report data\n"
-        "- Return plain text only, no JSON, no markdown formatting\n"
-        "</rules>"
-    )
-
-    briefing_gen_prompt = (
-        "You are a senior threat intelligence analyst generating a weekly threat briefing.\n\n"
-        "<output_format>\n"
-        "Respond with a single valid JSON object. No markdown fences, no text outside JSON.\n"
-        "</output_format>\n\n"
-        "<quality_rules>\n"
-        "- Every finding/recommendation must reference specific CVEs, products, actors, or campaigns from the data.\n"
-        "- NEVER use filler: 'stay vigilant', 'apply patches', 'monitor for suspicious activity'.\n"
-        "- Recommendations must name specific actions: patch versions, detection rules, config changes.\n"
-        "- Executive summary must quantify: number of campaigns, CVEs, affected sectors.\n"
-        "</quality_rules>"
-    )
-
-    live_lookup_prompt = (
-        "You are an expert threat intelligence analyst. Analyze the IOC lookup results and produce "
-        "a structured JSON analysis.\n\n"
-        "<output_format>\n"
-        "Respond ONLY with valid JSON. No markdown fences, no commentary, no text outside the JSON.\n"
-        "</output_format>\n\n"
-        "<analysis_methodology>\n"
-        "Before generating output, reason through:\n"
-        "1. What type of IOC is this (IP, domain, hash, CVE) and what do the sources say?\n"
-        "2. Is it associated with known threat actors or campaigns?\n"
-        "3. What is the current risk level based on reputation scores and detection counts?\n"
-        "4. What concrete remediation is needed?\n"
-        "</analysis_methodology>\n\n"
-        "<json_schema>\n"
-        "{\n"
-        '  "summary": "2-4 sentence executive summary: IOC identity, risk level, and why it matters. '
-        'Include specific reputation scores, detection ratios, or abuse confidence from the data.",\n'
-        '  "threat_actors": ["Named groups with documented association. [] if none known."],\n'
-        '  "timeline": [{"date": "YYYY-MM-DD or description", "event": "what happened"}],\n'
-        '  "affected_products": ["vendor:product pairs or specific product names impacted"],\n'
-        '  "fix_remediation": "Specific remediation: block rule, patch version, domain sinkhole. null if N/A.",\n'
-        '  "known_breaches": "Named breaches or campaigns using this IOC. null if none documented.",\n'
-        '  "key_findings": ["3-6 findings. Each must cite a specific data point from the lookup results."]\n'
-        "}\n"
-        "</json_schema>\n\n"
-        "<grounding_rules>\n"
-        "- Be factual. Only assert what the lookup data supports.\n"
-        "- Do not fabricate threat actor attributions or campaign names.\n"
-        "- If data is unavailable, use [] or null — never guess.\n"
-        "- Cite specific scores/counts from the lookup results in key_findings.\n"
-        "</grounding_rules>"
-    )
-
-    return {
-        "intel_summary": _DEFAULT_SYSTEM_PROMPT,
-        "intel_enrichment": _ENRICHMENT_SYSTEM_PROMPT,
-        "news_enrichment": _NEWS_ENRICHMENT_SYSTEM,
-        "live_lookup": live_lookup_prompt,
-        "report_gen": report_gen_prompt,
-        "briefing_gen": briefing_gen_prompt,
-    }
+    all_prompts = get_all_prompts()
+    # Return just prompt text keyed by feature name (backward-compatible format)
+    return {feature: entry["prompt"] for feature, entry in all_prompts.items()}
 
 
 @router.post("/reset-defaults")

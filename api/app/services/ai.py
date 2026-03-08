@@ -15,6 +15,12 @@ Features:
 
 from __future__ import annotations
 
+from app.prompts import (
+    INTEL_SUMMARY_PROMPT,
+    JSON_REPAIR_PROMPT,
+)
+
+
 import json
 import re
 from dataclasses import dataclass
@@ -299,20 +305,8 @@ async def _get_chain_async() -> list[_Provider]:
     logger.info("ai_chain_loaded", providers=names, source="db" if (db_cfg and db_cfg.get("primary_api_key")) else "env")
     return chain
 
-_DEFAULT_SYSTEM_PROMPT = (
-    "You are a senior cyber threat intelligence analyst. "
-    "Summarize the provided threat intelligence item in exactly 2-3 sentences.\n\n"
-    "STRUCTURE each summary as:\n"
-    "1. WHAT — name the specific threat, CVE, malware, or actor and what it does\n"
-    "2. IMPACT — who/what is affected (name products, versions, sectors) and business consequence\n"
-    "3. ACTION — one concrete, specific remediation step (patch version, config change, detection rule)\n\n"
-    "RULES:\n"
-    "- Use precise technical language; include CVE IDs, product names, version numbers when available\n"
-    "- NEVER use filler phrases: 'stay vigilant', 'apply patches', 'monitor for suspicious activity'\n"
-    "- Every sentence must contain at least one specific technical detail from the input\n"
-    "- If exploitation is active, lead with that fact\n"
-    "- If CISA KEV listed, mention the federal patch deadline"
-)
+# Re-exported for backward compat (used by ai_settings.py get_default_prompts)
+_DEFAULT_SYSTEM_PROMPT = INTEL_SUMMARY_PROMPT
 
 
 # ── Shared helper: call provider with fallback ────────────
@@ -578,7 +572,7 @@ async def chat_completion_json(
 
         # Corrective retry — ask the LLM to fix its own output
         retry_raw = await chat_completion(
-            system_prompt="You are a JSON repair assistant. The user will give you malformed JSON. Fix it and return ONLY valid JSON with no markdown fences and no explanation.",
+            system_prompt=JSON_REPAIR_PROMPT,
             user_prompt=f"Fix this JSON:\n{raw[:4000]}",
             max_tokens=max_tokens,
             temperature=0.1,

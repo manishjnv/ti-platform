@@ -11,6 +11,8 @@ USPs:
 
 from __future__ import annotations
 
+from app.prompts import REPORT_SUMMARY_PROMPT, REPORT_FULL_PROMPT
+
 import io
 import csv
 import uuid
@@ -372,31 +374,13 @@ async def generate_ai_summary(
 
     description = "\n".join(context_parts)
 
-    report_prompt = (
-        "You are a senior threat intelligence analyst writing an executive summary "
-        "for a formal threat intelligence report.\n\n"
-        "<task>\n"
-        "Write exactly 3-5 sentences covering:\n"
-        "1. THREAT — name the specific threat, vulnerability, or campaign with CVE IDs/malware names\n"
-        "2. IMPACT — who/what is affected (name products, versions, sectors) and quantified consequence\n"
-        "3. URGENCY — exploitation status (active ITW, PoC, theoretical) and any CISA KEV deadlines\n"
-        "4. ACTION — one concrete, specific remediation (patch version, config change, detection rule)\n"
-        "</task>\n\n"
-        "<rules>\n"
-        "- Use professional, direct language suitable for C-level briefings\n"
-        "- NEVER use filler: 'stay vigilant', 'apply patches', 'monitor for suspicious activity'\n"
-        "- Every sentence must contain at least one specific technical detail from the report data\n"
-        "- Return plain text only, no JSON, no markdown formatting\n"
-        "</rules>"
-    )
-
     summary = await ai_generate_summary(
         title=report.title,
         description=description,
         severity=report.severity,
         source_name="IntelWatch Report",
         cve_ids=cve_ids if include_linked_items else None,
-        system_prompt=report_prompt,
+        system_prompt=REPORT_SUMMARY_PROMPT,
         max_tokens=400,
         cache_prefix="report_ai_summary",
     )
@@ -510,53 +494,6 @@ async def generate_ai_sections(
     section_keys = [{"key": s["key"], "title": s["title"], "hint": s.get("hint", "")} for s in sections]
     section_list = "\n".join(f'- "{s["title"]}" (key: {s["key"]}): {s["hint"]}' for s in section_keys)
 
-    system_prompt = (
-        "You are a senior threat intelligence analyst generating a professional, "
-        "data-driven threat intelligence report.\n\n"
-        "<output_format>\n"
-        "Respond with a single valid JSON object. No markdown code fences wrapping the JSON.\n"
-        "The JSON must contain:\n"
-        '  "summary": "executive summary, 3-5 sentences for C-level briefing",\n'
-        '  "sections": { "section_key": "section content in MARKDOWN format" }\n'
-        "</output_format>\n\n"
-        "<data_usage>\n"
-        "You have LIVE RESEARCH DATA from NVD, OpenSearch, web search, and OTX.\n"
-        "USE THIS DATA to write factual, evidence-based content. Cite sources explicitly:\n"
-        "'According to NVD...', 'OTX pulse indicates...', 'Reported by...'\n"
-        "If research lacks info for a section: '> No confirmed data available — manual analysis recommended'\n"
-        "</data_usage>\n\n"
-        "<markdown_formatting>\n"
-        "Section values MUST use rich Markdown:\n"
-        "- **bold** for key terms, CVE IDs, severity labels, product names\n"
-        "- Bullet points (- ) for lists of IOCs, products, recommendations\n"
-        "- Numbered lists (1. ) for timelines and sequential steps\n"
-        "- ### sub-headings within longer sections\n"
-        "- Tables (| col1 | col2 |) for IOCs, CVSS breakdowns, version matrices\n"
-        "- `inline code` for hashes, IPs, domains, file paths, commands\n"
-        "- > blockquotes for key findings or analyst notes\n"
-        "- [link text](URL) for references\n"
-        "- --- horizontal rules between major sub-topics\n"
-        "NEVER write wall-of-text paragraphs — always use structured bullets/tables.\n"
-        "</markdown_formatting>\n\n"
-        "<section_guidelines>\n"
-        "- Executive Summary: 3-5 sentences for C-level. End with risk rating.\n"
-        "- Timeline: Numbered list, **dates** in bold. Include discovery → disclosure → patch → PoC → exploitation.\n"
-        "- Confirmation Status: **Confirmed** / **Suspected** / **Unverified** in bold + evidence sources.\n"
-        "- Exploitability: CVSS table (Score|Vector|Complexity|Privileges) + attack prerequisites.\n"
-        "- PoC / Exploit Availability: Bullet list with Metasploit modules, exploit-db IDs. Mark **Active ITW** if applicable.\n"
-        "- Impacted Technologies: **Vendor — Product — Version(s)** grouped by vendor.\n"
-        "- Affected Organizations: **sector: detail** format with geographies.\n"
-        "- IOC sections: Table (Type | Value | Context). `code` for hash/IP/domain.\n"
-        "- Recommendations: Numbered priority list. Bold actions. Include detection rules/YARA in code blocks.\n"
-        "- References: Bullet list of [source name](URL).\n"
-        "</section_guidelines>\n\n"
-        "<grounding_rules>\n"
-        "- Include actual CVE IDs, CVSS scores, dates, product names from the research data.\n"
-        "- Do not fabricate IOCs, CVEs, or attribution not present in the data.\n"
-        "- Escape quotes inside JSON string values properly.\n"
-        "</grounding_rules>"
-    )
-
     user_prompt = (
         f"Generate content for all sections of this threat intelligence report.\n\n"
         f"REPORT CONTEXT:\n{context}\n\n"
@@ -569,7 +506,7 @@ async def generate_ai_sections(
     )
 
     # Higher token limit for structured markdown content
-    raw = await ai_chat(system_prompt, user_prompt, max_tokens=4000, temperature=0.25)
+    raw = await ai_chat(REPORT_FULL_PROMPT, user_prompt, max_tokens=4000, temperature=0.25)
     if not raw:
         return None
 
