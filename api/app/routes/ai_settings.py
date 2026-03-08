@@ -224,8 +224,9 @@ async def update_ai_settings(
                     continue
                 # Preserve existing key if new entry sends empty or masked key
                 new_key = p.get("key", "")
-                if (not new_key or "****" in new_key) and p["name"] in existing:
-                    new_key = existing[p["name"]].get("key", "")
+                if not new_key or "****" in new_key:
+                    # Always fall back to existing real key; never store masked values
+                    new_key = existing.get(p["name"], {}).get("key", "")
                 merged.append({
                     "name": p.get("name", ""),
                     "url": p.get("url", ""),
