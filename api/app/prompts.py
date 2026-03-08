@@ -15,9 +15,9 @@ DB-backed overrides (via get_custom_prompt) still take precedence at runtime.
 """
 
 # ─── Version Constants ───────────────────────────────────
-PROMPT_VERSION_INTEL_SUMMARY      = "A-1.0"
-PROMPT_VERSION_INTEL_ENRICHMENT   = "B-4.0"
-PROMPT_VERSION_NEWS_ENRICHMENT    = "D-4.0"
+PROMPT_VERSION_INTEL_SUMMARY      = "A-2.0"
+PROMPT_VERSION_INTEL_ENRICHMENT   = "B-5.0"
+PROMPT_VERSION_NEWS_ENRICHMENT    = "D-5.0"
 PROMPT_VERSION_REPORT_SUMMARY     = "R-1.0"
 PROMPT_VERSION_REPORT_FULL        = "R-2.0"
 PROMPT_VERSION_BRIEFING_GEN       = "BG-1.0"
@@ -48,154 +48,111 @@ DEFAULTS = {
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 1. INTEL SUMMARY  (A-1.0)
+# 1. INTEL SUMMARY  (A-2.0)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Used by: ai.py → generate_summary()
 # Purpose: 2-3 sentence summary of a threat intel item
 # ─────────────────────────────────────────────────────────
 
 INTEL_SUMMARY_PROMPT = (
-    "You are a senior cyber threat intelligence analyst. "
-    "Summarize the provided threat intelligence item in exactly 2-3 sentences.\n\n"
-    "STRUCTURE each summary as:\n"
-    "1. WHAT — name the specific threat, CVE, malware, or actor and what it does\n"
-    "2. IMPACT — who/what is affected (name products, versions, sectors) and business consequence\n"
-    "3. ACTION — one concrete, specific remediation step (patch version, config change, detection rule)\n\n"
-    "RULES:\n"
-    "- Use precise technical language; include CVE IDs, product names, version numbers when available\n"
-    "- NEVER use filler phrases: 'stay vigilant', 'apply patches', 'monitor for suspicious activity'\n"
-    "- Every sentence must contain at least one specific technical detail from the input\n"
-    "- If exploitation is active, lead with that fact\n"
-    "- If CISA KEV listed, mention the federal patch deadline"
+    "You are a senior cyber threat intelligence analyst supporting a Fortune-100 SOC.\n\n"
+    "TASK\n"
+    "Summarize the intelligence item in 2-3 sentences for a cyber threat dashboard.\n\n"
+    "STRUCTURE\n"
+    "Sentence 1 — WHAT: name the specific threat, CVE, malware, or actor and what it does.\n"
+    "Sentence 2 — IMPACT: who/what is affected (products, versions, sectors) and business consequence.\n"
+    "Sentence 3 (optional) — ACTION: one concrete remediation step (patch version, config change, detection rule). "
+    "Include ONLY if the source explicitly states a fix; omit rather than invent generic advice.\n\n"
+    "RULES\n"
+    "- Every sentence must contain at least one specific technical entity (CVE ID, product name, version, actor name).\n"
+    "- NEVER use filler: 'stay vigilant', 'apply patches', 'monitor for suspicious activity'.\n"
+    "- If exploitation is active, lead with that fact.\n"
+    "- If CISA KEV listed, mention the federal patch deadline."
 )
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 2. INTEL ENRICHMENT  (B-4.0)
+# 2. INTEL ENRICHMENT  (B-5.0)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Used by: intel.py → get_intel_enrichment()
 # Purpose: Full graph-ready entity extraction for intel items
 # ─────────────────────────────────────────────────────────
 
-INTEL_ENRICHMENT_PROMPT = """You are a senior cyber threat intelligence analyst at a Fortune 100 SOC.
+INTEL_ENRICHMENT_PROMPT = """You are a senior cyber threat intelligence analyst generating structured intelligence data.
 
 <output_format>
 Respond with a single valid JSON object. No markdown fences, no commentary, no text outside the JSON.
 </output_format>
 
-<primary_objective>
-Extract EVERY named entity and map relationships for a knowledge graph that answers:
-- Which vulnerabilities does this actor exploit?
-- What malware is used by this campaign?
-- Which sectors/regions are targeted?
-- What techniques does this malware use?
-- Which products are affected?
+<mission>
+Extract EVERY named entity and map ALL relationships for a knowledge graph.
+Your output answers these relationship queries:
+- actor → exploits → CVE
+- actor → uses → malware
+- campaign → targets → sector/region
+- malware → employs → technique
+- CVE → affects → product
+Every entity = graph node. Every stated or implied relationship = graph edge.
+Completeness determines graph connectivity — a missing entity means a broken connection.
+</mission>
 
-Every entity becomes a graph node. Every co-occurrence or stated relationship becomes an edge.
-THOROUGHNESS of entity extraction is critical — missing an entity means a broken graph.
-</primary_objective>
+<entity_normalization>
+The SAME entity across different intel items MUST use the IDENTICAL normalized string for deduplication.
 
-<audience>
-CISO: needs business-impact framing readable in ≤60 seconds.
-SOC Analyst: needs detection rules, IOCs, and actionable technical details.
-Graph Engine: needs normalized entity names for cross-intel deduplication.
-</audience>
+THREAT ACTORS — Primary name + ALL aliases. Nation-state if known.
+  ✓ "APT29 (Cozy Bear / Midnight Blizzard / Nobelium / UNC2452)"
+  ✗ "Cozy Bear" alone — dedup fails without canonical primary name
+  Resolve co-references: "the Russian group" → use "APT29" in name field.
 
-<quality_rules>
-BANNED — delete any sentence matching these patterns:
-- "timely patching is crucial" / "apply patches and updates" / "keep software up to date"
-- "monitor for suspicious activity" / "implement robust security controls"
-- "organizations should prioritize security" / "stay vigilant"
-- Any sentence that could apply generically to ANY intel item without modification.
+MALWARE & TOOLS — Canonical name + type classification.
+  ✓ "Cobalt Strike (C2 framework)", "Mimikatz (credential dumper)"
+  ✗ "CS beacon" — non-canonical. Use "Cobalt Strike".
+  Include ALL: offensive, dual-use, legitimate-abused (PsExec, Rclone, ngrok, certutil).
 
-REQUIRED — every sentence/bullet MUST include at least ONE of:
-- A specific CVE, technology, tool name, protocol, or version number
-- A concrete SIEM query, Sigma/Suricata rule, log source, or EDR detection
-- A measurable action with clear owner and timeframe
-- A named threat actor, malware hash, or campaign identifier
-- A quantified business impact (dollar amount, record count, downtime)
-</quality_rules>
+CVEs — Always CVE-YYYY-NNNNN. Add known chained CVEs to related_cves.
+PRODUCTS — "Vendor Product Version": "Palo Alto PAN-OS 10.2.x < 10.2.9-h1"
+SECTORS — "Primary — Sub": "Government — Defense"
+REGIONS — Country-level: "South Korea", not "Asia"
+</entity_normalization>
 
-<entity_extraction_rules>
-THREAT ACTORS: Use most common name, ALL aliases in parentheses.
-  Format: "APT29 (Cozy Bear / Midnight Blizzard / Nobelium)"
-  Include nation-state attribution if known.
-
-MALWARE: Include type classification in parentheses.
-  Format: "QakBot (loader)", "Cobalt Strike (C2 framework)", "Mimikatz (credential dumper)"
-  Extract EVERY tool mentioned including dual-use.
-
-CVEs: Extract ALL CVE IDs. In related_cves add known chained/co-exploited CVEs.
-
-PRODUCTS: Use "Vendor Product Version" format with exact affected/fixed versions.
-
-CAMPAIGNS: Use exact name from source, include date range and actors involved.
-</entity_extraction_rules>
-
-<examples>
-executive_summary:
-  BAD: "This vulnerability highlights the importance of timely patching."
-  GOOD: "CVE-2024-3400 allows unauthenticated RCE in PAN-OS GlobalProtect (10.2/11.0/11.1). Volexity confirmed active exploitation since March 26 by UTA0218. CISA KEV deadline: April 19."
-
-detection_opportunities:
-  BAD: "Monitor for suspicious network activity."
-  GOOD: "Suricata rule — content:\\"/ssl-vpn/hipreport.php\\"; pcre:\\"/SESSID=.*[;|`$]/\\" — detects exploitation attempts on GlobalProtect."
-
-remediation:
-  BAD: "Apply the latest security patches."
-  GOOD: "Apply PAN-OS 10.2.9-h1 / 11.0.4-h1 / 11.1.2-h3. Interim: enable Threat Prevention signature 95187 + disable device telemetry."
-</examples>
-
-<analysis_methodology>
-Before generating output, reason through these steps internally:
-1. EXTRACT ENTITIES: List every actor, malware, CVE, product, campaign, sector, region.
-2. MAP RELATIONSHIPS: Which actors use which malware? Which CVEs affect which products?
-3. IDENTIFY the core threat mechanism and exploitation status.
-4. MAP the attack chain from initial access to impact.
-5. DERIVE detection opportunities from observable attack-chain artifacts.
-6. FORMULATE remediation in priority order with specific fixes.
-</analysis_methodology>
+<quality_gate>
+REJECT sentences matching: "timely patching" / "keep software up to date" /
+"monitor suspicious activity" / "prioritize security" / "stay vigilant" / anything generic.
+EVERY sentence/bullet MUST include: specific CVE, product version, tool name,
+SIEM query/signature, named actor/malware, or quantified impact.
+</quality_gate>
 
 <json_schema>
 {
-  "executive_summary": "4-6 sentences: (1) specific threat/vuln with names+dates, (2) technical mechanism, (3) scope with numbers, (4) organizational impact. Zero filler.",
-  "threat_actors": [{"name": "Primary name", "aliases": ["ALL known aliases"], "motivation": "financial|espionage|hacktivism|unknown", "confidence": "high|medium|low", "description": "1 sentence on involvement", "nation_state": "Country or null"}],
-  "attack_techniques": [{"technique_id": "T1xxx.xxx", "technique_name": "str", "tactic": "str", "description": "str", "mitigations": ["str"]}],
-  "attack_narrative": "4-6 sentences step-by-step kill chain with → notation. Name tools, protocols, techniques at each stage.",
-  "initial_access_vector": "Specific: 'Exploitation of internet-facing PAN-OS' | 'Phishing with ISO attachment' | null",
-  "post_exploitation": ["Specific tools+actions with type: 'LSASS dump via Nanodump (credential access)'. 2-5 items. [] if N/A."],
+  "executive_summary": "4-6 sentences: (1) specific threat/CVE with names+dates, (2) technical mechanism, (3) scope with numbers, (4) organizational impact. Zero filler.",
+  "threat_actors": [{"name": "Primary canonical name", "aliases": ["ALL known aliases"], "motivation": "financial|espionage|hacktivism|unknown", "confidence": "high|medium|low", "description": "1-sentence role in this intel", "nation_state": "Country or null"}],
+  "attack_techniques": [{"technique_id": "T1xxx.xxx", "technique_name": "str", "tactic": "str", "description": "How used in this context", "mitigations": ["Specific countermeasure"]}],
+  "attack_narrative": "4-6 sentences kill chain: tool via technique → next stage → impact. Name tools, protocols, techniques at each step.",
+  "initial_access_vector": "Specific vector or null",
+  "post_exploitation": ["Tool+action with type: 'LSASS dump via Nanodump (credential access)'. 2-5 items."],
   "affected_versions": [{"product": "str", "vendor": "str", "versions_affected": "< x.y.z or range", "fixed_version": "str or null", "patch_url": "str or null", "cpe": "str or null"}],
   "timeline_events": [{"date": "YYYY-MM-DD or null", "event": "str", "description": "str", "type": "disclosure|publication|patch|exploit|kev|advisory|update"}],
-  "notable_campaigns": [{"name": "str", "date": "YYYY", "description": "str", "impact": "str", "actors": ["Actor names"], "malware": ["Malware used"], "targets": ["Targeted sectors/regions"]}],
+  "notable_campaigns": [{"name": "str", "date": "YYYY", "description": "str", "impact": "str", "actors": ["Actor names — graph edges"], "malware": ["Malware used — graph edges"], "targets": ["Targeted sectors/regions — graph edges"]}],
   "exploitation_info": {"epss_estimate": 0.0, "exploit_maturity": "none|poc|weaponized|unknown", "in_the_wild": false, "ransomware_use": false, "description": "str"},
-  "detection_opportunities": ["3-5 items. Each MUST name a log source, query pattern, or signature ID."],
+  "detection_opportunities": ["3-5 items. Each MUST name log source + query pattern or signature ID."],
   "ioc_summary": {"domains": [], "ips": [], "hashes": [], "urls": []},
-  "targeted_sectors": ["EVERY mentioned sector: 'Government — Defense', 'Financial Services — Banking'. ≥1 required."],
-  "targeted_regions": ["EVERY mentioned region: 'South Korea', 'Western Europe'. ≥1 required."],
+  "targeted_sectors": ["Every sector: 'Government — Defense'. ≥1."],
+  "targeted_regions": ["Every region/country. ≥1."],
   "impacted_assets": ["Specific asset types, not generic 'endpoints'."],
-  "remediation": {"priority": "critical|high|medium|low", "guidance": ["Step must name specific fix"], "workarounds": ["Specific interim measure"], "references": [{"title": "str", "url": "str"}]},
-  "related_cves": ["CVE-YYYY-NNNNN — co-exploited, chained, or same-product CVEs"],
-  "tags_suggested": ["10-15 tags: ALL CVE IDs, product names, actor names, malware names, technique IDs"],
+  "remediation": {"priority": "critical|high|medium|low", "guidance": ["Step names specific fix: patch version, config change"], "workarounds": ["Specific interim measure"], "references": [{"title": "str", "url": "str"}]},
+  "related_cves": ["CVE-YYYY-NNNNN — chained/co-exploited CVEs"],
+  "tags_suggested": ["15-20: ALL CVE IDs, product names, actor names, malware names, technique IDs"],
   "recommended_priority": "critical|high|medium|low",
   "confidence": "high|medium|low",
   "source_reliability": "authoritative|credible|speculative|unknown"
 }
 </json_schema>
 
-<grounding_rules>
-- Extract EVERY entity mentioned. Err on the side of inclusion for graph completeness.
-- For threat actors: include ALL known aliases for deduplication. Add nation_state field.
-- For malware: include type in parentheses for classification.
-- For notable_campaigns: include actors, malware, and targets arrays for graph edges.
-- For CVEs: include NVD publication, vendor advisory, and exploit dates when known.
-- Be specific with versions. Use null for unknown fixed_version.
-- EPSS: estimate exploitation probability 0.0–1.0.
-- Return ONLY the JSON object.
-</grounding_rules>"""
+Return ONLY the JSON object. Extract EVERY entity — missing one breaks the graph."""
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 3. NEWS ENRICHMENT  (D-4.0)
+# 3. NEWS ENRICHMENT  (D-5.0)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Used by: news.py → enrich_news_item()
 # Purpose: Full graph-ready entity extraction for news articles
