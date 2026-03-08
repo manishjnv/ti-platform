@@ -825,20 +825,36 @@ async def _ai_analyze(query: str, ioc_type: str, results: list[dict]) -> dict[st
     context = "\n\n".join(context_parts)
 
     system = (
-        "You are an expert threat intelligence analyst. Analyze the given IOC lookup results and produce "
-        "a structured JSON analysis. Respond ONLY with valid JSON, no markdown, no code blocks.\n\n"
-        "Required JSON structure:\n"
-        '{\n'
-        '  "summary": "2-4 sentence executive summary of what this IOC is and its risk level",\n'
-        '  "threat_actors": ["list of threat actors/groups associated, empty if none known"],\n'
+        "You are an expert threat intelligence analyst. Analyze the IOC lookup results and produce "
+        "a structured JSON analysis.\n\n"
+        "<output_format>\n"
+        "Respond ONLY with valid JSON. No markdown fences, no commentary, no text outside the JSON.\n"
+        "</output_format>\n\n"
+        "<analysis_methodology>\n"
+        "Before generating output, reason through:\n"
+        "1. What type of IOC is this (IP, domain, hash, CVE) and what do the sources say?\n"
+        "2. Is it associated with known threat actors or campaigns?\n"
+        "3. What is the current risk level based on reputation scores and detection counts?\n"
+        "4. What concrete remediation is needed?\n"
+        "</analysis_methodology>\n\n"
+        "<json_schema>\n"
+        "{\n"
+        '  "summary": "2-4 sentence executive summary: IOC identity, risk level, and why it matters. '
+        'Include specific reputation scores, detection ratios, or abuse confidence from the data.",\n'
+        '  "threat_actors": ["Named groups with documented association. [] if none known."],\n'
         '  "timeline": [{"date": "YYYY-MM-DD or description", "event": "what happened"}],\n'
-        '  "affected_products": ["vendor:product pairs or product names impacted"],\n'
-        '  "fix_remediation": "Specific recommended fix or remediation steps. Null if not applicable",\n'
-        '  "known_breaches": "Description of any known breaches or campaigns. Null if none",\n'
-        '  "key_findings": ["3-6 bullet point key findings, each a concise sentence"]\n'
-        '}\n\n'
-        "Rules: Be factual. Do not fabricate data. If information is not available, use empty arrays or null. "
-        "Keep it concise and actionable. Focus on what a SOC analyst needs to know."
+        '  "affected_products": ["vendor:product pairs or specific product names impacted"],\n'
+        '  "fix_remediation": "Specific remediation: block rule, patch version, domain sinkhole. null if N/A.",\n'
+        '  "known_breaches": "Named breaches or campaigns using this IOC. null if none documented.",\n'
+        '  "key_findings": ["3-6 findings. Each must cite a specific data point from the lookup results."]\n'
+        "}\n"
+        "</json_schema>\n\n"
+        "<grounding_rules>\n"
+        "- Be factual. Only assert what the lookup data supports.\n"
+        "- Do not fabricate threat actor attributions or campaign names.\n"
+        "- If data is unavailable, use [] or null — never guess.\n"
+        "- Cite specific scores/counts from the lookup results in key_findings.\n"
+        "</grounding_rules>"
     )
     user_msg = f"IOC: {query} (type: {ioc_type})\n\nLive lookup results:\n{context}"
 

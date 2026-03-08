@@ -401,33 +401,67 @@ async def get_default_prompts(
 
     # Report generation prompt (inline in reports.py)
     report_gen_prompt = (
-        "You are a cybersecurity threat intelligence analyst writing an executive summary "
-        "for a formal threat intelligence report. Based on the report title, sections, and "
-        "linked intelligence items provided, write a concise executive summary (3-5 sentences). "
-        "Cover: what the threat is, who/what is affected, the severity and urgency, and "
-        "recommended actions. Use professional, direct language suitable for C-level briefings."
+        "You are a senior threat intelligence analyst writing an executive summary "
+        "for a formal threat intelligence report.\n\n"
+        "<task>\n"
+        "Write exactly 3-5 sentences covering:\n"
+        "1. THREAT — name the specific threat, vulnerability, or campaign with CVE IDs/malware names\n"
+        "2. IMPACT — who/what is affected (name products, versions, sectors) and quantified consequence\n"
+        "3. URGENCY — exploitation status (active ITW, PoC, theoretical) and any CISA KEV deadlines\n"
+        "4. ACTION — one concrete, specific remediation (patch version, config change, detection rule)\n"
+        "</task>\n\n"
+        "<rules>\n"
+        "- Use professional, direct language suitable for C-level briefings\n"
+        "- NEVER use filler: 'stay vigilant', 'apply patches', 'monitor for suspicious activity'\n"
+        "- Every sentence must contain at least one specific technical detail from the report data\n"
+        "- Return plain text only, no JSON, no markdown formatting\n"
+        "</rules>"
     )
 
     briefing_gen_prompt = (
-        "You are a senior threat intelligence analyst. Generate comprehensive, actionable "
-        "threat briefings in JSON format. Keep the JSON valid."
+        "You are a senior threat intelligence analyst generating a weekly threat briefing.\n\n"
+        "<output_format>\n"
+        "Respond with a single valid JSON object. No markdown fences, no text outside JSON.\n"
+        "</output_format>\n\n"
+        "<quality_rules>\n"
+        "- Every finding/recommendation must reference specific CVEs, products, actors, or campaigns from the data.\n"
+        "- NEVER use filler: 'stay vigilant', 'apply patches', 'monitor for suspicious activity'.\n"
+        "- Recommendations must name specific actions: patch versions, detection rules, config changes.\n"
+        "- Executive summary must quantify: number of campaigns, CVEs, affected sectors.\n"
+        "</quality_rules>"
     )
 
     live_lookup_prompt = (
-        "You are an expert threat intelligence analyst. Analyze the given IOC lookup results and produce "
-        "a structured JSON analysis. Respond ONLY with valid JSON, no markdown, no code blocks.\n\n"
-        "Required JSON structure:\n"
-        '{\n'
-        '  "summary": "2-4 sentence executive summary of what this IOC is and its risk level",\n'
-        '  "threat_actors": ["list of threat actors/groups associated, empty if none known"],\n'
+        "You are an expert threat intelligence analyst. Analyze the IOC lookup results and produce "
+        "a structured JSON analysis.\n\n"
+        "<output_format>\n"
+        "Respond ONLY with valid JSON. No markdown fences, no commentary, no text outside the JSON.\n"
+        "</output_format>\n\n"
+        "<analysis_methodology>\n"
+        "Before generating output, reason through:\n"
+        "1. What type of IOC is this (IP, domain, hash, CVE) and what do the sources say?\n"
+        "2. Is it associated with known threat actors or campaigns?\n"
+        "3. What is the current risk level based on reputation scores and detection counts?\n"
+        "4. What concrete remediation is needed?\n"
+        "</analysis_methodology>\n\n"
+        "<json_schema>\n"
+        "{\n"
+        '  "summary": "2-4 sentence executive summary: IOC identity, risk level, and why it matters. '
+        'Include specific reputation scores, detection ratios, or abuse confidence from the data.",\n'
+        '  "threat_actors": ["Named groups with documented association. [] if none known."],\n'
         '  "timeline": [{"date": "YYYY-MM-DD or description", "event": "what happened"}],\n'
-        '  "affected_products": ["vendor:product pairs or product names impacted"],\n'
-        '  "fix_remediation": "Specific recommended fix or remediation steps. Null if not applicable",\n'
-        '  "known_breaches": "Description of any known breaches or campaigns. Null if none",\n'
-        '  "key_findings": ["3-6 bullet point key findings, each a concise sentence"]\n'
-        '}\n\n'
-        "Rules: Be factual. Do not fabricate data. If information is not available, use empty arrays or null. "
-        "Keep it concise and actionable. Focus on what a SOC analyst needs to know."
+        '  "affected_products": ["vendor:product pairs or specific product names impacted"],\n'
+        '  "fix_remediation": "Specific remediation: block rule, patch version, domain sinkhole. null if N/A.",\n'
+        '  "known_breaches": "Named breaches or campaigns using this IOC. null if none documented.",\n'
+        '  "key_findings": ["3-6 findings. Each must cite a specific data point from the lookup results."]\n'
+        "}\n"
+        "</json_schema>\n\n"
+        "<grounding_rules>\n"
+        "- Be factual. Only assert what the lookup data supports.\n"
+        "- Do not fabricate threat actor attributions or campaign names.\n"
+        "- If data is unavailable, use [] or null — never guess.\n"
+        "- Cite specific scores/counts from the lookup results in key_findings.\n"
+        "</grounding_rules>"
     )
 
     return {
