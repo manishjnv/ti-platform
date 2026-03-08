@@ -333,7 +333,7 @@ class NewsItem(Base):
         SAEnum(
             "active_threats", "exploited_vulnerabilities", "ransomware_breaches",
             "nation_state", "cloud_identity", "ot_ics", "security_research",
-            "tools_technology", "policy_regulation",
+            "tools_technology", "policy_regulation", "general_news", "geopolitical_cyber",
             name="news_category", create_type=False,
         ),
         nullable=False, default="active_threats",
@@ -381,6 +381,11 @@ class NewsItem(Base):
     ai_enriched: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     raw_content: Mapped[str | None] = mapped_column(Text)
     source_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+
+    # Graph-ready structured data
+    notable_campaigns: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    exploitation_info: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    related_cves: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
 
     # Cross-source correlation: tracks other sources covering the same story
     correlated_sources: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)

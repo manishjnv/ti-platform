@@ -1530,7 +1530,7 @@ def cleanup_stale_news(max_age_hours: int = 6) -> dict:
 _VALID_NEWS_CATEGORIES = {
     "active_threats", "exploited_vulnerabilities", "ransomware_breaches",
     "nation_state", "cloud_identity", "ot_ics", "security_research",
-    "tools_technology", "policy_regulation",
+    "tools_technology", "policy_regulation", "general_news", "geopolitical_cyber",
 }
 
 # Map common AI-hallucinated categories to valid ones
@@ -1556,6 +1556,14 @@ _CATEGORY_FALLBACK_MAP = {
     "research": "security_research",
     "tools": "tools_technology",
     "technology": "tools_technology",
+    "general": "general_news",
+    "general_cybersecurity": "general_news",
+    "general_cybersecurity_news": "general_news",
+    "geopolitical": "geopolitical_cyber",
+    "geopolitical_cyber_development": "geopolitical_cyber",
+    "geopolitical_development": "geopolitical_cyber",
+    "cyber_diplomacy": "geopolitical_cyber",
+    "sanctions": "geopolitical_cyber",
 }
 
 
@@ -1631,6 +1639,9 @@ def enrich_news_batch(batch_size: int = 10) -> dict:
                     item.timeline = enrichment.get("timeline", [])
                     item.detection_opportunities = enrichment.get("detection_opportunities", [])
                     item.mitigation_recommendations = enrichment.get("mitigation_recommendations", [])
+                    item.notable_campaigns = enrichment.get("notable_campaigns", [])
+                    item.exploitation_info = enrichment.get("exploitation_info", {})
+                    item.related_cves = enrichment.get("related_cves", [])
                     item.confidence = enrichment.get("confidence", "medium") if enrichment.get("confidence") in ("high", "medium", "low") else "medium"
                     item.relevance_score = max(1, min(100, enrichment.get("relevance_score", 50)))
                     item.ai_enriched = True
@@ -1751,6 +1762,9 @@ def re_enrich_fallback_news(batch_size: int = 10) -> dict:
                     item.timeline = enrichment.get("timeline", [])
                     item.detection_opportunities = enrichment.get("detection_opportunities", [])
                     item.mitigation_recommendations = enrichment.get("mitigation_recommendations", [])
+                    item.notable_campaigns = enrichment.get("notable_campaigns", [])
+                    item.exploitation_info = enrichment.get("exploitation_info", {})
+                    item.related_cves = enrichment.get("related_cves", [])
                     item.confidence = enrichment.get("confidence", "medium") if enrichment.get("confidence") in ("high", "medium", "low") else "medium"
                     item.relevance_score = max(1, min(100, enrichment.get("relevance_score", 50)))
 

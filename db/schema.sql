@@ -506,6 +506,11 @@ CREATE TABLE IF NOT EXISTS news_items (
     raw_content             TEXT,
     source_hash             VARCHAR(64) NOT NULL,
 
+    -- Graph-ready structured data
+    notable_campaigns       JSONB NOT NULL DEFAULT '[]',
+    exploitation_info       JSONB NOT NULL DEFAULT '{}',
+    related_cves            TEXT[] NOT NULL DEFAULT '{}',
+
     -- Cross-source correlation
     correlated_sources      JSONB NOT NULL DEFAULT '[]',
 

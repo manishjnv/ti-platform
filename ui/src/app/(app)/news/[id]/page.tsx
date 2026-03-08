@@ -20,6 +20,7 @@ import {
   FlaskConical,
   Wrench,
   Scale,
+  Newspaper,
   Tag,
   Crosshair,
   Users,
@@ -65,6 +66,8 @@ const CATEGORY_META: Record<
   security_research: { label: "Security Research", icon: FlaskConical, color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/30" },
   tools_technology: { label: "Tools & Technology", icon: Wrench, color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/30" },
   policy_regulation: { label: "Policy & Regulation", icon: Scale, color: "text-teal-400", bg: "bg-teal-500/10", border: "border-teal-500/30" },
+  general_news: { label: "General News", icon: Newspaper, color: "text-slate-400", bg: "bg-slate-500/10", border: "border-slate-500/30" },
+  geopolitical_cyber: { label: "Geopolitical Cyber", icon: Globe, color: "text-indigo-400", bg: "bg-indigo-500/10", border: "border-indigo-500/30" },
 };
 
 const PRIORITY_META: Record<string, { label: string; color: string; bg: string }> = {

@@ -177,6 +177,26 @@ const CATEGORY_META: Record<
     accent: "border-l-teal-500",
     glow: "shadow-[0_0_12px_-3px_rgba(45,212,191,0.25)]",
   },
+  general_news: {
+    label: "General News",
+    shortLabel: "General",
+    icon: Newspaper,
+    color: "text-slate-400",
+    bg: "bg-slate-500/10",
+    border: "border-slate-500/30",
+    accent: "border-l-slate-500",
+    glow: "shadow-[0_0_12px_-3px_rgba(148,163,184,0.25)]",
+  },
+  geopolitical_cyber: {
+    label: "Geopolitical Cyber",
+    shortLabel: "Geopolitical",
+    icon: Globe,
+    color: "text-indigo-400",
+    bg: "bg-indigo-500/10",
+    border: "border-indigo-500/30",
+    accent: "border-l-indigo-500",
+    glow: "shadow-[0_0_12px_-3px_rgba(129,140,248,0.25)]",
+  },
 };
 
 const ALL_CATEGORIES: NewsCategory[] = [
@@ -189,6 +209,8 @@ const ALL_CATEGORIES: NewsCategory[] = [
   "security_research",
   "tools_technology",
   "policy_regulation",
+  "general_news",
+  "geopolitical_cyber",
 ];
 
 const SORT_OPTIONS = [
