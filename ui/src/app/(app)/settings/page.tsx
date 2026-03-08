@@ -2142,12 +2142,14 @@ function AIConfigSettings() {
                         value={fb.name}
                         onChange={(e) => {
                           const prov = e.target.value;
-                          updateFallback(idx, "name", prov);
                           const defaults = PROVIDER_DEFAULTS[prov];
-                          if (defaults) {
-                            updateFallback(idx, "url", defaults.url);
-                            updateFallback(idx, "model", defaults.model);
-                          }
+                          const list = [...(cfg.fallback_providers || [])];
+                          list[idx] = {
+                            ...list[idx],
+                            name: prov,
+                            ...(defaults ? { url: defaults.url, model: defaults.model } : {}),
+                          };
+                          update("fallback_providers", list);
                         }}
                         className="w-full px-2 py-1 rounded bg-muted/30 border border-border text-[11px] focus:outline-none focus:ring-1 focus:ring-primary"
                       >
