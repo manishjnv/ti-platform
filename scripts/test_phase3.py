@@ -105,11 +105,11 @@ def test_stix_module():
     assert "url:value" in url_ind["pattern"]
     ok("IOC → Indicator (URL)", url_ind["pattern"][:50])
 
-    # Unsupported IOC type returns None-like (no pattern)
+    # Unsupported IOC type returns empty dict (no pattern)
     bad_ioc = {"value": "unknown", "ioc_type": "unsupported", "risk_score": 0}
     bad_ind = ioc_to_indicator(bad_ioc)
-    assert bad_ind is None
-    ok("Unsupported IOC type → None")
+    assert bad_ind == {}
+    ok("Unsupported IOC type → empty dict")
 
     # 4. Threat actor
     actor = actor_to_stix("APT28", aliases=["Fancy Bear", "Sofacy"])
@@ -312,13 +312,13 @@ async def test_db_integration():
     section("Database Integration — Real Data")
 
     from sqlalchemy import select, func
-    from app.core.database import get_db_context
+    from app.core.database import async_session_factory
     from app.models.models import NewsItem, IntelItem
     from app.normalizers.stix import news_item_to_bundle, ioc_list_to_bundle
     from app.normalizers.rules import news_item_to_sigma
     from app.schemas import NewsItemResponse
 
-    async with get_db_context() as db:
+    async with async_session_factory() as db:
         # Get a news item with IOCs
         result = await db.execute(
             select(NewsItem)
