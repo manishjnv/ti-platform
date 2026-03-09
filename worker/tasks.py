@@ -21,6 +21,7 @@ from app.core.opensearch import bulk_index_items, ensure_index
 from app.normalizers.categories import normalize_category
 from app.normalizers.enrichment import apply_news_enrichment
 from app.normalizers.geo import CC_CONTINENT, CC_NAMES
+from app.normalizers.ioc_lifecycle import confidence_decay, sighting_boost
 from app.services.scoring import batch_score
 
 setup_logging()
@@ -465,11 +466,12 @@ def extract_iocs(batch_size: int = 500) -> dict:
             for ioc_val, ioc_type in ioc_values:
                 # Upsert IOC record
                 ioc_id = uuid.uuid4()
+                base_risk = item.risk_score
                 stmt = pg_insert(IOC).values(
                     id=ioc_id,
                     value=ioc_val,
                     ioc_type=ioc_type,
-                    risk_score=item.risk_score,
+                    risk_score=base_risk,
                     tags=list(item.tags[:5]) if item.tags else [],
                     geo=list(item.geo[:5]) if item.geo else [],
                     source_names=[item.source_name],
@@ -489,10 +491,17 @@ def extract_iocs(batch_size: int = 500) -> dict:
                 )
                 session.execute(stmt)
 
-                # Retrieve the IOC id (may be existing record)
-                ioc_row_id = session.execute(
-                    select(IOC.id).where(IOC.value == ioc_val, IOC.ioc_type == ioc_type)
+                # Retrieve the IOC record to apply lifecycle scoring
+                ioc_row = session.execute(
+                    select(IOC).where(IOC.value == ioc_val, IOC.ioc_type == ioc_type)
                 ).scalar_one()
+                ioc_row_id = ioc_row.id
+
+                # Apply sighting boost to risk_score
+                boost = sighting_boost(ioc_row.sighting_count)
+                if boost > 0:
+                    boosted = min(100, ioc_row.risk_score + boost)
+                    ioc_row.risk_score = boosted
 
                 extracted += 1
 

@@ -25,6 +25,7 @@ from app.normalizers.entities import (
 )
 from app.normalizers.patterns import CVE_RE as _CVE_RE
 from app.normalizers.severity import SEVERITY_RANK as _SEVERITY_RANK, priority_to_severity as _priority_to_severity
+from app.normalizers.killchain import parse_technique as _parse_technique
 
 logger = get_logger("intel_extraction")
 
@@ -244,6 +245,13 @@ def _upsert_campaign_sync(
         else_=-1,
     )
 
+    # Normalise technique IDs: "T1566.001 - Phishing" → "T1566.001"
+    raw_techniques = item.tactics_techniques or []
+    normalised_techniques = []
+    for t in raw_techniques:
+        tid, _ = _parse_technique(str(t))
+        normalised_techniques.append(tid if tid else str(t))
+
     stmt = pg_insert(ThreatCampaign).values(
         actor_name=actor_name[:300],
         campaign_name=campaign_name[:300] if campaign_name else None,
@@ -253,7 +261,7 @@ def _upsert_campaign_sync(
         targeted_sectors=item.targeted_sectors or [],
         targeted_regions=item.targeted_regions or [],
         malware_used=item.malware_families or [],
-        techniques_used=item.tactics_techniques or [],
+        techniques_used=normalised_techniques,
         cves_exploited=item.cves or [],
         source_count=1,
         source_news_ids=[news_id],

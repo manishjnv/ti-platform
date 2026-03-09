@@ -30,6 +30,7 @@ from app.models.models import (
     VulnerableProduct,
     ThreatCampaign,
 )
+from app.normalizers.correlation import corroboration_boost
 
 logger = get_logger(__name__)
 
@@ -686,14 +687,16 @@ def _eval_correlation_rule(
         if len(feeds) >= min_feeds:
             items = cve_items[cve]
             max_risk = max(i.risk_score for i in items)
+            boost = corroboration_boost(len(feeds))
+            boosted_risk = min(100, max_risk + boost)
             _create_notification(
                 session,
                 user_id=rule.user_id,
                 rule_id=rule.id,
                 title=f"Cross-Feed Correlation: {cve} detected in {len(feeds)} feeds",
                 message=f"{cve} appeared in: {', '.join(sorted(feeds))}. "
-                        f"Highest risk score: {max_risk}.",
-                severity="high" if max_risk >= 70 else "medium",
+                        f"Highest risk score: {max_risk} (boosted to {boosted_risk}).",
+                severity="high" if boosted_risk >= 70 else "medium",
                 category="correlation",
                 entity_type="cve",
                 entity_id=cve,
@@ -702,6 +705,8 @@ def _eval_correlation_rule(
                     "feed_names": sorted(feeds),
                     "feed_count": len(feeds),
                     "max_risk_score": max_risk,
+                    "corroboration_boost": boost,
+                    "boosted_risk_score": boosted_risk,
                     "item_count": len(items),
                 },
                 rule=rule,

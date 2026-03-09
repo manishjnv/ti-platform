@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 from app.core.logging import get_logger
 from app.normalizers.severity import SEVERITY_SCORES
+from app.normalizers.ioc_lifecycle import confidence_decay as _confidence_decay
 
 logger = get_logger(__name__)
 
