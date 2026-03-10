@@ -6,6 +6,8 @@ Auth and DB are overridden via dependency injection (see conftest.py).
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 
 
@@ -29,8 +31,6 @@ class TestHealthEndpoint:
     """GET /api/v1/health — health check, no auth required."""
 
     async def test_health_returns_200(self, async_client):
-        # Health check pings real services; may fail in test env
-        # but the endpoint itself should not 500
         resp = await async_client.get("/api/v1/health")
         assert resp.status_code == 200
 
@@ -44,42 +44,39 @@ class TestHealthEndpoint:
 
 
 class TestIntelRoutes:
-    """GET /api/v1/intel — protected routes with mocked auth."""
+    """GET /api/v1/intel — protected routes with mocked auth + DB."""
 
     async def test_intel_list_returns_200(self, async_client):
-        # DB is mocked so this will likely fail gracefully
         resp = await async_client.get("/api/v1/intel")
-        # Accept 200 (if cached/mocked) or 500 (DB mock doesn't return rows)
         assert resp.status_code in (200, 500, 422)
 
     async def test_intel_export_stix_endpoint_exists(self, async_client):
         resp = await async_client.get("/api/v1/intel/export/stix")
-        # Should not be 404
         assert resp.status_code != 404
 
 
 class TestNewsRoutes:
-    """News endpoints with mocked auth."""
+    """News endpoints with mocked auth + DB."""
 
     async def test_news_stix_export_exists(self, async_client):
-        import uuid
         fake_id = str(uuid.uuid4())
         resp = await async_client.get(f"/api/v1/news/{fake_id}/export/stix")
-        # 404 (not found) is expected since DB is mocked, but endpoint should exist
         assert resp.status_code in (200, 404, 500)
 
     async def test_news_sigma_export_exists(self, async_client):
-        import uuid
         fake_id = str(uuid.uuid4())
         resp = await async_client.get(f"/api/v1/news/{fake_id}/export/sigma")
         assert resp.status_code in (200, 404, 500)
 
 
 class TestSearchRoutes:
-    """GET /api/v1/search — search endpoint."""
+    """POST /api/v1/search — search endpoint (POST, not GET)."""
 
     async def test_search_endpoint_exists(self, async_client):
-        resp = await async_client.get("/api/v1/search", params={"q": "test"})
+        resp = await async_client.post(
+            "/api/v1/search", json={"query": "test"}
+        )
+        # Accept 200 (results) or 422 (validation) or 500 (OpenSearch mock)
         assert resp.status_code in (200, 422, 500)
 
 
@@ -100,7 +97,7 @@ class TestReportsRoutes:
 
 
 class TestTechniquesRoutes:
-    """ATT&CK techniques endpoints."""
+    """ATT&CK techniques endpoints (uses Redis caching)."""
 
     async def test_techniques_list_exists(self, async_client):
         resp = await async_client.get("/api/v1/techniques")
@@ -108,7 +105,7 @@ class TestTechniquesRoutes:
 
 
 class TestIOCsRoutes:
-    """IOC endpoints."""
+    """IOC endpoints (uses get_current_user auth)."""
 
     async def test_iocs_list_exists(self, async_client):
         resp = await async_client.get("/api/v1/iocs")
