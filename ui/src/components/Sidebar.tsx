@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/store";
+import { IntelWatchLogo } from "@/components/IntelWatchLogo";
 import {
   LayoutDashboard,
   Search,
@@ -87,16 +88,7 @@ function DesktopSidebar() {
       {/* Logo */}
       <div className="flex h-14 items-center border-b border-border/50 px-2.5 gap-2 shrink-0">
         <div className="flex h-8 w-8 items-center justify-center shrink-0">
-          <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-7 w-7">
-            <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" fill="#0f172a" stroke="#3b82f6" strokeWidth="2.5"/>
-            <circle cx="32" cy="30" r="14" fill="none" stroke="#3b82f6" strokeWidth="2" opacity="0.3"/>
-            <ellipse cx="32" cy="30" rx="12" ry="8" fill="none" stroke="#60a5fa" strokeWidth="2"/>
-            <circle cx="32" cy="30" r="5" fill="#3b82f6"/>
-            <circle cx="32" cy="30" r="2.2" fill="#0f172a"/>
-            <circle cx="33.5" cy="28.5" r="1.2" fill="#bfdbfe" opacity="0.8"/>
-            <line x1="20" y1="30" x2="14" y2="30" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/>
-            <line x1="44" y1="30" x2="50" y2="30" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/>
-          </svg>
+          <IntelWatchLogo />
         </div>
         {sidebarOpen && (
           <div className="flex flex-col flex-1 min-w-0">
@@ -247,16 +239,7 @@ function MobileSidebar() {
         <div className="flex h-14 items-center border-b border-border/50 px-4 justify-between">
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center shrink-0">
-              <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-7 w-7">
-                <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" fill="#0f172a" stroke="#3b82f6" strokeWidth="2.5"/>
-                <circle cx="32" cy="30" r="14" fill="none" stroke="#3b82f6" strokeWidth="2" opacity="0.3"/>
-                <ellipse cx="32" cy="30" rx="12" ry="8" fill="none" stroke="#60a5fa" strokeWidth="2"/>
-                <circle cx="32" cy="30" r="5" fill="#3b82f6"/>
-                <circle cx="32" cy="30" r="2.2" fill="#0f172a"/>
-                <circle cx="33.5" cy="28.5" r="1.2" fill="#bfdbfe" opacity="0.8"/>
-                <line x1="20" y1="30" x2="14" y2="30" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/>
-                <line x1="44" y1="30" x2="50" y2="30" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/>
-              </svg>
+              <IntelWatchLogo />
             </div>
             <div className="flex flex-col">
               <span className="text-sm font-bold tracking-tight leading-none">IntelWatch</span>

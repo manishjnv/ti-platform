@@ -2,7 +2,8 @@
 
 import React, { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Shield, Mail, ArrowRight, Loader2, KeyRound } from "lucide-react";
+import { Mail, ArrowRight, Loader2, KeyRound } from "lucide-react";
+import { IntelWatchLogo } from "@/components/IntelWatchLogo";
 import { useAppStore } from "@/store";
 import * as api from "@/lib/api";
 
@@ -136,7 +137,7 @@ function LoginContent() {
           {/* Logo & Branding */}
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 mb-4">
-              <Shield className="h-8 w-8 text-primary" />
+              <IntelWatchLogo size="h-10 w-10" />
             </div>
             <h1 className="text-2xl font-bold tracking-tight">IntelWatch</h1>
             <p className="text-sm text-muted-foreground mt-1">Threat Intelligence Platform</p>
